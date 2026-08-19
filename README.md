@@ -1,5 +1,10 @@
-# CS361_Groupproject
-## Project Defination
+# Electronic Mailbox & Document Flow System(G6)
+
 ## Project Vision
-## Project V1 
-## Project Boundary 
+## Primary User
+## Problem
+## V1 Goal
+## V1 In scope
+## V1 Out of scope
+## External actors / systems
+## Open questions / To validate
