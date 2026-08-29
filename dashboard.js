@@ -17,7 +17,15 @@
  * to the embedded copy of the same data below so the dashboard still
  * renders correctly.
  */
-const DATA_BASE_URL = "data";
+const S3_BASE_URL = "https://my-project-v1-2026.s3.ap-southeast-2.amazonaws.com";
+const DASHBOARD_DATA_URL = `${S3_BASE_URL}/dashboard-mock.json`;
+
+// Demo document files stored in the same S3 bucket.
+// Upload these two PDF files to the bucket with the exact names below.
+const DOCUMENT_FILE_URLS = {
+  "DOC2568/00125": `${S3_BASE_URL}/document-00125.pdf`,
+  "DOC2568/00124": `${S3_BASE_URL}/document-00124.pdf`
+};
 
 const DASHBOARD_FALLBACK = {
   "user": {
@@ -215,7 +223,8 @@ function svgIcon(pathData, size = 20) {
 
 async function loadJSON(file, fallback) {
   try {
-    const res = await fetch(`${DATA_BASE_URL}/${file}`);
+    const url = file === "dashboard-mock.json" ? DASHBOARD_DATA_URL : `${S3_BASE_URL}/${file}`;
+    const res = await fetch(url);
     if (!res.ok) throw new Error(`ไม่สามารถโหลด ${file} ได้ (${res.status})`);
     return await res.json();
   } catch (err) {
@@ -244,24 +253,32 @@ function renderDocuments(docs) {
     body.innerHTML = `<tr><td colspan="6" class="table-loading">ยังไม่มีเอกสาร</td></tr>`;
     return;
   }
-  body.innerHTML = docs.map(d => `
-    <tr>
-      <td>
-        <span class="doc-no">${d.docNo}</span>
-        <span class="doc-track">${d.trackingNo}</span>
-      </td>
-      <td>
-        <div class="doc-type-cell">
-          <span class="file-chip">${d.fileType}</span>
-          <span>${d.type}</span>
-        </div>
-      </td>
-      <td>${d.sender}</td>
-      <td>${d.receiver}</td>
-      <td><span class="status-pill status-${d.status}">${d.status}</span></td>
-      <td>${d.date}</td>
-    </tr>
-  `).join("");
+  body.innerHTML = docs.map(d => {
+    const fileUrl = d.fileUrl || DOCUMENT_FILE_URLS[d.docNo];
+    const fileAction = fileUrl
+      ? `<a class="file-view-btn" href="${fileUrl}" target="_blank" rel="noopener noreferrer">ดูไฟล์</a>`
+      : `<span class="file-unavailable">—</span>`;
+
+    return `
+      <tr>
+        <td>
+          <span class="doc-no">${d.docNo}</span>
+          <span class="doc-track">${d.trackingNo}</span>
+        </td>
+        <td>
+          <div class="doc-type-cell">
+            <span class="file-chip">${d.fileType}</span>
+            <span>${d.type}</span>
+          </div>
+        </td>
+        <td>${d.sender}</td>
+        <td>${d.receiver}</td>
+        <td><span class="status-pill status-${d.status}">${d.status}</span></td>
+        <td>${d.date}</td>
+        <td>${fileAction}</td>
+      </tr>
+    `;
+  }).join("");
 }
 
 function renderTimeline(steps) {

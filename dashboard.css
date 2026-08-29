@@ -803,3 +803,20 @@
     flex-wrap: wrap;
   }
 }
+
+/* ---------- File view button ---------- */
+.file-view-btn{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  padding:6px 11px;
+  border-radius:7px;
+  background:var(--maroon);
+  color:#fff;
+  font-size:12px;
+  font-weight:700;
+  text-decoration:none;
+  white-space:nowrap;
+}
+.file-view-btn:hover{ opacity:.88; }
+.file-unavailable{ color:var(--ink-soft); }
