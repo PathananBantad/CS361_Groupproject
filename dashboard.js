@@ -28,8 +28,7 @@ const DASHBOARD_FALLBACK = {
   "stats": [
     {
       "label": "เอกสารทั้งหมด",
-      "value": 1256,
-      "delta": "+12% จากเดือนที่แล้ว",
+      "value": 200,
       "icon": "file"
     },
     {
@@ -40,14 +39,12 @@ const DASHBOARD_FALLBACK = {
     },
     {
       "label": "ดำเนินการเสร็จสิ้น",
-      "value": 1182,
-      "delta": "+8% จากเดือนที่แล้ว",
+      "value": 156,
       "icon": "check"
     },
     {
       "label": "ส่งออกแล้ว",
-      "value": 512,
-      "delta": "+15% จากเดือนที่แล้ว",
+      "value": 146,
       "icon": "send"
     }
   ],
