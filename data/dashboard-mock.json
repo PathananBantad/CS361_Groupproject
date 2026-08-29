@@ -1,0 +1,47 @@
+{
+  "user": {
+    "name": "น.ส. อารีย์ ใจดี",
+    "role": "เจ้าหน้าที่รับเอกสาร",
+    "notifications": 3
+  },
+  "stats": [
+    { "label": "เอกสารทั้งหมด", "value": 1256, "delta": "+12% จากเดือนที่แล้ว", "icon": "file" },
+    { "label": "รอดำเนินการ", "value": 24, "delta": "ต้องดำเนินการ", "icon": "clock" },
+    { "label": "ดำเนินการเสร็จสิ้น", "value": 1182, "delta": "+8% จากเดือนที่แล้ว", "icon": "check" },
+    { "label": "ส่งออกแล้ว", "value": 512, "delta": "+15% จากเดือนที่แล้ว", "icon": "send" }
+  ],
+  "recentDocuments": [
+    { "docNo": "DOC2568/00125", "trackingNo": "TRK-68-0520-0001", "type": "หนังสือราชการ", "fileType": "PDF", "sender": "สำนักงานคณะฯ", "receiver": "อาจารย์ ดร.สมชาย", "status": "เสร็จสิ้น", "date": "20 พ.ค. 2568 14:30" },
+    { "docNo": "DOC2568/00124", "trackingNo": "TRK-68-0520-0002", "type": "บันทึกข้อความ", "fileType": "DOCX", "sender": "งานการเงิน", "receiver": "น.ส. อารีย์ ใจดี", "status": "รอดำเนินการ", "date": "20 พ.ค. 2568 13:45" },
+    { "docNo": "DOC2568/00123", "trackingNo": "TRK-68-0520-0003", "type": "แบบฟอร์ม", "fileType": "XLSX", "sender": "นักศึกษา", "receiver": "อาจารย์ ดร.สมชาย", "status": "ระหว่างดำเนินการ", "date": "20 พ.ค. 2568 11:20" },
+    { "docNo": "DOC2568/00122", "trackingNo": "TRK-68-0520-0004", "type": "หนังสือภายนอก", "fileType": "PDF", "sender": "บริษัท เอ็กซ์ จำกัด", "receiver": "คณะ/หน่วยงาน", "status": "เสร็จสิ้น", "date": "19 พ.ค. 2568 16:10" },
+    { "docNo": "DOC2568/00121", "trackingNo": "TRK-68-0520-0005", "type": "เอกสารนำเสนอ", "fileType": "PPTX", "sender": "อาจารย์ ดร.สมชาย", "receiver": "คณะ/หน่วยงาน", "status": "ยกเลิก", "date": "19 พ.ค. 2568 09:15" }
+  ],
+  "workflowSteps": [
+    { "step": 1, "title": "รับเอกสาร", "description": "รับเอกสารจากผู้ส่งผ่านช่องทางต่าง ๆ", "status": "done" },
+    { "step": 2, "title": "ตรวจสอบและลงทะเบียน", "description": "ตรวจสอบความถูกต้องและลงทะเบียนเอกสาร", "status": "in_progress" },
+    { "step": 3, "title": "เสนอผู้รับผิดชอบ", "description": "เสนอเอกสารไปยังผู้รับผิดชอบเรื่อง", "status": "pending" },
+    { "step": 4, "title": "ดำเนินการตามเรื่อง", "description": "ผู้รับผิดชอบดำเนินการและตอบกลับ", "status": "pending" },
+    { "step": 5, "title": "จัดเก็บ/ปิดเรื่อง", "description": "จัดเก็บเอกสารและปิดเรื่อง", "status": "pending" }
+  ],
+  "documentTypeBreakdown": [
+    { "label": "หนังสือราชการ", "percent": 35, "count": 440, "color": "#7A1F23" },
+    { "label": "บันทึกข้อความ", "percent": 25, "count": 314, "color": "#B5892B" },
+    { "label": "แบบฟอร์ม", "percent": 15, "count": 188, "color": "#3F6C51" },
+    { "label": "หนังสือภายนอก", "percent": 15, "count": 188, "color": "#9C3B41" },
+    { "label": "เอกสารนำเสนอ", "percent": 10, "count": 126, "color": "#D9B968" }
+  ],
+  "channels": [
+    { "label": "E-mail", "percent": 45, "count": 566 },
+    { "label": "Web Submission", "percent": 25, "count": 314 },
+    { "label": "Upload File", "percent": 20, "count": 251 },
+    { "label": "หน่วยงานภายนอก", "percent": 10, "count": 125 }
+  ],
+  "requiredInfoChecklist": [
+    "ระบุประเภทเอกสารให้ถูกต้อง",
+    "ระบุชื่อผู้ส่งและผู้รับให้ครบถ้วน",
+    "แนบไฟล์เอกสารในรูปแบบที่รองรับ (PDF, DOCX, XLSX, PPTX)",
+    "ระบุเรื่อง/รายละเอียดของเอกสาร",
+    "ใส่ช่องทางการติดต่อกลับ (อีเมล/เบอร์โทรศัพท์)"
+  ]
+}

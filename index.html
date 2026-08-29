@@ -12,7 +12,10 @@
 
 <div class="topbar">
   <span>ELECTRONIC MAILBOX</span>
-  <span class="tag">ระบบสารบรรณอิเล็กทรอนิกส์</span>
+  <div class="topbar-right">
+    <span class="tag">ระบบสารบรรณอิเล็กทรอนิกส์</span>
+    <a href="dashboard.html" class="topbar-link">เข้าสู่ระบบ (Dashboard) →</a>
+  </div>
 </div>
 
 <section class="hero">
@@ -20,7 +23,7 @@
     <div class="eyebrow">ระบบกลางของสาขาวิชา</div>
     <h1>ระบบรับและกระจาย<br>เอกสารอิเล็กทรอนิกส์</h1>
     <p>ระบบกลางสำหรับรับและกระจายเอกสารของสาขาวิชาไปยังผู้รับผิดชอบ พร้อมติดตามสถานะและประวัติการส่งต่อทุกขั้นตอน เพื่อให้ตรวจสอบย้อนหลังได้เสมอ</p>
-    <button class="btn-primary" onclick="document.getElementById('doctypes').scrollIntoView()">
+    <button class="btn-primary" onclick="location.href='dashboard.html'">
       เริ่มต้นใช้งาน
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
     </button>
@@ -36,30 +39,11 @@
 
 <section class="section reveal" id="doctypes">
   <div class="section-head"><span class="num">01</span><h2>ประเภทเอกสาร</h2></div>
-  <p class="section-desc">เอกสารในระบบแบ่งออกเป็น 4 ประเภทหลัก เพื่อให้ผู้ใช้งานเลือกส่งและติดตามได้ตรงตามวัตถุประสงค์</p>
-  <div class="doc-grid">
-    <div class="doc-card">
-      <div class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 11l18-5v12L3 14v-3z"></path><path d="M11.6 16.8a3 3 0 1 1-5.2-3"></path></svg></div>
-      <h3>เอกสารประชาสัมพันธ์</h3>
-      <p>เช่น กิจกรรมด้านเอกสารประชาสัมพันธ์การแข่ง hackathon</p>
-    </div>
-    <div class="doc-card">
-      <div class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"></path><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path></svg></div>
-      <h3>เอกสารขออนุมัติ</h3>
-      <p>เช่น ขอใช้สถานที่ห้องเรียนเพื่อทำกิจกรรมชมรม</p>
-    </div>
-    <div class="doc-card">
-      <div class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 17H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v3"></path><path d="M13 21h6a2 2 0 0 0 2-2v-6a2 2 0 0 0-2-2h-6a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2z"></path></svg></div>
-      <h3>เอกสารการตอบกลับ</h3>
-      <p>เช่น การเรียนเชิญคณะกรรมการเยี่ยมสถาบัน</p>
-    </div>
-    <div class="doc-card">
-      <div class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"></path><path d="M18 17V9"></path><path d="M13 17V5"></path><path d="M8 17v-3"></path></svg></div>
-      <h3>เอกสารรายงานผล</h3>
-      <p>เช่น รายงานผลการปฏิบัติงานประจำสัปดาห์การสอน</p>
-    </div>
+  <p class="section-desc">เอกสารในระบบแบ่งออกเป็นประเภทหลัก เพื่อให้ผู้ใช้งานเลือกส่งและติดตามได้ตรงตามวัตถุประสงค์ — ข้อมูลด้านล่างดึงมาจาก <code>data/document-types.json</code> โดยตรง</p>
+  <div class="doc-grid" id="docGrid">
+    <div class="doc-card doc-card-loading">กำลังโหลดประเภทเอกสาร…</div>
   </div>
-  <a href="#" class="see-more">ดูเพิ่มเติม →</a>
+  <a href="dashboard.html" class="see-more">ไปยังหน้าภาพรวมระบบ (Dashboard) →</a>
 </section>
 
 <section class="section reveal">
