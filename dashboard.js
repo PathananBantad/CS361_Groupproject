@@ -23,8 +23,8 @@ const DASHBOARD_DATA_URL = `${S3_BASE_URL}/dashboard-mock.json`;
 // Demo document files stored in the same S3 bucket.
 // Upload these two PDF files to the bucket with the exact names below.
 const DOCUMENT_FILE_URLS = {
-  "DOC2568/00125": `${S3_BASE_URL}/document-00125.pdf`,
-  "DOC2568/00124": `${S3_BASE_URL}/document-00124.pdf`
+  "DOC2568/00124": "https://my-project-v1-2026.s3.ap-southeast-2.amazonaws.com/document-00124-realistic.pdf",
+  "DOC2568/00125": "https://my-project-v1-2026.s3.ap-southeast-2.amazonaws.com/document-00125-realistic.pdf"
 };
 
 const DASHBOARD_FALLBACK = {
