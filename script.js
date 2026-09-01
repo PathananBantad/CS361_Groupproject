@@ -15,8 +15,8 @@ reveals.forEach(el => io.observe(el));
 // If the page is opened directly as a file:// URL, browsers block
 // fetch() of local files — in that case we fall back to the copy
 // embedded below so the page still renders correctly offline.
-const DOC_TYPES_URL = " https://my-project-v1-2026.s3.ap-southeast-2.amazonaws.com/document-types.json " ;
-
+const DOC_TYPES_URL =
+  "https://my-project-v1-2026.s3.ap-southeast-2.amazonaws.com/data/document-types.json";
 const DOC_TYPES_FALLBACK = [
   {
     "document_type": "เอกสารประชาสัมพันธ์",
