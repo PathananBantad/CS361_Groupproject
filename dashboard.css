@@ -356,8 +356,15 @@
 }
 
 /* ---------- Document table ---------- */
+.table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
 .doc-table {
   width: 100%;
+  min-width: 720px;
   border-collapse: collapse;
 }
 
