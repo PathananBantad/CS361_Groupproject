@@ -290,11 +290,6 @@
   color: var(--ink);
 }
 
-.stat-delta {
-  font-size: 11px;
-  color: var(--ink-soft);
-  margin-top: 2px;
-}
 
 /* ---------- Panels / layout ---------- */
 .dash-columns {
@@ -812,18 +807,117 @@
 }
 
 /* ---------- File view button ---------- */
-.file-view-btn{
-  display:inline-flex;
-  align-items:center;
-  justify-content:center;
-  padding:6px 11px;
-  border-radius:7px;
-  background:var(--maroon);
-  color:#fff;
-  font-size:12px;
-  font-weight:700;
-  text-decoration:none;
-  white-space:nowrap;
+.file-view-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 11px;
+  border-radius: 7px;
+  background: var(--maroon);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
 }
-.file-view-btn:hover{ opacity:.88; }
-.file-unavailable{ color:var(--ink-soft); }
+
+.file-view-btn:hover {
+  opacity: .88;
+}
+
+.file-unavailable {
+  color: var(--ink-soft);
+}
+
+/* Updated dashboard */
+.status-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.status-item {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 12px 13px;
+  background: var(--cream-2);
+  border: 1px solid var(--card-line);
+  border-radius: 9px;
+}
+
+.status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--maroon);
+  flex-shrink: 0;
+}
+
+.status-item strong {
+  display: block;
+  font-size: 13px;
+  color: var(--ink);
+}
+
+.status-item span:not(.status-dot) {
+  display: block;
+  font-size: 11px;
+  color: var(--ink-soft);
+  margin-top: 1px;
+}
+
+#channelPanel .channel-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+#channelPanel .channel-list li {
+  padding: 12px;
+  border: 1px solid var(--card-line);
+  border-radius: 9px;
+  background: var(--cream-2);
+}
+
+#channelPanel .channel-info {
+  width: auto;
+}
+
+#channelPanel .channel-bar,
+#channelPanel .channel-pct {
+  display: none;
+}
+
+@media (max-width: 700px) {
+
+  .status-list,
+  #channelPanel .channel-list {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Document status colors */
+.status-Received {
+  background: rgba(181, 137, 43, .12);
+  color: var(--gold);
+  border-color: rgba(181, 137, 43, .25);
+}
+
+.status-Assigned {
+  background: rgba(63, 108, 81, .10);
+  color: #3F6C51;
+  border-color: rgba(63, 108, 81, .22);
+}
+
+.status-Processing {
+  background: rgba(122, 31, 35, .10);
+  color: var(--maroon);
+  border-color: rgba(122, 31, 35, .22);
+}
+
+.status-Completed {
+  background: rgba(63, 108, 81, .14);
+  color: #2f5b40;
+  border-color: rgba(63, 108, 81, .28);
+}
