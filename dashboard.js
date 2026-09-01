@@ -18,7 +18,7 @@
  * renders correctly.
  */
 const S3_BASE_URL = "https://my-project-v1-2026.s3.ap-southeast-2.amazonaws.com";
-const DASHBOARD_DATA_URL = `${S3_BASE_URL}/data/dashboard-mock.json`;// Demo document files stored in the same S3 bucket.
+const DASHBOARD_DATA_URL = "data/dashboard-mock.json";// Demo document files stored in the same S3 bucket.
 // Upload these two PDF files to the bucket with the exact names below.
 const DOCUMENT_FILE_URLS = {
   "DOC2568/00124":
@@ -43,7 +43,6 @@ const DASHBOARD_FALLBACK = {
     {
       "label": "รอดำเนินการ",
       "value": 24,
-      "delta": "ต้องดำเนินการ",
       "icon": "clock"
     },
     {
@@ -61,51 +60,51 @@ const DASHBOARD_FALLBACK = {
     {
       "docNo": "DOC2568/00125",
       "trackingNo": "TRK-68-0520-0001",
-      "type": "หนังสือราชการ",
+      "type": "เอกสารประชาสัมพันธ์",
       "fileType": "PDF",
       "sender": "สำนักงานคณะฯ",
       "receiver": "อาจารย์ ดร.สมชาย",
-      "status": "เสร็จสิ้น",
+      "status": "Completed",
       "date": "20 พ.ค. 2568 14:30"
     },
     {
       "docNo": "DOC2568/00124",
       "trackingNo": "TRK-68-0520-0002",
-      "type": "บันทึกข้อความ",
-      "fileType": "DOCX",
+      "type": "เอกสารขออนุมัติ",
+      "fileType": "PDF",
       "sender": "งานการเงิน",
       "receiver": "น.ส. อารีย์ ใจดี",
-      "status": "รอดำเนินการ",
+      "status": "Received",
       "date": "20 พ.ค. 2568 13:45"
     },
     {
       "docNo": "DOC2568/00123",
       "trackingNo": "TRK-68-0520-0003",
-      "type": "แบบฟอร์ม",
+      "type": "เอกสารรายงานผล",
       "fileType": "XLSX",
       "sender": "นักศึกษา",
       "receiver": "อาจารย์ ดร.สมชาย",
-      "status": "ระหว่างดำเนินการ",
+      "status": "Processing",
       "date": "20 พ.ค. 2568 11:20"
     },
     {
       "docNo": "DOC2568/00122",
       "trackingNo": "TRK-68-0520-0004",
-      "type": "หนังสือภายนอก",
+      "type": "เอกสารแจ้งเพื่อทราบ",
       "fileType": "PDF",
       "sender": "บริษัท เอ็กซ์ จำกัด",
       "receiver": "คณะ/หน่วยงาน",
-      "status": "เสร็จสิ้น",
+      "status": "Completed",
       "date": "19 พ.ค. 2568 16:10"
     },
     {
       "docNo": "DOC2568/00121",
       "trackingNo": "TRK-68-0520-0005",
-      "type": "เอกสารนำเสนอ",
+      "type": "เอกสารมอบหมายงาน",
       "fileType": "PPTX",
       "sender": "อาจารย์ ดร.สมชาย",
       "receiver": "คณะ/หน่วยงาน",
-      "status": "ยกเลิก",
+      "status": "Assigned",
       "date": "19 พ.ค. 2568 09:15"
     }
   ],
@@ -124,8 +123,8 @@ const DASHBOARD_FALLBACK = {
     },
     {
       "step": 3,
-      "title": "เสนอผู้รับผิดชอบ",
-      "description": "เสนอเอกสารไปยังผู้รับผิดชอบเรื่อง",
+      "title": "ส่งต่อผู้เกี่ยวข้อง",
+      "description": "ส่งต่อเอกสารไปยังบุคคลหรือหน่วยงานที่เกี่ยวข้อง",
       "status": "pending"
     },
     {
@@ -141,60 +140,17 @@ const DASHBOARD_FALLBACK = {
       "status": "pending"
     }
   ],
-  "documentTypeBreakdown": [
-    {
-      "label": "หนังสือราชการ",
-      "percent": 35,
-      "count": 440,
-      "color": "#7A1F23"
-    },
-    {
-      "label": "บันทึกข้อความ",
-      "percent": 25,
-      "count": 314,
-      "color": "#B5892B"
-    },
-    {
-      "label": "แบบฟอร์ม",
-      "percent": 15,
-      "count": 188,
-      "color": "#3F6C51"
-    },
-    {
-      "label": "หนังสือภายนอก",
-      "percent": 15,
-      "count": 188,
-      "color": "#9C3B41"
-    },
-    {
-      "label": "เอกสารนำเสนอ",
-      "percent": 10,
-      "count": 126,
-      "color": "#D9B968"
-    }
-  ],
   "channels": [
     {
-      "label": "E-mail",
-      "percent": 45,
-      "count": 566
+      "label": "อิเล็กทรอนิกส์",
+      "count": 880
     },
     {
-      "label": "Web Submission",
-      "percent": 25,
-      "count": 314
-    },
-    {
-      "label": "Upload File",
-      "percent": 20,
-      "count": 251
-    },
-    {
-      "label": "หน่วยงานภายนอก",
-      "percent": 10,
-      "count": 125
+      "label": "กระดาษ",
+      "count": 376
     }
   ],
+
   "requiredInfoChecklist": [
     "ระบุประเภทเอกสารให้ถูกต้อง",
     "ระบุชื่อผู้ส่งและผู้รับให้ครบถ้วน",
@@ -212,10 +168,8 @@ const ICONS = {
 };
 
 const CHANNEL_ICONS = {
-  "E-mail": '<path d="M4 4h16v16H4z"></path><path d="M4 7l8 6 8-6"></path>',
-  "Web Submission": '<circle cx="12" cy="12" r="9"></circle><path d="M3 12h18"></path><path d="M12 3a15 15 0 0 1 0 18a15 15 0 0 1 0-18z"></path>',
-  "Upload File": '<path d="M12 3v12"></path><path d="M7 8l5-5 5 5"></path><path d="M4 21h16"></path>',
-  "หน่วยงานภายนอก": '<path d="M3 21h18"></path><path d="M6 21V8l6-4 6 4v13"></path><path d="M10 21v-6h4v6"></path>'
+  "อิเล็กทรอนิกส์": '<path d="M4 4h16v16H4z"></path><path d="M4 7l8 6 8-6"></path>',
+  "กระดาษ": '<path d="M6 3h9l3 3v15H6z"></path><path d="M15 3v4h4"></path><path d="M9 12h6M9 16h6"></path>'
 };
 
 function svgIcon(pathData, size = 20) {
@@ -242,7 +196,6 @@ function renderStats(stats) {
       <div>
         <div class="stat-label">${s.label}</div>
         <div class="stat-value">${s.value.toLocaleString("th-TH")}</div>
-        <div class="stat-delta">${s.delta}</div>
       </div>
     </div>
   `).join("");
@@ -284,44 +237,33 @@ function renderDocuments(docs) {
 
 function renderTimeline(steps) {
   const list = document.getElementById("timelineList");
-  const statusLabel = { done: "เสร็จสิ้น", in_progress: "กำลังดำเนินการ", pending: "รอดำเนินการ" };
-  const statusIcon = {
-    done: svgIcon('<polyline points="20 6 9 17 4 12"></polyline>', 12),
-    in_progress: svgIcon('<circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3.5 2"></path>', 12),
-    pending: svgIcon('<circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3.5 2"></path>', 12)
-  };
   list.innerHTML = steps.map(s => `
-    <li class="timeline-item ${s.status}">
-      <div class="timeline-num">${s.status === "done" ? svgIcon('<polyline points="20 6 9 17 4 12"></polyline>', 14) : s.step}</div>
+    <li class="timeline-item">
+      <div class="timeline-num">${s.step}</div>
       <div class="timeline-body">
         <h3>${s.title}</h3>
         <p>${s.description}</p>
-        <span class="timeline-status ${s.status}">${statusIcon[s.status]} ${statusLabel[s.status]}</span>
       </div>
     </li>
   `).join("");
 }
 
-function renderDonut(breakdown) {
-  const total = breakdown.reduce((sum, b) => sum + b.count, 0);
-  let acc = 0;
-  const stops = breakdown.map(b => {
-    const start = acc;
-    acc += b.percent;
-    return `${b.color} ${start}% ${acc}%`;
-  }).join(", ");
-
-  const chart = document.getElementById("donutChart");
-  chart.style.background = `conic-gradient(${stops})`;
-  document.getElementById("donutTotal").textContent = total.toLocaleString("th-TH");
-
-  const legend = document.getElementById("breakdownLegend");
-  legend.innerHTML = breakdown.map(b => `
-    <li>
-      <span class="legend-dot" style="background:${b.color}"></span>
-      ${b.label}
-      <span class="pct">${b.percent}% (${b.count})</span>
-    </li>
+function renderStatuses() {
+  const list = document.getElementById("statusList");
+  const statuses = [
+    { label: "Received", description: "ได้รับเอกสารแล้ว" },
+    { label: "Assigned", description: "ส่งต่อผู้เกี่ยวข้องแล้ว" },
+    { label: "Processing", description: "อยู่ระหว่างดำเนินการ" },
+    { label: "Completed", description: "ดำเนินการเสร็จสิ้น" }
+  ];
+  list.innerHTML = statuses.map(s => `
+    <div class="status-item">
+      <span class="status-dot"></span>
+      <div>
+        <strong>${s.label}</strong>
+        <span>${s.description}</span>
+      </div>
+    </div>
   `).join("");
 }
 
@@ -329,12 +271,10 @@ function renderChannels(channels) {
   const list = document.getElementById("channelList");
   list.innerHTML = channels.map(c => `
     <li>
-      <div class="channel-icon">${svgIcon(CHANNEL_ICONS[c.label] || CHANNEL_ICONS["E-mail"], 17)}</div>
+      <div class="channel-icon">${svgIcon(CHANNEL_ICONS[c.label] || CHANNEL_ICONS["อิเล็กทรอนิกส์"], 17)}</div>
       <div class="channel-info">
         <div class="channel-name">${c.label}</div>
-        <div class="channel-bar"><div class="channel-bar-fill" style="width:${c.percent}%"></div></div>
       </div>
-      <div class="channel-pct">${c.percent}% (${c.count})</div>
     </li>
   `).join("");
 }
@@ -350,7 +290,6 @@ function renderUser(user) {
   document.getElementById("userName").textContent = user.name;
   document.getElementById("userRole").textContent = user.role;
   document.getElementById("userAvatar").textContent = user.name.trim().charAt(0);
-  document.getElementById("notifCount").textContent = user.notifications;
 }
 
 async function initDashboard() {
@@ -359,7 +298,7 @@ async function initDashboard() {
   renderStats(data.stats);
   renderDocuments(data.recentDocuments);
   renderTimeline(data.workflowSteps);
-  renderDonut(data.documentTypeBreakdown);
+  renderStatuses();
   renderChannels(data.channels);
   renderChecklist(data.requiredInfoChecklist);
 

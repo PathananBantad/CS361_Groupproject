@@ -1,106 +1,130 @@
 <!DOCTYPE html>
 <html lang="th">
+
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ระบบรับและกระจายเอกสารอิเล็กทรอนิกส์</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;500;600;700;800&family=Noto+Serif+Thai:wght@600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ระบบรับและกระจายเอกสารอิเล็กทรอนิกส์</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link
+    href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;500;600;700;800&family=Noto+Serif+Thai:wght@600;700&display=swap"
+    rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
 </head>
+
 <body>
 
-<div class="topbar">
-  <span>ELECTRONIC MAILBOX</span>
-  <div class="topbar-right">
-    <span class="tag">ระบบสารบรรณอิเล็กทรอนิกส์</span>
-    <a href="dashboard.html" class="topbar-link">เข้าสู่ระบบ (Dashboard) →</a>
-  </div>
-</div>
-
-<section class="hero">
-  <div>
-    <div class="eyebrow">ระบบกลางของสาขาวิชา</div>
-    <h1>ระบบรับและกระจาย<br>เอกสารอิเล็กทรอนิกส์</h1>
-    <p>ระบบกลางสำหรับรับและกระจายเอกสารของสาขาวิชาไปยังผู้รับผิดชอบ พร้อมติดตามสถานะและประวัติการส่งต่อทุกขั้นตอน เพื่อให้ตรวจสอบย้อนหลังได้เสมอ</p>
-    <button class="btn-primary" onclick="location.href='dashboard.html'">
-      เริ่มต้นใช้งาน
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
-    </button>
-  </div>
-  <div class="hero-art">
-    <div class="doc-icon">
-      <div class="badge">
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#FBF3E3" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
-      </div>
+  <div class="topbar">
+    <span>ELECTRONIC MAILBOX</span>
+    <div class="topbar-right">
+      <span class="tag">ระบบสารบรรณอิเล็กทรอนิกส์</span>
+      <a href="dashboard.html" class="topbar-link">เยี่ยมชม (Dashboard) →</a>
     </div>
   </div>
-</section>
 
-<section class="section reveal" id="doctypes">
-  <div class="section-head"><span class="num">01</span><h2>ประเภทเอกสาร</h2></div>
-  <p class="section-desc">เอกสารในระบบแบ่งออกเป็นประเภทหลัก เพื่อให้ผู้ใช้งานเลือกส่งและติดตามได้ตรงตามวัตถุประสงค์ — ข้อมูลด้านล่างดึงมาจาก <code>data/document-types.json</code> โดยตรง</p>
-  <div class="doc-grid" id="docGrid">
-    <div class="doc-card doc-card-loading">กำลังโหลดประเภทเอกสาร…</div>
-  </div>
-  <a href="dashboard.html" class="see-more">ไปยังหน้าภาพรวมระบบ (Dashboard) →</a>
-</section>
-
-<section class="section reveal">
-  <div class="section-head"><span class="num">02</span><h2>ช่องทางการรับเอกสาร</h2></div>
-  <p class="section-desc">ทุกเอกสารเข้าสู่ระบบผ่านช่องทางเดียว เพื่อให้ควบคุมและตรวจสอบย้อนหลังได้ง่าย</p>
-  <div class="table-wrap">
-    <table>
-      <thead>
-        <tr><th>ช่องทาง</th><th>ลักษณะการใช้งาน</th></tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td>อัปโหลดเอกสารผ่านเว็บไซต์</td>
-          <td>ผู้ส่งอัปโหลดไฟล์เอกสารเข้าสู่ระบบโดยตรงผ่านหน้าเว็บ พร้อมกรอกข้อมูลเบื้องต้นตามแบบฟอร์ม จากนั้นเอกสารจะเข้าสู่ขั้นตอนลงทะเบียนโดยอัตโนมัติ</td>
-        </tr>
-      </tbody>
-    </table>
-  </div>
-</section>
-
-<section class="section reveal">
-  <div class="section-head"><span class="num">03</span><h2>ขั้นตอนการดำเนินงาน</h2></div>
-  <p class="section-desc">ภาพรวมเส้นทางของเอกสารตั้งแต่เข้าสู่ระบบจนถึงมือผู้รับผิดชอบ</p>
-  <div class="steps">
-    <div class="step">
-      <div class="step-num">1</div>
-      <div>
-        <h3>รับและลงทะเบียนเอกสาร</h3>
-        <p>เจ้าหน้าที่บันทึกข้อมูลเบื้องต้น ผู้ส่ง วันที่ เรื่อง และประเภทเอกสาร พร้อมออกหมายเลขอ้างอิง</p>
+  <section class="hero">
+    <div>
+      <div class="eyebrow">ระบบกลางของสาขาวิชา</div>
+      <h1>ระบบรับและกระจาย<br>เอกสารอิเล็กทรอนิกส์</h1>
+      <p>ระบบกลางสำหรับรับและกระจายเอกสารของสาขาวิชาไปยังผู้รับผิดชอบ พร้อมติดตามสถานะและประวัติการส่งต่อทุกขั้นตอน
+        เพื่อให้ตรวจสอบย้อนหลังได้เสมอ</p>
+      <button class="btn-primary" onclick="location.href='dashboard.html'">
+        เริ่มต้นใช้งาน
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
+          stroke-linecap="round" stroke-linejoin="round">
+          <line x1="5" y1="12" x2="19" y2="12"></line>
+          <polyline points="12 5 19 12 12 19"></polyline>
+        </svg>
+      </button>
+    </div>
+    <div class="hero-art">
+      <div class="doc-icon">
+        <div class="badge">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#FBF3E3" stroke-width="2.6"
+            stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="20 6 9 17 4 12"></polyline>
+          </svg>
+        </div>
       </div>
     </div>
-    <div class="step">
-      <div class="step-num">2</div>
-      <div>
-        <h3>กำหนดผู้รับผิดชอบ</h3>
-        <p>ระบุผู้มีสิทธิ์รับหรือมอบหมายเอกสารไปยังบุคคลหรือหน่วยงานที่เกี่ยวข้อง</p>
-      </div>
-    </div>
-    <div class="step">
-      <div class="step-num">3</div>
-      <div>
-        <h3>ดำเนินการและติดตามสถานะ</h3>
-        <p>ผู้รับผิดชอบดำเนินการตามภารกิจ พร้อมปรับสถานะหรือส่งต่อเมื่อจำเป็น</p>
-      </div>
-    </div>
-    <div class="step">
-      <div class="step-num">4</div>
-      <div>
-        <h3>ปิดเรื่องและเก็บประวัติ</h3>
-        <p>เมื่อดำเนินการครบทุกขั้นตอน ระบบบันทึกประวัติไว้เพื่อการตรวจสอบย้อนหลัง</p>
-      </div>
-    </div>
-  </div>
-</section>
+  </section>
 
-<footer>© ระบบรับและกระจายเอกสารอิเล็กทรอนิกส์ · สาขาวิชา</footer>
+  <section class="section reveal" id="doctypes">
+    <div class="section-head"><span class="num">01</span>
+      <h2>ประเภทเอกสาร</h2>
+    </div>
+    <p class="section-desc">เอกสารในระบบแบ่งออกเป็นประเภทหลัก เพื่อให้ผู้ใช้งานเลือกส่งและติดตามได้ตรงตามวัตถุประสงค์ —
+      ข้อมูลด้านล่างดึงมาจาก <code>data/document-types.json</code> โดยตรง</p>
+    <div class="doc-grid" id="docGrid">
+      <div class="doc-card doc-card-loading">กำลังโหลดประเภทเอกสาร…</div>
+    </div>
+    <a href="dashboard.html" class="see-more">ไปยังหน้าภาพรวมระบบ (Dashboard) →</a>
+  </section>
 
-<script src="script.js"></script>
+  <section class="section reveal">
+    <div class="section-head"><span class="num">02</span>
+      <h2>ช่องทางการรับเอกสาร</h2>
+    </div>
+    <p class="section-desc">ทุกเอกสารเข้าสู่ระบบผ่านช่องทางเดียว เพื่อให้ควบคุมและตรวจสอบย้อนหลังได้ง่าย</p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>ช่องทาง</th>
+            <th>ลักษณะการใช้งาน</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>อัปโหลดเอกสารผ่านเว็บไซต์</td>
+            <td>ผู้ส่งอัปโหลดไฟล์เอกสารเข้าสู่ระบบโดยตรงผ่านหน้าเว็บ พร้อมกรอกข้อมูลเบื้องต้นตามแบบฟอร์ม
+              จากนั้นเอกสารจะเข้าสู่ขั้นตอนลงทะเบียนโดยอัตโนมัติ</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="section reveal">
+    <div class="section-head"><span class="num">03</span>
+      <h2>ขั้นตอนการดำเนินงาน</h2>
+    </div>
+    <p class="section-desc">ภาพรวมเส้นทางของเอกสารตั้งแต่เข้าสู่ระบบจนถึงมือผู้รับผิดชอบ</p>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">1</div>
+        <div>
+          <h3>รับและลงทะเบียนเอกสาร</h3>
+          <p>เจ้าหน้าที่บันทึกข้อมูลเบื้องต้น ผู้ส่ง วันที่ เรื่อง และประเภทเอกสาร พร้อมออกหมายเลขอ้างอิง</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div>
+          <h3>กำหนดผู้รับผิดชอบ</h3>
+          <p>ระบุผู้มีสิทธิ์รับหรือมอบหมายเอกสารไปยังบุคคลหรือหน่วยงานที่เกี่ยวข้อง</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <div>
+          <h3>ส่งต่อผู้เกี่ยวข้อง</h3>
+          <p>ส่งต่อเอกสารไปยังบุคคลหรือหน่วยงานที่เกี่ยวข้องเพื่อดำเนินการต่อ</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">4</div>
+        <div>
+          <h3>ปิดเรื่องและเก็บประวัติ</h3>
+          <p>เมื่อดำเนินการครบทุกขั้นตอน ระบบบันทึกประวัติไว้เพื่อการตรวจสอบย้อนหลัง</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer>© ระบบรับและกระจายเอกสารอิเล็กทรอนิกส์ · สาขาวิชา</footer>
+
+  <script src="script.js"></script>
 </body>
+
 </html>
