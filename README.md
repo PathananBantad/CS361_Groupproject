@@ -92,3 +92,7 @@ V1 มุ่งเน้นการพัฒนา Information Service เพ�
 
 ## Deploy link
 http://my-project-v1-2026.s3-website-ap-southeast-2.amazonaws.com
+
+## Architecture
+<img width="1141" height="566" alt="image" src="https://github.com/user-attachments/assets/32a01715-a90c-4908-9d86-a2a35840f29d" />
+
