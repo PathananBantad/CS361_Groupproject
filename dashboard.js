@@ -201,6 +201,29 @@ function renderStats(stats) {
   `).join("");
 }
 
+// สร้างเลขอ้างอิงเอกสารอัตโนมัติ (DOC-YYYYMMDD-XXXX)
+function generateDocumentReference(existingDocs = []) {
+  const today = new Date();
+  const dateStr = today.toISOString().slice(0, 10).replace(/-/g, '');
+  let isUnique = false;
+  let newRef = '';
+
+  while (!isUnique) {
+    const randomDigits = Math.floor(1000 + Math.random() * 9000);
+    newRef = `DOC-${dateStr}-${randomDigits}`;
+
+    // ตรวจสอบว่าเลขอ้างอิงไม่ซ้ำกับ docNo, trackingNo หรือ documentReference เดิม
+    const isDuplicate = existingDocs.some(
+      doc => doc.documentReference === newRef || doc.docNo === newRef || doc.trackingNo === newRef
+    );
+    if (!isDuplicate) {
+      isUnique = true;
+    }
+  }
+
+  return newRef;
+}
+
 function renderDocuments(docs) {
   const body = document.getElementById("docTableBody");
   if (!docs.length) {
@@ -208,6 +231,7 @@ function renderDocuments(docs) {
     return;
   }
   body.innerHTML = docs.map(d => {
+    const refNumber = d.documentReference || d.docNo;
     const fileUrl = d.fileUrl || DOCUMENT_FILE_URLS[d.docNo];
     const fileAction = fileUrl
       ? `<a class="file-view-btn" href="${fileUrl}" target="_blank" rel="noopener noreferrer">ดูไฟล์</a>`
@@ -216,7 +240,7 @@ function renderDocuments(docs) {
     return `
       <tr>
         <td>
-          <span class="doc-no">${d.docNo}</span>
+          <span class="doc-no">${refNumber}</span>
           <span class="doc-track">${d.trackingNo}</span>
         </td>
         <td>
@@ -292,8 +316,51 @@ function renderUser(user) {
   document.getElementById("userAvatar").textContent = user.name.trim().charAt(0);
 }
 
+function setupSearchFilter(docs) {
+  // ดึง input ช่องค้นหาจากทั้ง id, class หรือแท็ก input ทั่วไปในแถบด้านบน
+  const searchInput = 
+    document.getElementById("docSearchInput") || 
+    document.querySelector(".search-box input") || 
+    document.querySelector("header input") || 
+    document.querySelector("input[placeholder*='ค้นหา']") || 
+    document.querySelector("input");
+
+  if (!searchInput) {
+    console.warn("ไม่พบช่องค้นหาบนหน้าเว็บ");
+    return;
+  }
+
+  // รองรับทั้งพิมพ์ (input) และกด Enter/ลบข้อความ (keyup, change)
+  const handleFilter = (e) => {
+    const keyword = e.target.value.toLowerCase().trim();
+    const filtered = docs.filter(d => {
+      const ref = (d.documentReference || d.docNo || "").toLowerCase();
+      const track = (d.trackingNo || "").toLowerCase();
+      const sender = (d.sender || "").toLowerCase();
+      const receiver = (d.receiver || "").toLowerCase();
+      const type = (d.type || "").toLowerCase();
+
+      return ref.includes(keyword) || 
+             track.includes(keyword) || 
+             sender.includes(keyword) || 
+             receiver.includes(keyword) || 
+             type.includes(keyword);
+    });
+    renderDocuments(filtered);
+  };
+
+  searchInput.addEventListener("input", handleFilter);
+  searchInput.addEventListener("keyup", handleFilter);
+}
+
 async function initDashboard() {
   const data = await loadJSON("dashboard-mock.json", DASHBOARD_FALLBACK);
+  // ผูก Document Reference
+  data.recentDocuments = data.recentDocuments.map(doc => ({
+    ...doc,
+    documentReference: doc.docNo || generateDocumentReference(data.recentDocuments)
+  }));
+
   renderUser(data.user);
   renderStats(data.stats);
   renderDocuments(data.recentDocuments);
@@ -301,6 +368,9 @@ async function initDashboard() {
   renderStatuses();
   renderChannels(data.channels);
   renderChecklist(data.requiredInfoChecklist);
+
+  // ระบบค้นหา
+  setupSearchFilter(data.recentDocuments);
 
   const pendingCount = data.recentDocuments.filter(d => d.status === "รอดำเนินการ" || d.status === "ระหว่างดำเนินการ").length;
   const navBadge = document.getElementById("navPendingBadge");
