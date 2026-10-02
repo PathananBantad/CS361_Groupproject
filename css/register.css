@@ -1,0 +1,250 @@
+/* =========================
+   REGISTER PAGE
+========================= */
+
+.page {
+    padding: 32px 20px 70px;
+}
+
+.register-card {
+    width: min(910px, 100%);
+    margin: 0 auto;
+
+    padding: 28px 38px 35px;
+
+    background: rgba(255, 250, 243, .91);
+    border: 1px solid rgba(220, 190, 177, .7);
+    border-radius: 28px;
+
+    box-shadow: 0 14px 35px rgba(100, 40, 45, 0.12);
+}
+
+.card-heading {
+    margin-bottom: 18px;
+}
+
+.card-heading h1 {
+    font-family: "Playfair Display", serif;
+    font-size: clamp(36px, 3.3vw, 50px);
+    line-height: 1.1;
+
+    color: var(--wine-dark);
+
+    letter-spacing: -.8px;
+}
+
+.card-heading p {
+    margin: 8px 0 0;
+
+    color: #5d4c49;
+    font-size: 18px;
+}
+
+/* =========================
+   FORM
+========================= */
+
+.field {
+    margin-top: 13px;
+}
+
+.field label {
+    display: block;
+
+    margin-bottom: 5px;
+
+    color: #2f2524;
+    font-size: 16px;
+    font-weight: 600;
+}
+
+.field input[type="text"],
+.field select,
+.field textarea {
+    width: 100%;
+
+    border: 1.5px solid var(--line);
+    outline: none;
+
+    background: rgba(255, 252, 247, .7);
+    color: var(--text);
+
+    font-family: inherit;
+    font-size: 15px;
+
+    border-radius: 13px;
+
+    transition: .2s ease;
+}
+
+.field input[type="text"],
+.field select {
+    height: 46px;
+    padding: 0 13px;
+}
+
+.field textarea {
+    min-height: 108px;
+    padding: 12px 13px;
+    resize: vertical;
+}
+
+.field input:focus,
+.field select:focus,
+.field textarea:focus {
+    border-color: var(--wine);
+
+    box-shadow:
+        0 0 0 3px rgba(141, 23, 56, .08);
+}
+
+.field input::placeholder,
+.field textarea::placeholder {
+    color: #806f6b;
+}
+
+/* =========================
+   SELECT
+========================= */
+
+.select-wrap {
+    position: relative;
+}
+
+.select-wrap::after {
+    content: "⌄";
+
+    position: absolute;
+
+    right: 16px;
+    top: 50%;
+
+    transform: translateY(-55%);
+
+    color: var(--wine);
+    font-size: 23px;
+
+    pointer-events: none;
+}
+
+.select-wrap select {
+    appearance: none;
+    padding-right: 42px;
+}
+
+/* =========================
+   UPLOAD
+========================= */
+
+.upload-box {
+    width: 100%;
+    min-height: 55px;
+
+    display: flex;
+    align-items: center;
+
+    gap: 15px;
+
+    padding: 0 28px;
+
+    border: 1.5px solid var(--line);
+    border-radius: 13px;
+
+    background: rgba(255, 252, 247, .7);
+    color: #71615d;
+
+    cursor: pointer;
+
+    font-size: 15px;
+
+    transition: .2s ease;
+}
+
+.upload-box:hover,
+.upload-box.dragging {
+    border-color: var(--wine);
+    background: #fff8f3;
+}
+
+.upload-box input {
+    display: none;
+}
+
+.upload-icon {
+    color: var(--wine);
+    font-size: 27px;
+}
+
+/* =========================
+   BUTTON
+========================= */
+
+.submit-btn {
+    width: 100%;
+    height: 51px;
+
+    margin-top: 17px;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    gap: 10px;
+
+    border: 0;
+    border-radius: 13px;
+
+    background: var(--wine);
+    color: white;
+
+    font-family: inherit;
+    font-size: 16px;
+    font-weight: 500;
+
+    cursor: pointer;
+
+    box-shadow:
+        0 7px 16px rgba(141, 23, 56, .17);
+
+    transition: .2s ease;
+}
+
+.submit-btn:hover {
+    background: var(--wine-dark);
+    transform: translateY(-1px);
+}
+
+.submit-btn:active {
+    transform: translateY(0);
+}
+
+/* =========================
+   REGISTER RESPONSIVE
+========================= */
+
+@media (max-width: 980px) {
+
+    .register-card {
+        width: min(760px, 100%);
+    }
+}
+
+@media (max-width: 650px) {
+
+    .page {
+        padding: 18px 10px 40px;
+    }
+
+    .register-card {
+        padding: 23px 20px 25px;
+        border-radius: 22px;
+    }
+
+    .card-heading h1 {
+        font-size: 30px;
+    }
+
+    .card-heading p {
+        font-size: 15px;
+    }
+}

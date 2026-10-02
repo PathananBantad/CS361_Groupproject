@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>DocuFlow | Register Document</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+    href="https://fonts.googleapis.com/css2?family=Bai+Jamjuree:wght@300;400;500;600;700&family=Playfair+Display:wght@400;500;600;700&display=swap"
+    rel="stylesheet">
+
+    <link
+    href="https://fonts.googleapis.com/css2?family=Anuphan:wght@300;400;500;600;700;800&family=Playfair+Display:wght@400;500;600;700&display=swap"
+    rel="stylesheet">
+
+    <link rel="stylesheet" href="../css/common.css">
+    <link rel="stylesheet" href="../css/register.css">
+</head>
+
+<body>
+
+    <!-- Decorative background -->
+    <div class="bg-shape shape-top"></div>
+    <div class="bg-shape shape-left"></div>
+    <div class="bg-shape shape-right"></div>
+    <div class="bg-shape shape-bottom"></div>
+
+    <div class="paper paper-left">
+        <span></span>
+        <span></span>
+        <span></span>
+        <span></span>
+        <span></span>
+    </div>
+
+    <div class="paper paper-right">
+        <span></span>
+        <span></span>
+        <span></span>
+        <span></span>
+        <span></span>
+    </div>
+
+    <div class="paper paper-bottom">
+        <span></span>
+        <span></span>
+        <span></span>
+        <span></span>
+    </div>
+
+
+    <!-- ================= NAVBAR ================= -->
+    <header class="topbar">
+
+        <!-- Logo -->
+        <a class="brand" href="index.html">
+            <span class="brand-mark">
+                <span></span>
+                <span></span>
+            </span>
+
+            <span>DocuFlow</span>
+        </a>
+
+
+        <!-- Navigation -->
+        <nav class="nav-links">
+
+            <a href="dashboard.html">
+                หน้าหลัก
+            </a>
+
+            <a href="documents.html">
+                การส่งเอกสาร
+            </a>
+
+            <a href="register.html" class="active">
+                ลงทะเบียนเอกสาร
+            </a>
+
+            <a href="tracking.html">
+                คลังเอกสาร
+            </a>
+
+            <a href="guide.html">
+                คู่มือ
+            </a>
+
+        </nav>
+
+
+        <!-- Right side -->
+        <div class="top-actions">
+
+            <div class="top-search">
+                <span>⌕</span>
+
+                <input
+                    type="text"
+                    placeholder="Search..."
+                    id="globalSearch"
+                >
+            </div>
+
+            <div class="top-divider"></div>
+
+            <button class="profile-button" type="button">
+
+                <span class="profile-icon">
+                    ●
+                </span>
+
+                <span>Kyu</span>
+
+                <span class="chevron">
+                    ⌄
+                </span>
+
+            </button>
+
+        </div>
+
+    </header>
+
+
+    <!-- ================= MAIN ================= -->
+    <main class="page">
+
+        <section class="register-card">
+
+            <div class="card-heading">
+
+                <h1>Register Document</h1>
+
+                <p>
+                    Please fill in the details below.
+                </p>
+
+            </div>
+
+
+            <form id="registerForm">
+
+                <!-- Document Name -->
+                <div class="field">
+
+                    <label for="documentName">
+                        Document Name
+                    </label>
+
+                    <input
+                        id="documentName"
+                        name="documentName"
+                        type="text"
+                        placeholder="Enter document name..."
+                        required
+                    >
+
+                </div>
+
+
+                <!-- Document Type -->
+                <div class="field">
+
+                    <label for="documentType">
+                        Document Type
+                    </label>
+
+                    <div class="select-wrap">
+
+                        <select
+                            id="documentType"
+                            name="documentType"
+                            required
+                        >
+
+                            <option
+                                value=""
+                                selected
+                                disabled
+                            >
+                                Select document type...
+                            </option>
+
+                            <option value="ประชาสัมพันธ์">
+                                ประชาสัมพันธ์
+                            </option>
+
+                            <option value="ขออนุมัติ">
+                                ขออนุมัติ
+                            </option>
+
+                            <option value="มอบหมายงาน">
+                                มอบหมายงาน
+                            </option>
+
+                            <option value="แจ้งเพื่อทราบ">
+                                แจ้งเพื่อทราบ
+                            </option>
+
+                            <option value="รายงาน">
+                                รายงาน
+                            </option>
+
+                            <option value="อื่น ๆ">
+                                อื่น ๆ
+                            </option>
+
+                        </select>
+
+                    </div>
+
+                </div>
+
+
+                <!-- Recipient -->
+                <div class="field">
+
+                    <label for="recipient">
+                        Recipient / Department
+                    </label>
+
+                    <input
+                        id="recipient"
+                        name="recipient"
+                        type="text"
+                        placeholder="Enter recipient or department..."
+                        required
+                    >
+
+                </div>
+
+
+                <!-- Description -->
+                <div class="field">
+
+                    <label for="description">
+                        Description
+                    </label>
+
+                    <textarea
+                        id="description"
+                        name="description"
+                        placeholder="Enter document description..."
+                    ></textarea>
+
+                </div>
+
+
+                <!-- Upload File -->
+                <div class="field">
+
+                    <label for="file">
+                        Upload File
+                    </label>
+
+                    <label
+                        class="upload-box"
+                        for="file"
+                    >
+
+                        <span class="upload-icon">
+                            ♧
+                        </span>
+
+                        <span id="fileText">
+                            Choose file or drag here...
+                        </span>
+
+                        <input
+                            id="file"
+                            name="file"
+                            type="file"
+                        >
+
+                    </label>
+
+                </div>
+
+
+                <!-- Submit -->
+                <button
+                    class="submit-btn"
+                    type="submit"
+                >
+
+                    <span>➤</span>
+
+                    <span>
+                        Register Document
+                    </span>
+
+                </button>
+
+            </form>
+
+        </section>
+
+    </main>
+
+
+    <script src="../js/register.js"></script>
+
+</body>
+</html>

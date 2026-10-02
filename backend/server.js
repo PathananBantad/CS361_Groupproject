@@ -3,6 +3,11 @@ const cors = require("cors");
 const pool = require("./db");
 require("dotenv").config();
 
+const {
+    createUploadUrl,
+    createDownloadUrl
+} = require("./s3");
+
 const app = express();
 
 const PORT = Number(process.env.PORT || 3000);
@@ -32,7 +37,7 @@ app.get("/api/health", async (req, res) => {
 });
 
 
-// Get all documents
+// เพิ่ม get documents API ที่สามารถค้นหาและกรองเอกสารได้ตามเงื่อนไขที่กำหนด
 app.get("/api/documents", async (req, res) => {
     try {
 
@@ -116,8 +121,87 @@ app.get("/api/documents", async (req, res) => {
 
 
         const [rows] = await pool.query(sql, params);
+        const {
+            search,
+            type,
+            month,
+            status
+        } = req.query;
 
-        res.json(rows);
+        let sql = `
+            SELECT *
+            FROM documents
+            WHERE 1 = 1
+        `;
+
+        const params = [];
+
+        // Search:
+        // reference_no
+        // sender_name
+        // receiver_name
+        if (search) {
+
+            sql += `
+                AND (
+                    reference_no LIKE ?
+                    OR sender_name LIKE ?
+                    OR receiver_name LIKE ?
+                )
+            `;
+
+            const keyword = `%${search}%`;
+
+            params.push(keyword, keyword, keyword);
+        }
+
+
+        // Filter: document type
+        if (type) {
+
+            sql += `
+                AND document_type = ?
+            `;
+
+            params.push(type);
+        }
+
+
+        // Filter: month
+        if (month) {
+
+            sql += `
+                AND MONTH(receive_date) = ?
+            `;
+
+            params.push(month);
+        }
+
+
+        // Filter: status
+        if (status) {
+
+            sql += `
+                AND status = ?
+            `;
+
+            params.push(status);
+        }
+
+
+        sql += `
+            ORDER BY created_at DESC
+        `;
+
+
+        const [rows] = await pool.query(sql, params);
+
+
+        res.json({
+            data: rows,
+            total: rows.length
+        });
+
 
     } catch (error) {
 
@@ -303,6 +387,188 @@ app.post("/api/documents", async (req, res) => {
 
 });
 
+// Update document status
+app.put("/api/documents/:id/status", async (req, res) => {
+
+    try {
+
+        const { status } = req.body;
+        const { id } = req.params;
+
+        // Check required field
+        if (!status) {
+            return res.status(400).json({
+                error: "status is required"
+            });
+        }
+
+        // Update status
+        const [result] = await pool.query(
+            `
+            UPDATE documents
+            SET status = ?
+            WHERE id = ?
+            `,
+            [status, id]
+        );
+
+        // Document not found
+        if (result.affectedRows === 0) {
+            return res.status(404).json({
+                error: "Document not found"
+            });
+        }
+
+        // Get updated document
+        const [rows] = await pool.query(
+            "SELECT * FROM documents WHERE id = ?",
+            [id]
+        );
+
+        res.json({
+            message: "Document status updated successfully",
+            data: rows[0]
+        });
+
+    } catch (error) {
+
+        console.error(error);
+
+        res.status(500).json({
+            error: "Failed to update document status"
+        });
+    }
+});
+
+// Get document types
+app.get("/api/document-types", async (req, res) => {
+
+    try {
+
+        const [rows] = await pool.query(`
+            SELECT DISTINCT document_type
+            FROM documents
+            WHERE document_type IS NOT NULL
+              AND document_type <> ''
+            ORDER BY document_type
+        `);
+
+        const data = rows.map(row => row.document_type);
+
+        res.json({
+            data: data
+        });
+
+    } catch (error) {
+
+        console.error(error);
+
+        res.status(500).json({
+            error: "Failed to fetch document types"
+        });
+    }
+});
+
+// Create S3 upload URL
+app.get("/api/documents/:id/upload-url", async (req, res) => {
+
+    try {
+
+        const { id } = req.params;
+        const { fileName, contentType } = req.query;
+
+        // Check required parameters
+        if (!fileName || !contentType) {
+            return res.status(400).json({
+                error: "fileName and contentType are required"
+            });
+        }
+
+        // Check document exists
+        const [rows] = await pool.query(
+            "SELECT * FROM documents WHERE id = ?",
+            [id]
+        );
+
+        if (rows.length === 0) {
+            return res.status(404).json({
+                error: "Document not found"
+            });
+        }
+
+        // Create unique file key
+        const fileKey = `documents/${id}/${Date.now()}-${fileName}`;
+
+        // Generate presigned upload URL
+        const uploadUrl = await createUploadUrl(
+            fileKey,
+            contentType
+        );
+
+        res.json({
+            document_id: id,
+            file_key: fileKey,
+            upload_url: uploadUrl,
+            expires_in: 300
+        });
+
+    } catch (error) {
+
+        console.error(error);
+
+        res.status(500).json({
+            error: "Failed to create upload URL"
+        });
+    }
+});
+
+// Create S3 download URL
+app.get("/api/documents/:id/download-url", async (req, res) => {
+
+    try {
+
+        const { id } = req.params;
+
+        // Get document
+        const [rows] = await pool.query(
+            "SELECT file_key FROM documents WHERE id = ?",
+            [id]
+        );
+
+        if (rows.length === 0) {
+            return res.status(404).json({
+                error: "Document not found"
+            });
+        }
+
+        const fileKey = rows[0].file_key;
+
+        // Check file exists in database
+        if (!fileKey) {
+            return res.status(404).json({
+                error: "Document file not found"
+            });
+        }
+
+        // Generate presigned download URL
+        const downloadUrl = await createDownloadUrl(fileKey);
+
+        res.json({
+            document_id: id,
+            file_key: fileKey,
+            download_url: downloadUrl,
+            expires_in: 300
+        });
+
+    } catch (error) {
+
+        console.error(error);
+
+        res.status(500).json({
+            error: "Failed to create download URL"
+        });
+    }
+});
 
 app.listen(PORT, () => {
 
