@@ -3,6 +3,11 @@ const cors = require("cors");
 const pool = require("./db");
 require("dotenv").config();
 
+const {
+    createUploadUrl,
+    createDownloadUrl
+} = require("./s3");
+
 const app = express();
 
 const PORT = Number(process.env.PORT || 3000);
@@ -344,7 +349,106 @@ app.get("/api/document-types", async (req, res) => {
     }
 });
 
+// Create S3 upload URL
+app.get("/api/documents/:id/upload-url", async (req, res) => {
 
+    try {
+
+        const { id } = req.params;
+        const { fileName, contentType } = req.query;
+
+        // Check required parameters
+        if (!fileName || !contentType) {
+            return res.status(400).json({
+                error: "fileName and contentType are required"
+            });
+        }
+
+        // Check document exists
+        const [rows] = await pool.query(
+            "SELECT * FROM documents WHERE id = ?",
+            [id]
+        );
+
+        if (rows.length === 0) {
+            return res.status(404).json({
+                error: "Document not found"
+            });
+        }
+
+        // Create unique file key
+        const fileKey = `documents/${id}/${Date.now()}-${fileName}`;
+
+        // Generate presigned upload URL
+        const uploadUrl = await createUploadUrl(
+            fileKey,
+            contentType
+        );
+
+        res.json({
+            document_id: id,
+            file_key: fileKey,
+            upload_url: uploadUrl,
+            expires_in: 300
+        });
+
+    } catch (error) {
+
+        console.error(error);
+
+        res.status(500).json({
+            error: "Failed to create upload URL"
+        });
+    }
+});
+
+// Create S3 download URL
+app.get("/api/documents/:id/download-url", async (req, res) => {
+
+    try {
+
+        const { id } = req.params;
+
+        // Get document
+        const [rows] = await pool.query(
+            "SELECT file_key FROM documents WHERE id = ?",
+            [id]
+        );
+
+        if (rows.length === 0) {
+            return res.status(404).json({
+                error: "Document not found"
+            });
+        }
+
+        const fileKey = rows[0].file_key;
+
+        // Check file exists in database
+        if (!fileKey) {
+            return res.status(404).json({
+                error: "Document file not found"
+            });
+        }
+
+        // Generate presigned download URL
+        const downloadUrl = await createDownloadUrl(fileKey);
+
+        res.json({
+            document_id: id,
+            file_key: fileKey,
+            download_url: downloadUrl,
+            expires_in: 300
+        });
+
+    } catch (error) {
+
+        console.error(error);
+
+        res.status(500).json({
+            error: "Failed to create download URL"
+        });
+    }
+});
 
 app.listen(PORT, () => {
 
