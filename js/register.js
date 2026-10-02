@@ -98,6 +98,8 @@ registerForm.addEventListener("submit", (event) => {
         return;
 
     }
+    const documentReference = generateDocumentReference();
+    console.log("สร้างเลขอ้างอิง:", documentReference);
 
     /*
      * ตอนนี้เป็น Frontend Demo
@@ -112,3 +114,28 @@ registerForm.addEventListener("submit", (event) => {
         "Choose file or drag here...";
 
 });
+
+
+// สร้างเลขอ้างอิงเอกสารอัตโนมัติ (DOC-YYYYMMDD-XXXX)
+function generateDocumentReference(existingDocs = []) {
+  const today = new Date();
+  const dateStr = today.toISOString().slice(0, 10).replace(/-/g, '');
+  let isUnique = false;
+  let newRef = '';
+
+  while (!isUnique) {
+    const randomDigits = Math.floor(1000 + Math.random() * 9000);
+    newRef = `DOC-${dateStr}-${randomDigits}`;
+
+    // ตรวจสอบว่าเลขอ้างอิงไม่ซ้ำกับ docNo, trackingNo หรือ documentReference เดิม
+    const isDuplicate = existingDocs.some(
+      doc => doc.documentReference === newRef || doc.docNo === newRef || doc.trackingNo === newRef
+    );
+    if (!isDuplicate) {
+      isUnique = true;
+    }
+  }
+
+  return newRef;
+}
+window.generateDocumentReference = generateDocumentReference;
