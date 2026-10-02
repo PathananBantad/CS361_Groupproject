@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DocuFlow | Document Registry</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+    href="https://fonts.googleapis.com/css2?family=Bai+Jamjuree:wght@300;400;500;600;700&family=Playfair+Display:wght@400;500;600;700&display=swap"
+    rel="stylesheet">    
+    <link
+    href="https://fonts.googleapis.com/css2?family=Anuphan:wght@300;400;500;600;700;800&family=Playfair+Display:wght@400;500;600;700&display=swap"
+    rel="stylesheet">
+    <link rel="stylesheet" href="../css/common.css">
+    <link rel="stylesheet" href="../css/dashboard.css">
+</head>
+
+<body>
+    <!-- Decorative background -->
+    <div class="page-decoration decoration-top" aria-hidden="true"></div>
+    <div class="page-decoration decoration-bottom" aria-hidden="true"></div>
+
+    <!-- Top navigation -->
+    <header class="topbar">
+        <a class="brand" href="#" aria-label="DocuFlow หน้าหลัก">
+            <span class="brand-mark" aria-hidden="true">
+                <span></span><span></span>
+            </span>
+            <span class="brand-name">DocuFlow</span>
+        </a>
+
+        <nav class="nav-links">
+
+            <a href="dashboard.html" class="active">
+                หน้าหลัก
+            </a>
+        
+            <a href="documents.html">
+                การส่งเอกสาร
+            </a>
+        
+            <a href="register.html">
+                ลงทะเบียนเอกสาร
+            </a>
+        
+            <a href="tracking.html">
+                คลังเอกสาร
+            </a>
+        
+            <a href="guide.html">
+                คู่มือ
+            </a>
+        
+        </nav>
+
+        <div class="top-actions">
+            <label class="top-search">
+                <span aria-hidden="true">⌕</span>
+                <input id="globalSearch" type="search" placeholder="ค้นหาเอกสาร..." autocomplete="off">
+            </label>
+            <span class="top-divider"></span>
+            <button class="profile-button" type="button">
+                <span class="profile-icon" aria-hidden="true">●</span>
+                <span>คุณ</span>
+                <span class="chevron" aria-hidden="true">⌄</span>
+            </button>
+        </div>
+    </header>
+
+    <main class="page">
+        <!-- Heading -->
+        <section class="page-heading">
+            <div>
+                <h1>Document Registry <span>• <strong id="shownCount">0</strong> shown</span></h1>
+            </div>
+        </section>
+
+        <!-- Status filters -->
+        <div class="status-filters" role="tablist" aria-label="กรองสถานะเอกสาร">
+            <button class="status-filter active" data-filter="all" role="tab">ทั้งหมด</button>
+            <button class="status-filter" data-filter="waiting" role="tab">รอดำเนินการ</button>
+            <button class="status-filter" data-filter="processing" role="tab">กำลังดำเนินการ</button>
+            <button class="status-filter" data-filter="approval" role="tab">รอการอนุมัติ</button>
+            <button class="status-filter" data-filter="completed" role="tab">เสร็จสิ้น</button>
+            <button class="status-filter" data-filter="archived" role="tab">จัดเก็บแล้ว</button>
+        </div>
+
+        <!-- Main registry -->
+        <section class="registry-layout">
+            <div class="registry-card">
+                <div class="registry-title">
+                    <div class="registry-title-icon" aria-hidden="true">☷</div>
+                    <div>
+                        <h2>รายการติดตามเอกสาร</h2>
+                        <p>Document Tracking</p>
+                    </div>
+                </div>
+
+                <div class="table-wrap">
+                    <table class="document-table">
+                        <thead>
+                            <tr>
+                                <th data-sort="number">เลขที่เอกสาร <small>No.</small><span>↕</span></th>
+                                <th data-sort="type">ประเภทเอกสาร <small>Type</small><span>↕</span></th>
+                                <th data-sort="sender">ผู้ส่ง <small>Sender</small><span>↕</span></th>
+                                <th data-sort="receiver">ผู้รับ <small>Receiver</small><span>↕</span></th>
+                                <th data-sort="status">สถานะ <small>Status</small><span>↕</span></th>
+                                <th data-sort="received">วันที่รับ <small>Received</small><span>↕</span></th>
+                                <th>ไฟล์ <small>File</small></th>
+                            </tr>
+                        </thead>
+                        <tbody id="documentTableBody"></tbody>
+                    </table>
+                </div>
+
+                <div class="mobile-list" id="mobileList"></div>
+            </div>
+
+            <aside class="detail-card" id="detailCard">
+                <div class="detail-heading">
+                    <div class="detail-heading-icon" aria-hidden="true">▤</div>
+                    <div>
+                        <h2>รายละเอียดเอกสาร</h2>
+                        <p>Document Details</p>
+                    </div>
+                </div>
+
+                <div id="detailContent" class="detail-empty">
+                    <div class="empty-document-icon" aria-hidden="true">▤</div>
+                    <p>เลือกเอกสารจากรายการเพื่อดูรายละเอียด</p>
+                    <div class="skeleton-line wide"></div>
+                    <div class="skeleton-line medium"></div>
+                    <div class="skeleton-line wide"></div>
+                    <div class="skeleton-line short"></div>
+                </div>
+            </aside>
+        </section>
+
+        <!-- Bottom legend -->
+        <div class="status-legend" aria-label="คำอธิบายสถานะ">
+            <button class="legend-item active" data-filter="all"><i class="dot dot-all"></i>ทั้งหมด</button>
+            <button class="legend-item" data-filter="waiting"><i class="dot dot-waiting"></i>รอดำเนินการ</button>
+            <button class="legend-item" data-filter="processing"><i class="dot dot-processing"></i>กำลังดำเนินการ</button>
+            <button class="legend-item" data-filter="approval"><i class="dot dot-approval"></i>รอการอนุมัติ</button>
+            <button class="legend-item" data-filter="completed"><i class="dot dot-completed"></i>เสร็จสิ้น</button>
+            <button class="legend-item" data-filter="archived"><i class="dot dot-archived"></i>จัดเก็บแล้ว</button>
+        </div>
+    </main>
+
+    <script src="../js/dashboard.js"></script>
+</body>
+</html>

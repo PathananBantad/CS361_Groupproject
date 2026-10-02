@@ -1,0 +1,64 @@
+{
+  "documents": [
+    {
+      "id": "DOC2568-00125",
+      "number": "DOC2568/00125",
+      "code": "TR-68-0520-001",
+      "type": "เอกสารประชาสัมพันธ์",
+      "description": "ประชาสัมพันธ์ข้อมูล",
+      "sender": "น.ส.ณภาวรรณ\nศรีสวัสดิ์",
+      "receiver": "ฝ่ายการตลาด",
+      "statusKey": "completed",
+      "statusLabel": "Completed",
+      "receivedDate": "20 พ.ค. 2568",
+      "receivedTime": "14:30",
+      "color": "red",
+      "path": "../documents/TR-68-0520-001.pdf"
+    },
+    {
+      "id": "DOC2568-00124",
+      "number": "DOC2568/00124",
+      "code": "TR-68-0520-002",
+      "type": "เอกสารขออนุมัติ",
+      "description": "ขออนุมัติงบประมาณ",
+      "sender": "นายณภัทร\nจันทร์ดี",
+      "receiver": "ฝ่ายบริหาร",
+      "statusKey": "waiting",
+      "statusLabel": "Received",
+      "receivedDate": "20 พ.ค. 2568",
+      "receivedTime": "13:45",
+      "color": "orange",
+      "path": "../documents/TR-68-0520-002.pdf"
+    },
+    {
+      "id": "DOC2568-00123",
+      "number": "DOC2568/00123",
+      "code": "TR-68-0520-001",
+      "type": "เอกสารมอบหมายงาน",
+      "description": "มอบหมายงานภายใน",
+      "sender": "น.ส.ปิยธิดา\nแก้วใส",
+      "receiver": "ฝ่ายปฏิบัติการ",
+      "statusKey": "approval",
+      "statusLabel": "Pending Approval",
+      "receivedDate": "19 พ.ค. 2568",
+      "receivedTime": "16:20",
+      "color": "purple",
+      "path": "../documents/TR-68-0520-003.pdf"
+    },
+    {
+      "id": "DOC2568-00122",
+      "number": "DOC2568/00122",
+      "code": "TR-68-0519-0008",
+      "type": "เอกสารแจ้งเพื่อทราบ",
+      "description": "แจ้งข้อมูลภายใน",
+      "sender": "นายเอกพจน์\nไชยฤทธิ์",
+      "receiver": "ทุกฝ่าย",
+      "statusKey": "archived",
+      "statusLabel": "Archived",
+      "receivedDate": "19 พ.ค. 2568",
+      "receivedTime": "10:15",
+      "color": "green",
+      "path": "../documents/TR-68-0519-0008.pdf"
+    }
+  ]
+}
