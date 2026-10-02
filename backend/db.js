@@ -8,9 +8,12 @@ const pool = mysql.createPool({
     password: process.env.DB_PASSWORD,
     database: process.env.DB_NAME || "ems",
 
+    charset: "utf8mb4",
+
     waitForConnections: true,
     connectionLimit: 5,
     queueLimit: 0
 });
+
 
 module.exports = pool;
