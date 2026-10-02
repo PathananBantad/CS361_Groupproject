@@ -32,17 +32,91 @@ app.get("/api/health", async (req, res) => {
 });
 
 
-// Get all documents
+// เพิ่ม get documents API ที่สามารถค้นหาและกรองเอกสารได้ตามเงื่อนไขที่กำหนด
 app.get("/api/documents", async (req, res) => {
     try {
 
-        const [rows] = await pool.query(`
-      SELECT *
-      FROM documents
-      ORDER BY created_at DESC
-    `);
+        const {
+            search,
+            type,
+            month,
+            status
+        } = req.query;
 
-        res.json(rows);
+        let sql = `
+            SELECT *
+            FROM documents
+            WHERE 1 = 1
+        `;
+
+        const params = [];
+
+        // Search:
+        // reference_no
+        // sender_name
+        // receiver_name
+        if (search) {
+
+            sql += `
+                AND (
+                    reference_no LIKE ?
+                    OR sender_name LIKE ?
+                    OR receiver_name LIKE ?
+                )
+            `;
+
+            const keyword = `%${search}%`;
+
+            params.push(keyword, keyword, keyword);
+        }
+
+
+        // Filter: document type
+        if (type) {
+
+            sql += `
+                AND document_type = ?
+            `;
+
+            params.push(type);
+        }
+
+
+        // Filter: month
+        if (month) {
+
+            sql += `
+                AND MONTH(receive_date) = ?
+            `;
+
+            params.push(month);
+        }
+
+
+        // Filter: status
+        if (status) {
+
+            sql += `
+                AND status = ?
+            `;
+
+            params.push(status);
+        }
+
+
+        sql += `
+            ORDER BY created_at DESC
+        `;
+
+
+        const [rows] = await pool.query(sql, params);
+
+
+        res.json({
+            data: rows,
+            total: rows.length
+        });
+
 
     } catch (error) {
 
@@ -187,6 +261,89 @@ app.post("/api/documents", async (req, res) => {
     }
 
 });
+
+// Update document status
+app.put("/api/documents/:id/status", async (req, res) => {
+
+    try {
+
+        const { status } = req.body;
+        const { id } = req.params;
+
+        // Check required field
+        if (!status) {
+            return res.status(400).json({
+                error: "status is required"
+            });
+        }
+
+        // Update status
+        const [result] = await pool.query(
+            `
+            UPDATE documents
+            SET status = ?
+            WHERE id = ?
+            `,
+            [status, id]
+        );
+
+        // Document not found
+        if (result.affectedRows === 0) {
+            return res.status(404).json({
+                error: "Document not found"
+            });
+        }
+
+        // Get updated document
+        const [rows] = await pool.query(
+            "SELECT * FROM documents WHERE id = ?",
+            [id]
+        );
+
+        res.json({
+            message: "Document status updated successfully",
+            data: rows[0]
+        });
+
+    } catch (error) {
+
+        console.error(error);
+
+        res.status(500).json({
+            error: "Failed to update document status"
+        });
+    }
+});
+
+// Get document types
+app.get("/api/document-types", async (req, res) => {
+
+    try {
+
+        const [rows] = await pool.query(`
+            SELECT DISTINCT document_type
+            FROM documents
+            WHERE document_type IS NOT NULL
+              AND document_type <> ''
+            ORDER BY document_type
+        `);
+
+        const data = rows.map(row => row.document_type);
+
+        res.json({
+            data: data
+        });
+
+    } catch (error) {
+
+        console.error(error);
+
+        res.status(500).json({
+            error: "Failed to fetch document types"
+        });
+    }
+});
+
 
 
 app.listen(PORT, () => {
