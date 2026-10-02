@@ -36,11 +36,86 @@ app.get("/api/health", async (req, res) => {
 app.get("/api/documents", async (req, res) => {
     try {
 
-        const [rows] = await pool.query(`
+        const {
+            reference_no,
+            subject,
+            document_type,
+            sender_name,
+            receiver_name,
+            status,
+            from_date,
+            to_date
+        } = req.query;
+
+        let sql = `
       SELECT *
       FROM documents
-      ORDER BY created_at DESC
-    `);
+      WHERE 1 = 1
+    `;
+
+        const params = [];
+
+
+        // Search by reference number
+        if (reference_no) {
+            sql += " AND reference_no LIKE ?";
+            params.push(`%${reference_no}%`);
+        }
+
+
+        // Search by subject
+        if (subject) {
+            sql += " AND subject LIKE ?";
+            params.push(`%${subject}%`);
+        }
+
+
+        // Search by document type
+        if (document_type) {
+            sql += " AND document_type = ?";
+            params.push(document_type);
+        }
+
+
+        // Search by sender
+        if (sender_name) {
+            sql += " AND sender_name LIKE ?";
+            params.push(`%${sender_name}%`);
+        }
+
+
+        // Search by receiver
+        if (receiver_name) {
+            sql += " AND receiver_name LIKE ?";
+            params.push(`%${receiver_name}%`);
+        }
+
+
+        // Search by status
+        if (status) {
+            sql += " AND status = ?";
+            params.push(status);
+        }
+
+
+        // Search from date
+        if (from_date) {
+            sql += " AND receive_date >= ?";
+            params.push(from_date);
+        }
+
+
+        // Search to date
+        if (to_date) {
+            sql += " AND receive_date <= ?";
+            params.push(to_date);
+        }
+
+
+        sql += " ORDER BY created_at DESC";
+
+
+        const [rows] = await pool.query(sql, params);
 
         res.json(rows);
 
@@ -49,8 +124,9 @@ app.get("/api/documents", async (req, res) => {
         console.error(error);
 
         res.status(500).json({
-            error: "Failed to fetch documents"
+            error: "Failed to search documents"
         });
+
     }
 });
 
@@ -90,7 +166,6 @@ app.get("/api/documents/:id", async (req, res) => {
 app.post("/api/documents", async (req, res) => {
 
     try {
-
         const {
             reference_no,
             document_number,
@@ -107,25 +182,65 @@ app.post("/api/documents", async (req, res) => {
         } = req.body;
 
 
+        // Trim text fields
+        const referenceNo = reference_no?.trim();
+        const documentNumber = document_number?.trim();
+        const subjectText = subject?.trim();
+        const documentType = document_type?.trim();
+        const senderName = sender_name?.trim();
+        const senderDepartment = sender_department?.trim();
+        const receiverName = receiver_name?.trim();
+
+
         // Required fields
         if (
-            !reference_no ||
-            !subject ||
-            !document_type ||
-            !sender_name
+            !referenceNo ||
+            !subjectText ||
+            !documentType ||
+            !senderName
         ) {
-
             return res.status(400).json({
-                error:
-                    "reference_no, subject, document_type and sender_name are required"
+                error: "reference_no, subject, document_type and sender_name are required"
             });
-
         }
 
 
+        // Validate status
+        const allowedStatuses = [
+            "Received",
+            "Assigned",
+            "Processing",
+            "Completed"
+        ];
+
+        if (!allowedStatuses.includes(status)) {
+            return res.status(400).json({
+                error: "Invalid status"
+            });
+        }
+
+        const dateFields = {
+            sent_date,
+            receive_date,
+            deadline
+        };
+
+        for (const [fieldName, value] of Object.entries(dateFields)) {
+
+            if (value && isNaN(Date.parse(value))) {
+
+                return res.status(400).json({
+                    error: `${fieldName} must be a valid date`
+                });
+
+            }
+
+        }
+
+        // INSERT
         const [result] = await pool.query(
             `
-      INSERT INTO documents (
+        INSERT INTO documents (
         reference_no,
         document_number,
         subject,
@@ -142,13 +257,13 @@ app.post("/api/documents", async (req, res) => {
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
             [
-                reference_no,
-                document_number || null,
-                subject,
-                document_type,
-                sender_name,
-                sender_department || null,
-                receiver_name || null,
+                referenceNo,
+                documentNumber || null,
+                subjectText,
+                documentType,
+                senderName,
+                senderDepartment || null,
+                receiverName || null,
                 sent_date || null,
                 receive_date || null,
                 deadline || null,
