@@ -84,7 +84,8 @@ registerForm.addEventListener("submit", async (event) => {
     submitText.textContent = "กำลังบันทึกข้อมูล...";
 
     try {
-        const documentReference = generateDocumentReference();
+        const docRefInput = document.getElementById("documentReference") || document.getElementById("document_reference");
+        const documentReference = (docRefInput && docRefInput.value) ? docRefInput.value : generateDocumentReference();
         console.log("สร้างเลขอ้างอิง:", documentReference);
 
         const payload = {
@@ -149,6 +150,11 @@ registerForm.addEventListener("submit", async (event) => {
         registerForm.reset();
         fileText.textContent = "เลือกไฟล์ หรือลากไฟล์มาวางที่นี่...";
 
+        const nextDocRefInput = document.getElementById("documentReference") || document.getElementById("document_reference");
+        if (nextDocRefInput) {
+            nextDocRefInput.value = generateDocumentReference();
+        }
+
     } catch (error) {
         console.error("Error saving document:", error);
         alert(`เกิดข้อผิดพลาด: ${error.message}`);
@@ -183,4 +189,17 @@ function generateDocumentReference(existingDocs = []) {
 
     return newRef;
 }
+
+document.addEventListener("DOMContentLoaded", () => {
+  const docRefInput = document.getElementById("documentReference") 
+                   || document.getElementById("docNo")
+                   || document.getElementById("reference_no")
+                   || document.getElementById("document_reference");
+  if (docRefInput) {
+    // สร้างเลขอ้างอิงและใส่ลงใน input อัตโนมัติ พร้อมตั้ง readonly
+    docRefInput.value = generateDocumentReference();
+    docRefInput.readOnly = true;
+  }
+});
+
 window.generateDocumentReference = generateDocumentReference;
