@@ -51,7 +51,7 @@ uploadBox.addEventListener("drop", (event) => {
    REGISTER & VALIDATION
 ===================================================== */
 
-registerForm.addEventListener("submit", (event) => {
+registerForm.addEventListener("submit", async (event) => {
     event.preventDefault();
 
     // 1. ป้องกันการกด Submit ซ้ำ
@@ -68,6 +68,7 @@ registerForm.addEventListener("submit", (event) => {
     const recipient = document.getElementById("recipient").value.trim();
     const sendDate = document.getElementById("sendDate").value;
     const receiveDate = document.getElementById("receiveDate").value;
+    const deadline = document.getElementById("deadline").value;
     const fileAttached = fileInput.files.length > 0;
 
     // 3. ตรวจสอบข้อมูลก่อน Submit (Validation)
@@ -82,15 +83,65 @@ registerForm.addEventListener("submit", (event) => {
     submitBtn.style.cursor = "not-allowed";
     submitText.textContent = "กำลังบันทึกข้อมูล...";
 
-    // จำลองการเชื่อมต่อ API (ด้วย setTimeout)
-    setTimeout(() => {
+    try {
         const documentReference = generateDocumentReference();
         console.log("สร้างเลขอ้างอิง:", documentReference);
 
-        /*
-         * ตอนนี้เป็น Frontend Demo
-         * สามารถเชื่อมต่อ Database/Backend API สำหรับ V2 ได้ที่นี่
-         */
+        const payload = {
+            reference_no: documentReference,
+            document_number: docNo,
+            subject: subject,
+            document_type: documentType,
+            sender_name: senderName,
+            sender_department: senderDept,
+            receiver_name: recipient,
+            sent_date: sendDate,
+            receive_date: receiveDate,
+            deadline: deadline || null,
+            receiving_channel: receiveChannel
+        };
+
+        // 1. Save document to DB
+        const response = await fetch("http://localhost:3000/api/documents", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify(payload)
+        });
+
+        if (!response.ok) {
+            const errData = await response.json().catch(() => ({}));
+            throw new Error(errData.error || "Failed to register document");
+        }
+
+        const docData = await response.json();
+
+        // 2. Upload file if attached
+        if (fileAttached) {
+            const file = fileInput.files[0];
+            
+            // Get presigned URL
+            const s3UrlRes = await fetch(`http://localhost:3000/api/documents/${docData.id}/upload-url?fileName=${encodeURIComponent(file.name)}&contentType=${encodeURIComponent(file.type || 'application/octet-stream')}`);
+            if (!s3UrlRes.ok) {
+                const errData = await s3UrlRes.json().catch(() => ({}));
+                throw new Error(errData.error || "Failed to get upload URL");
+            }
+            const s3Data = await s3UrlRes.json();
+
+            // Put file to S3
+            const uploadRes = await fetch(s3Data.upload_url, {
+                method: "PUT",
+                headers: {
+                    "Content-Type": file.type || 'application/octet-stream'
+                },
+                body: file
+            });
+
+            if (!uploadRes.ok) {
+                throw new Error("Failed to upload file to S3");
+            }
+        }
 
         alert(`ลงทะเบียนเอกสารสำเร็จ!\nเลขอ้างอิงของคุณคือ: ${documentReference}`);
 
@@ -98,13 +149,16 @@ registerForm.addEventListener("submit", (event) => {
         registerForm.reset();
         fileText.textContent = "เลือกไฟล์ หรือลากไฟล์มาวางที่นี่...";
 
+    } catch (error) {
+        console.error("Error saving document:", error);
+        alert(`เกิดข้อผิดพลาด: ${error.message}`);
+    } finally {
         // คืนค่าปุ่มกลับสู่สภาพเดิม
         submitBtn.disabled = false;
         submitBtn.style.opacity = "1";
         submitBtn.style.cursor = "pointer";
         submitText.textContent = "ลงทะเบียนเอกสาร";
-
-    }, 1500); // จำลอง delay 1.5 วินาที
+    }
 });
 
 // สร้างเลขอ้างอิงเอกสารอัตโนมัติ (DOC-YYYYMMDD-XXXX)

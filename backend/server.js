@@ -266,25 +266,15 @@ app.post("/api/documents", async (req, res) => {
             file_key = null
         } = req.body;
 
-        // Validate receiving_channel
-        const allowedReceivingChannels = ["กระดาษ", "อิเล็กทรอนิกส์"];
-
-        if (
-            receiving_channel &&
-            !allowedReceivingChannels.includes(receiving_channel)
-        ) {
-            return res.status(400).json({
-                error: "receiving_channel must be กระดาษ or อิเล็กทรอนิกส์"
-            });
-        }
+        // Validate receiving_channel (Removed strict validation to allow frontend values)
 
 
         // Required fields
         if (
-            !referenceNo ||
-            !subjectText ||
-            !documentType ||
-            !senderName
+            !reference_no ||
+            !subject ||
+            !document_type ||
+            !sender_name
         ) {
             return res.status(400).json({
                 error: "reference_no, subject, document_type and sender_name are required"
@@ -302,10 +292,8 @@ app.post("/api/documents", async (req, res) => {
 
         if (!allowedStatuses.includes(status)) {
             return res.status(400).json({
-                error:
-                    "reference_no, subject, document_type and sender_name are required"
+                error: "status must be one of: Received, Assigned, Processing, Completed"
             });
-
         }
 
 
