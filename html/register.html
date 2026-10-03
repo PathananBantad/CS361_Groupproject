@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="th">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -9,12 +10,12 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link
-    href="https://fonts.googleapis.com/css2?family=Bai+Jamjuree:wght@300;400;500;600;700&family=Playfair+Display:wght@400;500;600;700&display=swap"
-    rel="stylesheet">
+        href="https://fonts.googleapis.com/css2?family=Bai+Jamjuree:wght@300;400;500;600;700&family=Playfair+Display:wght@400;500;600;700&display=swap"
+        rel="stylesheet">
 
     <link
-    href="https://fonts.googleapis.com/css2?family=Anuphan:wght@300;400;500;600;700;800&family=Playfair+Display:wght@400;500;600;700&display=swap"
-    rel="stylesheet">
+        href="https://fonts.googleapis.com/css2?family=Anuphan:wght@300;400;500;600;700;800&family=Playfair+Display:wght@400;500;600;700&display=swap"
+        rel="stylesheet">
 
     <link rel="stylesheet" href="../css/common.css">
     <link rel="stylesheet" href="../css/register.css">
@@ -98,11 +99,7 @@
             <div class="top-search">
                 <span>⌕</span>
 
-                <input
-                    type="text"
-                    placeholder="Search..."
-                    id="globalSearch"
-                >
+                <input type="text" placeholder="Search..." id="globalSearch">
             </div>
 
             <div class="top-divider"></div>
@@ -144,155 +141,112 @@
 
             <form id="registerForm">
 
-                <!-- Document Name -->
+                <!-- ช่องทางรับเอกสาร -->
                 <div class="field">
-
-                    <label for="documentName">
-                        Document Name
-                    </label>
-
-                    <input
-                        id="documentName"
-                        name="documentName"
-                        type="text"
-                        placeholder="Enter document name..."
-                        required
-                    >
-
-                </div>
-
-
-                <!-- Document Type -->
-                <div class="field">
-
-                    <label for="documentType">
-                        Document Type
-                    </label>
-
+                    <label for="receiveChannel">ช่องทางรับเอกสาร <span style="color: red;">*</span></label>
                     <div class="select-wrap">
-
-                        <select
-                            id="documentType"
-                            name="documentType"
-                            required
-                        >
-
-                            <option
-                                value=""
-                                selected
-                                disabled
-                            >
-                                Select document type...
-                            </option>
-
-                            <option value="ประชาสัมพันธ์">
-                                ประชาสัมพันธ์
-                            </option>
-
-                            <option value="ขออนุมัติ">
-                                ขออนุมัติ
-                            </option>
-
-                            <option value="มอบหมายงาน">
-                                มอบหมายงาน
-                            </option>
-
-                            <option value="แจ้งเพื่อทราบ">
-                                แจ้งเพื่อทราบ
-                            </option>
-
-                            <option value="รายงาน">
-                                รายงาน
-                            </option>
-
-                            <option value="อื่น ๆ">
-                                อื่น ๆ
-                            </option>
-
+                        <select id="receiveChannel" name="receiveChannel" required>
+                            <option value="" selected disabled>เลือกช่องทางรับเอกสาร...</option>
+                            <option value="อีเมล">อีเมล</option>
+                            <option value="ไปรษณีย์">ไปรษณีย์</option>
+                            <option value="ส่งด้วยตนเอง">ส่งด้วยตนเอง</option>
+                            <option value="ระบบอื่นๆ">ระบบอื่น ๆ</option>
                         </select>
-
                     </div>
-
                 </div>
 
-
-                <!-- Recipient -->
+                <!-- เลือกประเภทเอกสาร -->
                 <div class="field">
-
-                    <label for="recipient">
-                        Recipient / Department
-                    </label>
-
-                    <input
-                        id="recipient"
-                        name="recipient"
-                        type="text"
-                        placeholder="Enter recipient or department..."
-                        required
-                    >
-
+                    <label for="documentType">ประเภทเอกสาร <span style="color: red;">*</span></label>
+                    <div class="select-wrap">
+                        <select id="documentType" name="documentType" required>
+                            <option value="" selected disabled>เลือกประเภทเอกสาร...</option>
+                            <option value="ประชาสัมพันธ์">ประชาสัมพันธ์</option>
+                            <option value="ขออนุมัติ">ขออนุมัติ</option>
+                            <option value="มอบหมายงาน">มอบหมายงาน</option>
+                            <option value="แจ้งเพื่อทราบ">แจ้งเพื่อทราบ</option>
+                            <option value="รายงาน">รายงาน</option>
+                            <option value="อื่น ๆ">อื่น ๆ</option>
+                        </select>
+                    </div>
                 </div>
 
-
-                <!-- Description -->
+                <!-- เลขที่หนังสือ -->
                 <div class="field">
-
-                    <label for="description">
-                        Description
-                    </label>
-
-                    <textarea
-                        id="description"
-                        name="description"
-                        placeholder="Enter document description..."
-                    ></textarea>
-
+                    <label for="docNo">เลขที่หนังสือ <span style="color: red;">*</span></label>
+                    <input id="docNo" name="docNo" type="text" placeholder="ระบุเลขที่หนังสือ..." required>
                 </div>
 
-
-                <!-- Upload File -->
+                <!-- เรื่อง -->
                 <div class="field">
-
-                    <label for="file">
-                        Upload File
-                    </label>
-
-                    <label
-                        class="upload-box"
-                        for="file"
-                    >
-
-                        <span class="upload-icon">
-                            ♧
-                        </span>
-
-                        <span id="fileText">
-                            Choose file or drag here...
-                        </span>
-
-                        <input
-                            id="file"
-                            name="file"
-                            type="file"
-                        >
-
-                    </label>
-
+                    <label for="subject">เรื่อง <span style="color: red;">*</span></label>
+                    <input id="subject" name="subject" type="text" placeholder="ระบุชื่อเรื่องเอกสาร..." required>
                 </div>
 
+                <!-- ข้อมูลหน่วยงานผู้ส่ง -->
+                <div class="field">
+                    <label for="senderDept">หน่วยงานผู้ส่ง <span style="color: red;">*</span></label>
+                    <input id="senderDept" name="senderDept" type="text" placeholder="ระบุหน่วยงานที่ส่งมา..." required>
+                </div>
+
+                <!-- ชื่อผู้ส่ง -->
+                <div class="field">
+                    <label for="senderName">ชื่อผู้ส่ง <span style="color: red;">*</span></label>
+                    <input id="senderName" name="senderName" type="text" placeholder="ระบุชื่อผู้ส่ง..." required>
+                </div>
+
+                <!-- ช่องทางติดต่อผู้ส่ง -->
+                <div class="field">
+                    <label for="senderContact">ช่องทางติดต่อผู้ส่ง <span style="color: red;">*</span></label>
+                    <input id="senderContact" name="senderContact" type="text" placeholder="เบอร์โทรศัพท์ หรือ อีเมล..."
+                        required>
+                </div>
+
+                <!-- ข้อมูลผู้รับ -->
+                <div class="field">
+                    <label for="recipient">หน่วยงานผู้รับ / ชื่อผู้รับ <span style="color: red;">*</span></label>
+                    <input id="recipient" name="recipient" type="text" placeholder="ระบุผู้รับหรือหน่วยงาน..." required>
+                </div>
+
+                <!-- วันที่ส่งเอกสาร -->
+                <div class="field">
+                    <label for="sendDate">วันที่ส่งเอกสาร <span style="color: red;">*</span></label>
+                    <input id="sendDate" name="sendDate" type="date" required>
+                </div>
+
+                <!-- วันที่รับเอกสาร -->
+                <div class="field">
+                    <label for="receiveDate">วันที่รับเอกสาร <span style="color: red;">*</span></label>
+                    <input id="receiveDate" name="receiveDate" type="date" required>
+                </div>
+
+                <!-- Deadline (V2) -->
+                <div class="field">
+                    <label for="deadline">วันครบกำหนด (Deadline) <span
+                            style="color: gray; font-size: 0.85em;">(ถ้ามี)</span></label>
+                    <input id="deadline" name="deadline" type="date">
+                </div>
+
+                <!-- หมายเหตุ -->
+                <div class="field">
+                    <label for="remarks">หมายเหตุ</label>
+                    <textarea id="remarks" name="remarks" placeholder="ระบุหมายเหตุเพิ่มเติม (ถ้ามี)..."></textarea>
+                </div>
+
+                <!-- แนบไฟล์เอกสาร -->
+                <div class="field">
+                    <label for="file">แนบไฟล์เอกสาร <span style="color: red;">*</span></label>
+                    <label class="upload-box" for="file">
+                        <span class="upload-icon">♧</span>
+                        <span id="fileText">เลือกไฟล์ หรือลากไฟล์มาวางที่นี่...</span>
+                        <input id="file" name="file" type="file" required>
+                    </label>
+                </div>
 
                 <!-- Submit -->
-                <button
-                    class="submit-btn"
-                    type="submit"
-                >
-
+                <button class="submit-btn" id="submitBtn" type="submit">
                     <span>➤</span>
-
-                    <span>
-                        Register Document
-                    </span>
-
+                    <span id="submitText">ลงทะเบียนเอกสาร</span>
                 </button>
 
             </form>
@@ -305,4 +259,5 @@
     <script src="../js/register.js"></script>
 
 </body>
+
 </html>

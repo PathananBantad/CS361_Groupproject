@@ -6,136 +6,127 @@ const registerForm = document.getElementById("registerForm");
 const fileInput = document.getElementById("file");
 const fileText = document.getElementById("fileText");
 const uploadBox = document.querySelector(".upload-box");
-
+const submitBtn = document.getElementById("submitBtn");
+const submitText = document.getElementById("submitText");
 
 /* =====================================================
    FILE NAME
 ===================================================== */
 
 fileInput.addEventListener("change", () => {
-
     if (fileInput.files.length > 0) {
-
-        fileText.textContent =
-            fileInput.files[0].name;
-
+        fileText.textContent = fileInput.files[0].name;
     } else {
-
-        fileText.textContent =
-            "Choose file or drag here...";
-
+        fileText.textContent = "เลือกไฟล์ หรือลากไฟล์มาวางที่นี่...";
     }
-
 });
-
 
 /* =====================================================
    DRAG & DROP
 ===================================================== */
 
 ["dragenter", "dragover"].forEach(eventName => {
-
     uploadBox.addEventListener(eventName, (event) => {
-
         event.preventDefault();
-
         uploadBox.classList.add("dragging");
-
     });
-
 });
-
 
 ["dragleave", "drop"].forEach(eventName => {
-
     uploadBox.addEventListener(eventName, (event) => {
-
         event.preventDefault();
-
         uploadBox.classList.remove("dragging");
-
     });
-
 });
-
 
 uploadBox.addEventListener("drop", (event) => {
-
     const files = event.dataTransfer.files;
-
     if (files.length > 0) {
-
         fileInput.files = files;
-
         fileText.textContent = files[0].name;
-
     }
-
 });
 
-
 /* =====================================================
-   REGISTER
+   REGISTER & VALIDATION
 ===================================================== */
 
 registerForm.addEventListener("submit", (event) => {
-
     event.preventDefault();
 
-    const documentName =
-        document.getElementById("documentName").value.trim();
+    // 1. ป้องกันการกด Submit ซ้ำ
+    if (submitBtn.disabled) return;
 
-    const documentType =
-        document.getElementById("documentType").value;
+    // 2. ดึงค่าจากฟิลด์ต่างๆ (เฉพาะที่ Required)
+    const receiveChannel = document.getElementById("receiveChannel").value;
+    const documentType = document.getElementById("documentType").value;
+    const docNo = document.getElementById("docNo").value.trim();
+    const subject = document.getElementById("subject").value.trim();
+    const senderDept = document.getElementById("senderDept").value.trim();
+    const senderName = document.getElementById("senderName").value.trim();
+    const senderContact = document.getElementById("senderContact").value.trim();
+    const recipient = document.getElementById("recipient").value.trim();
+    const sendDate = document.getElementById("sendDate").value;
+    const receiveDate = document.getElementById("receiveDate").value;
+    const fileAttached = fileInput.files.length > 0;
 
-    const recipient =
-        document.getElementById("recipient").value.trim();
-
-    if (!documentName || !documentType || !recipient) {
-
-        alert("กรุณากรอกข้อมูลที่จำเป็นให้ครบถ้วน");
-
+    // 3. ตรวจสอบข้อมูลก่อน Submit (Validation)
+    if (!receiveChannel || !documentType || !docNo || !subject || !senderDept || !senderName || !senderContact || !recipient || !sendDate || !receiveDate || !fileAttached) {
+        alert("กรุณากรอกข้อมูลที่จำเป็น (*) และแนบไฟล์ให้ครบถ้วน");
         return;
-
     }
-    const documentReference = generateDocumentReference();
-    console.log("สร้างเลขอ้างอิง:", documentReference);
 
-    /*
-     * ตอนนี้เป็น Frontend Demo
-     * สามารถเปลี่ยนส่วนนี้เป็น API ของ Backend ได้ภายหลัง
-     */
+    // 4. แสดงสถานะกำลังโหลด และ Disable ปุ่ม
+    submitBtn.disabled = true;
+    submitBtn.style.opacity = "0.7";
+    submitBtn.style.cursor = "not-allowed";
+    submitText.textContent = "กำลังบันทึกข้อมูล...";
 
-    alert("ลงทะเบียนเอกสารเรียบร้อยแล้ว");
+    // จำลองการเชื่อมต่อ API (ด้วย setTimeout)
+    setTimeout(() => {
+        const documentReference = generateDocumentReference();
+        console.log("สร้างเลขอ้างอิง:", documentReference);
 
-    registerForm.reset();
+        /*
+         * ตอนนี้เป็น Frontend Demo
+         * สามารถเชื่อมต่อ Database/Backend API สำหรับ V2 ได้ที่นี่
+         */
 
-    fileText.textContent =
-        "Choose file or drag here...";
+        alert(`ลงทะเบียนเอกสารสำเร็จ!\nเลขอ้างอิงของคุณคือ: ${documentReference}`);
 
+        // Reset ฟอร์มหลังบันทึกสำเร็จ
+        registerForm.reset();
+        fileText.textContent = "เลือกไฟล์ หรือลากไฟล์มาวางที่นี่...";
+
+        // คืนค่าปุ่มกลับสู่สภาพเดิม
+        submitBtn.disabled = false;
+        submitBtn.style.opacity = "1";
+        submitBtn.style.cursor = "pointer";
+        submitText.textContent = "ลงทะเบียนเอกสาร";
+
+    }, 1500); // จำลอง delay 1.5 วินาที
 });
-
 
 // สร้างเลขอ้างอิงเอกสารอัตโนมัติ (DOC-YYYYMMDD-XXXX)
 function generateDocumentReference(existingDocs = []) {
-  const today = new Date();
-  const dateStr = today.toISOString().slice(0, 10).replace(/-/g, '');
-  let isUnique = false;
-  let newRef = '';
+    const today = new Date();
+    const dateStr = today.toISOString().slice(0, 10).replace(/-/g, '');
+    let isUnique = false;
+    let newRef = '';
 
-  while (!isUnique) {
-    const randomDigits = Math.floor(1000 + Math.random() * 9000);
-    newRef = `DOC-${dateStr}-${randomDigits}`;
+    while (!isUnique) {
+        const randomDigits = Math.floor(1000 + Math.random() * 9000);
+        newRef = `DOC-${dateStr}-${randomDigits}`;
 
-    // ตรวจสอบว่าเลขอ้างอิงไม่ซ้ำกับ docNo, trackingNo หรือ documentReference เดิม
-    const isDuplicate = existingDocs.some(
-      doc => doc.documentReference === newRef || doc.docNo === newRef || doc.trackingNo === newRef
-    );
-    if (!isDuplicate) {
-      isUnique = true;
+        // ตรวจสอบว่าเลขอ้างอิงไม่ซ้ำ
+        const isDuplicate = existingDocs.some(
+            doc => doc.documentReference === newRef || doc.docNo === newRef || doc.trackingNo === newRef
+        );
+        if (!isDuplicate) {
+            isUnique = true;
+        }
     }
-  }
 
-  return newRef;
+    return newRef;
 }
 window.generateDocumentReference = generateDocumentReference;
