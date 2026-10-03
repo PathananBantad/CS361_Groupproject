@@ -119,8 +119,12 @@ app.get("/api/documents", async (req, res) => {
 
         // Search by status
         if (status) {
-            sql += " AND status = ?";
-            params.push(status);
+            const statuses = Array.isArray(status) ? status : [status];
+            if (statuses.length > 0) {
+                const placeholders = statuses.map(() => '?').join(',');
+                sql += ` AND status IN (${placeholders})`;
+                params.push(...statuses);
+            }
         }
 
         // Search from date
