@@ -84,6 +84,25 @@
     box-shadow: 0 7px 18px rgba(125, 22, 52, .12);
 }
 
+.advanced-filter-input {
+    border: 1px solid #ddbdb8;
+    background: rgba(255, 249, 243, .72);
+    color: #572435;
+    border-radius: 25px;
+    padding: 10px 20px;
+    font-family: inherit;
+    font-size: 1rem;
+    transition: .2s ease;
+    cursor: pointer;
+    outline: none;
+}
+
+.advanced-filter-input:hover,
+.advanced-filter-input:focus {
+    border-color: var(--wine);
+    box-shadow: 0 4px 12px rgba(125, 22, 52, .08);
+}
+
 /* =========================
    REGISTRY
 ========================= */

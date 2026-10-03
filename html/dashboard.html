@@ -76,14 +76,34 @@
             </div>
         </section>
 
-        <!-- Status filters -->
-        <div class="status-filters" role="tablist" aria-label="กรองสถานะเอกสาร">
+        <!-- Filters Area -->
+        <div class="status-filters" role="tablist" aria-label="กรองข้อมูลเอกสาร">
             <button class="status-filter active" data-filter="all" role="tab">ทั้งหมด</button>
             <button class="status-filter" data-filter="waiting" role="tab">รอดำเนินการ</button>
             <button class="status-filter" data-filter="processing" role="tab">กำลังดำเนินการ</button>
             <button class="status-filter" data-filter="approval" role="tab">รอการอนุมัติ</button>
             <button class="status-filter" data-filter="completed" role="tab">เสร็จสิ้น</button>
             <button class="status-filter" data-filter="archived" role="tab">จัดเก็บแล้ว</button>
+
+            <!-- Advanced filters appended here -->
+            <select id="typeFilter" class="advanced-filter-input" aria-label="ประเภทเอกสาร">
+                <option value="all">ประเภทเอกสาร: ทั้งหมด</option>
+                <option value="ประชาสัมพันธ์">เอกสารประชาสัมพันธ์</option>
+                <option value="ขออนุมัติ">เอกสารขออนุมัติ</option>
+                <option value="มอบหมายงาน">เอกสารมอบหมายงาน</option>
+                <option value="แจ้งเพื่อทราบ">เอกสารแจ้งเพื่อทราบ</option>
+                <option value="รอการตอบกลับ">เอกสารรอการตอบกลับ</option>
+                <option value="กำหนดการ/การนัดหมาย">เอกสารแจ้งกำหนดการ/การนัดหมาย</option>
+                <option value="รายงานผล">เอกสารรายงานผล</option>
+            </select>
+            
+            <input type="date" id="dateFrom" class="advanced-filter-input" aria-label="ตั้งแต่วันที่" title="ตั้งแต่วันที่">
+            
+            <input type="date" id="dateTo" class="advanced-filter-input" aria-label="ถึงวันที่" title="ถึงวันที่">
+
+            <button id="clearFiltersBtn" type="button" class="advanced-filter-input" style="background: rgba(140, 91, 178, 0.1); color: var(--wine); font-weight: 600;">
+                ล้างตัวกรอง
+            </button>
         </div>
 
         <!-- Main registry -->
