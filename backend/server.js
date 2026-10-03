@@ -261,19 +261,22 @@ app.post("/api/documents", async (req, res) => {
             sent_date,
             receive_date,
             deadline,
+            receiving_channel,
             status = "Received",
             file_key = null
         } = req.body;
 
+        // Validate receiving_channel
+        const allowedReceivingChannels = ["กระดาษ", "อิเล็กทรอนิกส์"];
 
-        // Trim text fields
-        const referenceNo = reference_no?.trim();
-        const documentNumber = document_number?.trim();
-        const subjectText = subject?.trim();
-        const documentType = document_type?.trim();
-        const senderName = sender_name?.trim();
-        const senderDepartment = sender_department?.trim();
-        const receiverName = receiver_name?.trim();
+        if (
+            receiving_channel &&
+            !allowedReceivingChannels.includes(receiving_channel)
+        ) {
+            return res.status(400).json({
+                error: "receiving_channel must be กระดาษ or อิเล็กทรอนิกส์"
+            });
+        }
 
 
         // Required fields
@@ -299,32 +302,16 @@ app.post("/api/documents", async (req, res) => {
 
         if (!allowedStatuses.includes(status)) {
             return res.status(400).json({
-                error: "Invalid status"
+                error:
+                    "reference_no, subject, document_type and sender_name are required"
             });
-        }
-
-        const dateFields = {
-            sent_date,
-            receive_date,
-            deadline
-        };
-
-        for (const [fieldName, value] of Object.entries(dateFields)) {
-
-            if (value && isNaN(Date.parse(value))) {
-
-                return res.status(400).json({
-                    error: `${fieldName} must be a valid date`
-                });
-
-            }
 
         }
 
-        // INSERT
+
         const [result] = await pool.query(
             `
-        INSERT INTO documents (
+    INSERT INTO documents (
         reference_no,
         document_number,
         subject,
@@ -335,27 +322,28 @@ app.post("/api/documents", async (req, res) => {
         sent_date,
         receive_date,
         deadline,
+        receiving_channel,
         status,
         file_key
-      )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `,
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `,
             [
-                referenceNo,
-                documentNumber || null,
-                subjectText,
-                documentType,
-                senderName,
-                senderDepartment || null,
-                receiverName || null,
+                reference_no,
+                document_number || null,
+                subject,
+                document_type,
+                sender_name,
+                sender_department || null,
+                receiver_name || null,
                 sent_date || null,
                 receive_date || null,
                 deadline || null,
+                receiving_channel || null,
                 status,
                 file_key
             ]
         );
-
 
         const [rows] = await pool.query(
             "SELECT * FROM documents WHERE id = ?",
@@ -469,6 +457,18 @@ app.get("/api/document-types", async (req, res) => {
     }
 });
 
+
+// GET receiving channels
+app.get("/api/receiving-channels", (req, res) => {
+    res.json({
+        data: [
+            "กระดาษ",
+            "อิเล็กทรอนิกส์"
+        ]
+    });
+});
+
+
 // Create S3 upload URL
 app.get("/api/documents/:id/upload-url", async (req, res) => {
 
@@ -505,6 +505,15 @@ app.get("/api/documents/:id/upload-url", async (req, res) => {
             contentType
         );
 
+        // Save file reference to database
+        await pool.query(
+            `
+             UPDATE documents
+              SET file_key = ?
+             WHERE id = ?
+    `,
+            [fileKey, id]
+        );
         res.json({
             document_id: id,
             file_key: fileKey,
