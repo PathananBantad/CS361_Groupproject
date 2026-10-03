@@ -9,11 +9,20 @@ const {
 } = require("./s3");
 
 const app = express();
+const path = require("path");
 
 const PORT = Number(process.env.PORT || 3000);
 
 app.use(cors());
 app.use(express.json());
+
+// Redirect root to html/index.html before static middleware catches it
+app.get('/', (req, res) => {
+    res.redirect('/html/index.html');
+});
+
+// Serve frontend static files
+app.use(express.static(path.join(__dirname, '../')));
 
 
 // Test API + Database
@@ -67,13 +76,11 @@ app.get("/api/documents", async (req, res) => {
             params.push(`%${reference_no}%`);
         }
 
-
         // Search by subject
         if (subject) {
             sql += " AND subject LIKE ?";
             params.push(`%${subject}%`);
         }
-
 
         // Search by document type
         if (document_type) {
@@ -81,13 +88,11 @@ app.get("/api/documents", async (req, res) => {
             params.push(document_type);
         }
 
-
         // Search by sender
         if (sender_name) {
             sql += " AND sender_name LIKE ?";
             params.push(`%${sender_name}%`);
         }
-
 
         // Search by receiver
         if (receiver_name) {
@@ -95,13 +100,11 @@ app.get("/api/documents", async (req, res) => {
             params.push(`%${receiver_name}%`);
         }
 
-
         // Search by status
         if (status) {
             sql += " AND status = ?";
             params.push(status);
         }
-
 
         // Search from date
         if (from_date) {
@@ -109,93 +112,33 @@ app.get("/api/documents", async (req, res) => {
             params.push(from_date);
         }
 
-
         // Search to date
         if (to_date) {
             sql += " AND receive_date <= ?";
             params.push(to_date);
         }
 
+        const { search, type, month } = req.query;
 
-        sql += " ORDER BY created_at DESC";
-
-
-        const [rows] = await pool.query(sql, params);
-        const {
-            search,
-            type,
-            month,
-            status
-        } = req.query;
-
-        let sql = `
-            SELECT *
-            FROM documents
-            WHERE 1 = 1
-        `;
-
-        const params = [];
-
-        // Search:
-        // reference_no
-        // sender_name
-        // receiver_name
         if (search) {
-
-            sql += `
-                AND (
-                    reference_no LIKE ?
-                    OR sender_name LIKE ?
-                    OR receiver_name LIKE ?
-                )
-            `;
-
+            sql += ` AND (reference_no LIKE ? OR sender_name LIKE ? OR receiver_name LIKE ?) `;
             const keyword = `%${search}%`;
-
             params.push(keyword, keyword, keyword);
         }
 
-
-        // Filter: document type
         if (type) {
-
-            sql += `
-                AND document_type = ?
-            `;
-
+            sql += " AND document_type = ?";
             params.push(type);
         }
 
-
-        // Filter: month
         if (month) {
-
-            sql += `
-                AND MONTH(receive_date) = ?
-            `;
-
+            sql += " AND MONTH(receive_date) = ?";
             params.push(month);
         }
 
-
-        // Filter: status
-        if (status) {
-
-            sql += `
-                AND status = ?
-            `;
-
-            params.push(status);
-        }
-
-
-        sql += `
-            ORDER BY created_at DESC
-        `;
-
+        sql += " ORDER BY created_at DESC";
 
         const [rows] = await pool.query(sql, params);
-
 
         res.json({
             data: rows,
@@ -271,13 +214,12 @@ app.post("/api/documents", async (req, res) => {
 
         // Required fields
         if (
-            !reference_no ||
             !subject ||
             !document_type ||
             !sender_name
         ) {
             return res.status(400).json({
-                error: "reference_no, subject, document_type and sender_name are required"
+                error: "subject, document_type and sender_name are required"
             });
         }
 
@@ -296,6 +238,30 @@ app.post("/api/documents", async (req, res) => {
             });
         }
 
+
+        const today = new Date();
+        const yyyy = today.getFullYear();
+        const mm = String(today.getMonth() + 1).padStart(2, '0');
+        const dd = String(today.getDate()).padStart(2, '0');
+        const datePrefix = `DOC-${yyyy}${mm}${dd}-`;
+
+        const [refRows] = await pool.query(
+            "SELECT reference_no FROM documents WHERE reference_no LIKE ? ORDER BY reference_no DESC LIMIT 1",
+            [`${datePrefix}%`]
+        );
+
+        let newRefNo = "";
+        if (refRows.length > 0) {
+            const lastRef = refRows[0].reference_no;
+            const lastNum = parseInt(lastRef.split('-')[2], 10);
+            if (!isNaN(lastNum)) {
+                newRefNo = `${datePrefix}${String(lastNum + 1).padStart(4, '0')}`;
+            } else {
+                newRefNo = `${datePrefix}${(Math.floor(Math.random() * 9000) + 1000)}`;
+            }
+        } else {
+            newRefNo = `${datePrefix}0001`;
+        }
 
         const [result] = await pool.query(
             `
@@ -317,7 +283,7 @@ app.post("/api/documents", async (req, res) => {
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
             [
-                reference_no,
+                newRefNo,
                 document_number || null,
                 subject,
                 document_type,
