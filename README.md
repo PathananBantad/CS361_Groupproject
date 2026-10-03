@@ -94,6 +94,7 @@ V1 มุ่งเน้นการพัฒนา Information Service เพ�
 http://my-project-v1-2026.s3-website-ap-southeast-2.amazonaws.com
 
 ## Architecture V2
-<img width="2168" height="725" alt="image" src="https://github.com/user-attachments/assets/274da4cd-b069-48fc-9494-959b3ef91c5a" />
+<img width="2092" height="752" alt="image" src="https://github.com/user-attachments/assets/142d091d-401e-4d56-8d9e-be833e75df87" />
+
 
 
