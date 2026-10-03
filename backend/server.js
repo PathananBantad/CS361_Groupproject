@@ -210,7 +210,7 @@ app.get("/api/documents/:id", async (req, res) => {
 app.post("/api/documents", async (req, res) => {
 
     try {
-        const {
+        let {
             reference_no,
             document_number,
             subject,
