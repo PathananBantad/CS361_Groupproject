@@ -228,7 +228,16 @@ app.post("/api/documents", async (req, res) => {
             file_key = null
         } = req.body;
 
-        // 1. ตรวจสอบฟิลด์จำเป็น (Required fields)
+        // 1. ตรวจสอบช่องทางรับเอกสาร
+        const allowedChannels = ["EMAIL", "PAPER"];
+
+        if (!allowedChannels.includes(receiving_channel)) {
+            return res.status(400).json({
+                error: "receiving_channel must be EMAIL or PAPER"
+            });
+        }
+
+        // 2. ตรวจสอบฟิลด์จำเป็น (Required fields)
         if (!subject || !document_type || !sender_name) {
             return res.status(400).json({
                 error: "subject, document_type and sender_name are required"
@@ -428,8 +437,8 @@ app.get("/api/document-types", async (req, res) => {
 app.get("/api/receiving-channels", (req, res) => {
     res.json({
         data: [
-            "กระดาษ",
-            "อิเล็กทรอนิกส์"
+            "EMAIL",
+            "PAPER"
         ]
     });
 });
