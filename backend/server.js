@@ -181,9 +181,22 @@ app.post("/api/documents", async (req, res) => {
             sent_date,
             receive_date,
             deadline,
+            receiving_channel,
             status = "Received",
             file_key = null
         } = req.body;
+
+        // Validate receiving_channel
+        const allowedReceivingChannels = ["กระดาษ", "อิเล็กทรอนิกส์"];
+
+        if (
+            receiving_channel &&
+            !allowedReceivingChannels.includes(receiving_channel)
+        ) {
+            return res.status(400).json({
+                error: "receiving_channel must be กระดาษ or อิเล็กทรอนิกส์"
+            });
+        }
 
 
         // Required fields
@@ -202,9 +215,9 @@ app.post("/api/documents", async (req, res) => {
         }
 
 
-        const [result] = await pool.query(
-            `
-      INSERT INTO documents (
+       const [result] = await pool.query(
+    `
+    INSERT INTO documents (
         reference_no,
         document_number,
         subject,
@@ -215,27 +228,28 @@ app.post("/api/documents", async (req, res) => {
         sent_date,
         receive_date,
         deadline,
+        receiving_channel,
         status,
         file_key
-      )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `,
-            [
-                reference_no,
-                document_number || null,
-                subject,
-                document_type,
-                sender_name,
-                sender_department || null,
-                receiver_name || null,
-                sent_date || null,
-                receive_date || null,
-                deadline || null,
-                status,
-                file_key
-            ]
-        );
-
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `,
+    [
+        reference_no,
+        document_number || null,
+        subject,
+        document_type,
+        sender_name,
+        sender_department || null,
+        receiver_name || null,
+        sent_date || null,
+        receive_date || null,
+        deadline || null,
+        receiving_channel || null,
+        status,
+        file_key
+    ]
+);
 
         const [rows] = await pool.query(
             "SELECT * FROM documents WHERE id = ?",
@@ -349,6 +363,18 @@ app.get("/api/document-types", async (req, res) => {
     }
 });
 
+
+// GET receiving channels
+app.get("/api/receiving-channels", (req, res) => {
+    res.json({
+        data: [
+            "กระดาษ",
+            "อิเล็กทรอนิกส์"
+        ]
+    });
+});
+
+
 // Create S3 upload URL
 app.get("/api/documents/:id/upload-url", async (req, res) => {
 
@@ -385,6 +411,15 @@ app.get("/api/documents/:id/upload-url", async (req, res) => {
             contentType
         );
 
+        // Save file reference to database
+        await pool.query(
+            `
+             UPDATE documents
+              SET file_key = ?
+             WHERE id = ?
+    `,
+            [fileKey, id]
+        );
         res.json({
             document_id: id,
             file_key: fileKey,
