@@ -34,8 +34,14 @@ const globalSearch = document.getElementById("globalSearch");
 const shownCount = document.getElementById("shownCount");
 const detailContent = document.getElementById("detailContent");
 
+// New advanced filters
+const typeFilter = document.getElementById("typeFilter");
+const dateFrom = document.getElementById("dateFrom");
+const dateTo = document.getElementById("dateTo");
+const clearFiltersBtn = document.getElementById("clearFiltersBtn");
+
 let documents = [];
-let currentFilter = "all";
+let currentFilters = new Set(["all"]);
 let selectedId = null;
 let sortKey = null;
 let sortDirection = 1;
@@ -94,56 +100,104 @@ const typeIcons = {
    LOAD DATA
 ===================================================== */
 
-async function init() {
+async function fetchDocuments() {
+    const keyword = globalSearch ? globalSearch.value.trim() : "";
+    const selectedType = typeFilter ? typeFilter.value : "all";
+    const dFrom = dateFrom ? dateFrom.value : "";
+    const dTo = dateTo ? dateTo.value : "";
+
+    const params = new URLSearchParams();
+    if (keyword) params.append("search", keyword);
+    if (selectedType !== "all") params.append("document_type", selectedType);
+
+    if (!currentFilters.has("all")) {
+        currentFilters.forEach(f => {
+            let statusParam = "";
+            if (f === "waiting") statusParam = "Received";
+            else if (f === "processing") statusParam = "Processing";
+            else if (f === "approval") statusParam = "Assigned";
+            else if (f === "completed") statusParam = "Completed";
+            else if (f === "archived") statusParam = "Archived";
+
+            if (statusParam) params.append("status", statusParam);
+        });
+    }
+    if (dFrom) params.append("from_date", dFrom);
+    if (dTo) params.append("to_date", dTo);
 
     try {
-
-        /*
-         * ตอนนี้ใช้ data.json ก่อน
-         *
-         * ถ้า Backend พร้อมแล้ว
-         * เปลี่ยน URL ตรงนี้เป็น API ของ Backend
-         *
-         * เช่น:
-         * http://localhost:8080/api/documents
-         */
-
-        const response = await fetch("../json/data.json");
-
-        if (!response.ok) {
-            throw new Error("data.json not found");
-        }
+        const url = `http://localhost:3000/api/documents?${params.toString()}`;
+        const response = await fetch(url);
+        if (!response.ok) throw new Error("Network response was not ok");
 
         const data = await response.json();
 
-        documents = data.documents || [];
+        documents = (data.data || []).map(row => {
+            let statusKey = "waiting";
+            if (row.status === "Processing") statusKey = "processing";
+            if (row.status === "Assigned") statusKey = "approval";
+            if (row.status === "Completed") statusKey = "completed";
+
+            let rDate = "";
+            let rTime = "";
+            if (row.receive_date) {
+                const d = new Date(row.receive_date);
+                rDate = d.toLocaleDateString('th-TH', { year: 'numeric', month: 'short', day: 'numeric' });
+            }
+            if (row.created_at) {
+                const d = new Date(row.created_at);
+                rTime = d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
+            }
+
+            const colors = {
+                "ประชาสัมพันธ์": "red",
+                "ขออนุมัติ": "orange",
+                "มอบหมายงาน": "purple",
+                "แจ้งเพื่อทราบ": "green",
+                "รอการตอบกลับ": "blue",
+                "กำหนดการ/การนัดหมาย": "purple",
+                "รายงานผล": "green"
+            };
+            let color = "red";
+            for (const [key, val] of Object.entries(colors)) {
+                if (row.document_type && row.document_type.includes(key)) {
+                    color = val;
+                    break;
+                }
+            }
+
+            return {
+                id: String(row.id),
+                number: row.document_number || "-",
+                code: row.reference_no || "-",
+                type: row.document_type || "-",
+                description: row.subject || row.remarks || "-",
+                sender: row.sender_name || "-",
+                receiver: row.receiver_name || "-",
+                statusKey: statusKey,
+                statusLabel: row.status,
+                receivedDate: rDate,
+                receivedTime: rTime,
+                color: color,
+                file_key: row.file_key || null,
+                path: null
+            };
+        });
 
         render();
 
     } catch (error) {
-
         console.error(error);
-
         if (tableBody) {
-            tableBody.innerHTML = `
-                <tr>
-                    <td colspan="7" class="empty-table">
-                        ไม่สามารถโหลดข้อมูลเอกสารได้
-                    </td>
-                </tr>
-            `;
+            tableBody.innerHTML = `<tr><td colspan="7" class="empty-table">ไม่สามารถโหลดข้อมูลเอกสารได้</td></tr>`;
         }
-
-        if (mobileList) {
-            mobileList.innerHTML = "";
-        }
-
-        if (shownCount) {
-            shownCount.textContent = "0";
-        }
-
+        if (mobileList) mobileList.innerHTML = "";
+        if (shownCount) shownCount.textContent = "0";
     }
+}
 
+async function init() {
+    await fetchDocuments();
 }
 
 
@@ -153,33 +207,7 @@ async function init() {
 
 function getFilteredDocuments() {
 
-    const keyword = globalSearch
-        ? globalSearch.value.trim().toLowerCase()
-        : "";
-
-    let result = documents.filter(doc => {
-
-        const matchesStatus =
-            currentFilter === "all" ||
-            doc.statusKey === currentFilter;
-
-        const searchable = [
-
-            doc.number,
-            doc.code,
-            doc.type,
-            doc.description,
-            doc.sender,
-            doc.receiver,
-            doc.statusLabel
-
-        ].join(" ").toLowerCase();
-
-        return matchesStatus &&
-               (!keyword || searchable.includes(keyword));
-
-    });
-
+    let result = [...documents];
 
     if (sortKey) {
 
@@ -668,9 +696,9 @@ function renderDetail(doc) {
 
                 <strong>
                     ${escapeHtml(
-                        doc.description ||
-                        "ไม่มีรายละเอียดเพิ่มเติม"
-                    )}
+        doc.description ||
+        "ไม่มีรายละเอียดเพิ่มเติม"
+    )}
                 </strong>
 
             </div>
@@ -750,7 +778,7 @@ function showEmptyDetail() {
    OPEN DOCUMENT
 ===================================================== */
 
-function openDocument(id) {
+async function openDocument(id) {
 
     const doc =
         documents.find(item => item.id === id);
@@ -758,8 +786,25 @@ function openDocument(id) {
     if (!doc) return;
 
 
-    if (doc.path) {
+    if (doc.file_key) {
 
+        try {
+            const res = await fetch(`http://localhost:3000/api/documents/${id}/download-url`);
+            if (res.ok) {
+                const data = await res.json();
+                if (data.download_url) {
+                    window.open(data.download_url, "_blank", "noopener,noreferrer");
+                    return;
+                }
+            }
+            alert("ไม่สามารถเปิดไฟล์ได้ หรือไม่พบไฟล์ในระบบ");
+        } catch (error) {
+            console.error("Error opening document:", error);
+            alert("เกิดข้อผิดพลาดในการเชื่อมต่อเพื่อดึงไฟล์");
+        }
+
+    } else if (doc.path) {
+        
         window.open(
             doc.path,
             "_blank",
@@ -787,7 +832,7 @@ function syncFilterButtons() {
 
             button.classList.toggle(
                 "active",
-                button.dataset.filter === currentFilter
+                currentFilters.has(button.dataset.filter)
             );
 
         });
@@ -797,13 +842,28 @@ function syncFilterButtons() {
 
 function setFilter(filter) {
 
-    currentFilter = filter;
+    if (filter === "all") {
+        currentFilters.clear();
+        currentFilters.add("all");
+    } else {
+        if (currentFilters.has("all")) {
+            currentFilters.delete("all");
+        }
+        if (currentFilters.has(filter)) {
+            currentFilters.delete(filter);
+            if (currentFilters.size === 0) {
+                currentFilters.add("all");
+            }
+        } else {
+            currentFilters.add(filter);
+        }
+    }
 
     selectedId = null;
 
     showEmptyDetail();
 
-    render();
+    fetchDocuments();
 
 }
 
@@ -845,12 +905,28 @@ document
 
 
 if (globalSearch) {
+    let searchTimeout;
+    globalSearch.addEventListener("input", () => {
+        clearTimeout(searchTimeout);
+        searchTimeout = setTimeout(fetchDocuments, 300);
+    });
+}
 
-    globalSearch.addEventListener(
-        "input",
-        render
-    );
+if (typeFilter) typeFilter.addEventListener("change", fetchDocuments);
 
+if (dateFrom) dateFrom.addEventListener("change", fetchDocuments);
+if (dateTo) dateTo.addEventListener("change", fetchDocuments);
+if (clearFiltersBtn) {
+    clearFiltersBtn.addEventListener("click", () => {
+        if (globalSearch) globalSearch.value = "";
+        if (typeFilter) typeFilter.value = "all";
+        if (dateFrom) dateFrom.value = "";
+        if (dateTo) dateTo.value = "";
+        currentFilters.clear();
+        currentFilters.add("all");
+        syncFilterButtons();
+        fetchDocuments();
+    });
 }
 
 
