@@ -200,10 +200,12 @@ app.post("/api/documents", async (req, res) => {
             document_type,
             sender_name,
             sender_department,
+            sender_contact,
             receiver_name,
             sent_date,
             receive_date,
             deadline,
+            remarks,
             receiving_channel,
             status = "Received",
             file_key = null
@@ -272,15 +274,17 @@ app.post("/api/documents", async (req, res) => {
         document_type,
         sender_name,
         sender_department,
+        sender_contact,
         receiver_name,
         sent_date,
         receive_date,
         deadline,
+        remarks,
         receiving_channel,
         status,
         file_key
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
             [
                 newRefNo,
@@ -289,10 +293,12 @@ app.post("/api/documents", async (req, res) => {
                 document_type,
                 sender_name,
                 sender_department || null,
+                sender_contact || null,
                 receiver_name || null,
                 sent_date || null,
                 receive_date || null,
                 deadline || null,
+                remarks || null,
                 receiving_channel || null,
                 status,
                 file_key

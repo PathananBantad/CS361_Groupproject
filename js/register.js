@@ -69,6 +69,7 @@ registerForm.addEventListener("submit", async (event) => {
     const sendDate = document.getElementById("sendDate").value;
     const receiveDate = document.getElementById("receiveDate").value;
     const deadline = document.getElementById("deadline").value;
+    const remarks = document.getElementById("remarks").value.trim();
     const fileAttached = fileInput.files.length > 0;
 
     // 3. ตรวจสอบข้อมูลก่อน Submit (Validation)
@@ -84,20 +85,18 @@ registerForm.addEventListener("submit", async (event) => {
     submitText.textContent = "กำลังบันทึกข้อมูล...";
 
     try {
-        const documentReference = generateDocumentReference();
-        console.log("สร้างเลขอ้างอิง:", documentReference);
-
         const payload = {
-            reference_no: documentReference,
             document_number: docNo,
             subject: subject,
             document_type: documentType,
             sender_name: senderName,
             sender_department: senderDept,
+            sender_contact: senderContact,
             receiver_name: recipient,
             sent_date: sendDate,
             receive_date: receiveDate,
             deadline: deadline || null,
+            remarks: remarks || null,
             receiving_channel: receiveChannel
         };
 
@@ -120,7 +119,7 @@ registerForm.addEventListener("submit", async (event) => {
         // 2. Upload file if attached
         if (fileAttached) {
             const file = fileInput.files[0];
-            
+
             // Get presigned URL
             const s3UrlRes = await fetch(`http://localhost:3000/api/documents/${docData.id}/upload-url?fileName=${encodeURIComponent(file.name)}&contentType=${encodeURIComponent(file.type || 'application/octet-stream')}`);
             if (!s3UrlRes.ok) {
@@ -143,7 +142,7 @@ registerForm.addEventListener("submit", async (event) => {
             }
         }
 
-        alert(`ลงทะเบียนเอกสารสำเร็จ!\nเลขอ้างอิงของคุณคือ: ${documentReference}`);
+        alert(`ลงทะเบียนเอกสารสำเร็จ!\nเลขอ้างอิงของคุณคือ: ${docData.reference_no}`);
 
         // Reset ฟอร์มหลังบันทึกสำเร็จ
         registerForm.reset();
@@ -161,26 +160,3 @@ registerForm.addEventListener("submit", async (event) => {
     }
 });
 
-// สร้างเลขอ้างอิงเอกสารอัตโนมัติ (DOC-YYYYMMDD-XXXX)
-function generateDocumentReference(existingDocs = []) {
-    const today = new Date();
-    const dateStr = today.toISOString().slice(0, 10).replace(/-/g, '');
-    let isUnique = false;
-    let newRef = '';
-
-    while (!isUnique) {
-        const randomDigits = Math.floor(1000 + Math.random() * 9000);
-        newRef = `DOC-${dateStr}-${randomDigits}`;
-
-        // ตรวจสอบว่าเลขอ้างอิงไม่ซ้ำ
-        const isDuplicate = existingDocs.some(
-            doc => doc.documentReference === newRef || doc.docNo === newRef || doc.trackingNo === newRef
-        );
-        if (!isDuplicate) {
-            isUnique = true;
-        }
-    }
-
-    return newRef;
-}
-window.generateDocumentReference = generateDocumentReference;
