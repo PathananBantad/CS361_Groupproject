@@ -72,6 +72,40 @@ registerForm.addEventListener("submit", async (event) => {
     const remarks = document.getElementById("remarks").value.trim();
     const fileAttached = fileInput.files.length > 0;
 
+    const allowedChannels = ["EMAIL", "PAPER"];
+
+    if (!allowedChannels.includes(receiveChannel)) {
+        alert("กรุณาเลือกช่องทางรับเอกสารเป็น EMAIL หรือ PAPER");
+        return;
+    }
+
+    const file = fileInput.files[0];
+
+    const allowedTypes = [
+        "application/pdf",
+        "image/jpeg",
+        "image/png",
+        "application/msword",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    ];
+
+    const maxFileSize = 10 * 1024 * 1024; // 10 MB
+
+    if (!fileAttached) {
+        alert("กรุณาแนบไฟล์เอกสาร");
+        return;
+    }
+
+    if (!allowedTypes.includes(file.type)) {
+        alert("ไม่รองรับไฟล์ประเภทนี้ กรุณาเลือก PDF, JPG, PNG, DOC หรือ DOCX");
+        return;
+    }
+
+    if (file.size > maxFileSize) {
+        alert("ไฟล์มีขนาดเกิน 10 MB");
+        return;
+    }
+
     // 3. ตรวจสอบข้อมูลก่อน Submit (Validation)
     if (!receiveChannel || !documentType || !docNo || !subject || !senderDept || !senderName || !senderContact || !recipient || !sendDate || !receiveDate || !fileAttached) {
         alert("กรุณากรอกข้อมูลที่จำเป็น (*) และแนบไฟล์ให้ครบถ้วน");
@@ -85,9 +119,6 @@ registerForm.addEventListener("submit", async (event) => {
     submitText.textContent = "กำลังบันทึกข้อมูล...";
 
     try {
-        const docRefInput = document.getElementById("documentReference") || document.getElementById("document_reference");
-        const documentReference = (docRefInput && docRefInput.value) ? docRefInput.value : generateDocumentReference();
-        console.log("สร้างเลขอ้างอิง:", documentReference);
 
         const payload = {
             document_number: docNo,
@@ -122,8 +153,7 @@ registerForm.addEventListener("submit", async (event) => {
 
         // 2. Upload file if attached
         if (fileAttached) {
-            const file = fileInput.files[0];
-
+            
             // Get presigned URL
             const s3UrlRes = await fetch(`http://localhost:3000/api/documents/${docData.id}/upload-url?fileName=${encodeURIComponent(file.name)}&contentType=${encodeURIComponent(file.type || 'application/octet-stream')}`);
             if (!s3UrlRes.ok) {
@@ -152,11 +182,6 @@ registerForm.addEventListener("submit", async (event) => {
         registerForm.reset();
         fileText.textContent = "เลือกไฟล์ หรือลากไฟล์มาวางที่นี่...";
 
-        const nextDocRefInput = document.getElementById("documentReference") || document.getElementById("document_reference");
-        if (nextDocRefInput) {
-            nextDocRefInput.value = generateDocumentReference();
-        }
-
     } catch (error) {
         console.error("Error saving document:", error);
         alert(`เกิดข้อผิดพลาด: ${error.message}`);
@@ -168,43 +193,3 @@ registerForm.addEventListener("submit", async (event) => {
         submitText.textContent = "ลงทะเบียนเอกสาร";
     }
 });
-
-<<<<<<< HEAD
-// สร้างเลขอ้างอิงเอกสารอัตโนมัติ (DOC-YYYYMMDD-XXXX)
-function generateDocumentReference(existingDocs = []) {
-    const today = new Date();
-    const dateStr = today.toISOString().slice(0, 10).replace(/-/g, '');
-    let isUnique = false;
-    let newRef = '';
-
-    while (!isUnique) {
-        const randomDigits = Math.floor(1000 + Math.random() * 9000);
-        newRef = `DOC-${dateStr}-${randomDigits}`;
-
-        // ตรวจสอบว่าเลขอ้างอิงไม่ซ้ำ
-        const isDuplicate = existingDocs.some(
-            doc => doc.documentReference === newRef || doc.docNo === newRef || doc.trackingNo === newRef
-        );
-        if (!isDuplicate) {
-            isUnique = true;
-        }
-    }
-
-    return newRef;
-}
-
-document.addEventListener("DOMContentLoaded", () => {
-  const docRefInput = document.getElementById("documentReference") 
-                   || document.getElementById("docNo")
-                   || document.getElementById("reference_no")
-                   || document.getElementById("document_reference");
-  if (docRefInput) {
-    // สร้างเลขอ้างอิงและใส่ลงใน input อัตโนมัติ พร้อมตั้ง readonly
-    docRefInput.value = generateDocumentReference();
-    docRefInput.readOnly = true;
-  }
-});
-
-window.generateDocumentReference = generateDocumentReference;
-=======
->>>>>>> 8fac1154bfe42b5f0cc6542c4c00acb83a7e6eb5

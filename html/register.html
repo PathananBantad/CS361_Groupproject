@@ -143,30 +143,39 @@
 
                 <!-- ช่องทางรับเอกสาร -->
                 <div class="field">
-                    <label for="receiveChannel">ช่องทางรับเอกสาร <span style="color: red;">*</span></label>
+                    <label for="receiveChannel">
+                        ช่องทางรับเอกสาร <span style="color: red;">*</span>
+                    </label>
+
                     <div class="select-wrap">
                         <select id="receiveChannel" name="receiveChannel" required>
-                            <option value="" selected disabled>เลือกช่องทางรับเอกสาร...</option>
-                            <option value="อีเมล">อีเมล</option>
-                            <option value="ไปรษณีย์">ไปรษณีย์</option>
-                            <option value="ส่งด้วยตนเอง">ส่งด้วยตนเอง</option>
-                            <option value="ระบบอื่นๆ">ระบบอื่น ๆ</option>
+                            <option value="" selected disabled>
+                                เลือกช่องทางรับเอกสาร...
+                            </option>
+                            <option value="EMAIL">อีเมล (Email)</option>
+                            <option value="PAPER">ส่งด้วยตนเอง / เอกสารกระดาษ (Paper)</option>
                         </select>
                     </div>
                 </div>
 
                 <!-- เลือกประเภทเอกสาร -->
                 <div class="field">
-                    <label for="documentType">ประเภทเอกสาร <span style="color: red;">*</span></label>
-                    <div class="select-wrap">
+                    <label for="documentType">
+                        ประเภทเอกสาร <span style="color: red;">*</span>
+                    </label>
+
+                     <div class="select-wrap">
                         <select id="documentType" name="documentType" required>
-                            <option value="" selected disabled>เลือกประเภทเอกสาร...</option>
-                            <option value="ประชาสัมพันธ์">ประชาสัมพันธ์</option>
-                            <option value="ขออนุมัติ">ขออนุมัติ</option>
-                            <option value="มอบหมายงาน">มอบหมายงาน</option>
-                            <option value="แจ้งเพื่อทราบ">แจ้งเพื่อทราบ</option>
-                            <option value="รายงาน">รายงาน</option>
-                            <option value="อื่น ๆ">อื่น ๆ</option>
+                            <option value="" selected disabled>
+                                เลือกประเภทเอกสาร...
+                            </option>
+                            <option value="ประชาสัมพันธ์">เอกสารประชาสัมพันธ์</option>
+                            <option value="ขออนุมัติ">เอกสารขออนุมัติ</option>
+                            <option value="มอบหมายงาน">เอกสารมอบหมายงาน</option>
+                            <option value="แจ้งเพื่อทราบ">เอกสารแจ้งเพื่อทราบ</option>
+                            <option value="รอการตอบกลับ">เอกสารรอการตอบกลับ</option>
+                            <option value="กำหนดการ/การนัดหมาย">เอกสารแจ้งกำหนดการ/การนัดหมาย</option>
+                            <option value="รายงานผล">เอกสารรายงานผล</option>
                         </select>
                     </div>
                 </div>
