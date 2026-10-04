@@ -16,7 +16,11 @@ const path = require("path");
 
 const PORT = Number(process.env.PORT || 3000);
 
-app.use(cors());
+app.use(cors({
+    origin: "http://localhost:3000", // ⚠️ เปลี่ยนให้ตรงกับ URL และ Port ของ Frontend ของคุณ
+    credentials: true
+}));
+
 
 // จำกัดขนาด Payload ไม่เกิน 1MB ป้องกัน DoS
 app.use(express.json({ limit: "1mb" }));
@@ -34,21 +38,16 @@ app.use(session({
 
 // requireAuth Middleware (Check if user is logged in)
 const requireAuth = (req, res, next) => {
-    if (!req.session.user) {
-        return res.status(401).json({ error: "Unauthorized. Please log in." });
-    }
+    // ปิดระบบ Login ชั่วคราว (Mock user session)
+    req.session.user = { id: 1, role: 'Admin', username: 'test_user' };
     next();
 };
 
 // requireRole Middleware (Authorization)
 const requireRole = (roles) => {
     return (req, res, next) => {
-        if (!req.session.user) {
-            return res.status(401).json({ error: "Unauthorized. Please log in." });
-        }
-        if (!roles.includes(req.session.user.role)) {
-            return res.status(403).json({ error: "Forbidden. You do not have permission." });
-        }
+        // ปิดระบบ Login ชั่วคราว (Mock user session)
+        req.session.user = { id: 1, role: 'Admin', username: 'test_user' };
         next();
     };
 };
@@ -113,8 +112,8 @@ app.post("/api/login", async (req, res) => {
 
         const user = rows[0];
         // Supports both bcrypt and plain text passwords for migration compatibility
-        const isMatch = password.length > 0 && user.password.startsWith('$2b$') 
-            ? await bcrypt.compare(password, user.password) 
+        const isMatch = password.length > 0 && user.password.startsWith('$2b$')
+            ? await bcrypt.compare(password, user.password)
             : (password === user.password);
 
         if (!isMatch) {
