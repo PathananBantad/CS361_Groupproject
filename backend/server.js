@@ -3,6 +3,9 @@ const cors = require("cors");
 const pool = require("./db");
 require("dotenv").config();
 
+const session = require("express-session");
+const bcrypt = require("bcrypt");
+
 const {
     createUploadUrl,
     createDownloadUrl
@@ -17,6 +20,38 @@ app.use(cors());
 
 // จำกัดขนาด Payload ไม่เกิน 1MB ป้องกัน DoS
 app.use(express.json({ limit: "1mb" }));
+
+// Setup session middleware
+app.use(session({
+    secret: process.env.SESSION_SECRET || "supersecretkey",
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+        secure: false, // Set to true if using HTTPS in production
+        maxAge: 1000 * 60 * 60 * 24 // 1 day
+    }
+}));
+
+// requireAuth Middleware (Check if user is logged in)
+const requireAuth = (req, res, next) => {
+    if (!req.session.user) {
+        return res.status(401).json({ error: "Unauthorized. Please log in." });
+    }
+    next();
+};
+
+// requireRole Middleware (Authorization)
+const requireRole = (roles) => {
+    return (req, res, next) => {
+        if (!req.session.user) {
+            return res.status(401).json({ error: "Unauthorized. Please log in." });
+        }
+        if (!roles.includes(req.session.user.role)) {
+            return res.status(403).json({ error: "Forbidden. You do not have permission." });
+        }
+        next();
+    };
+};
 
 // Helper ฟังก์ชันป้องกัน XSS
 function sanitizeInput(str) {
@@ -63,6 +98,55 @@ app.get("/api/health", async (req, res) => {
 });
 
 
+// Login API
+app.post("/api/login", async (req, res) => {
+    try {
+        const { username, password } = req.body;
+        if (!username || !password) {
+            return res.status(400).json({ error: "Username and password are required" });
+        }
+
+        const [rows] = await pool.query("SELECT * FROM users WHERE username = ?", [username]);
+        if (rows.length === 0) {
+            return res.status(401).json({ error: "Invalid username or password" });
+        }
+
+        const user = rows[0];
+        // Supports both bcrypt and plain text passwords for migration compatibility
+        const isMatch = password.length > 0 && user.password.startsWith('$2b$') 
+            ? await bcrypt.compare(password, user.password) 
+            : (password === user.password);
+
+        if (!isMatch) {
+            return res.status(401).json({ error: "Invalid username or password" });
+        }
+
+        req.session.user = {
+            id: user.id,
+            username: user.username,
+            role: user.role
+        };
+
+        res.json({ message: "Login successful", user: req.session.user });
+
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: "Failed to log in" });
+    }
+});
+
+// Logout API
+app.post("/api/logout", (req, res) => {
+    req.session.destroy();
+    res.json({ message: "Logged out successfully" });
+});
+
+// Get current logged-in user
+app.get("/api/me", requireAuth, (req, res) => {
+    res.json({ user: req.session.user });
+});
+
+
 // เพิ่ม get documents API ที่สามารถค้นหาและกรองเอกสารได้ตามเงื่อนไขที่กำหนด
 app.get("/api/documents", async (req, res) => {
     try {
@@ -85,7 +169,6 @@ app.get("/api/documents", async (req, res) => {
     `;
 
         const params = [];
-
 
         // Search by reference number
         if (reference_no) {
@@ -306,9 +389,9 @@ app.post("/api/documents", async (req, res) => {
                 reference_no, document_number, subject, document_type,
                 sender_name, sender_department, sender_contact, receiver_name,
                 sent_date, receive_date, deadline, remarks,
-                receiving_channel, status, file_key
+                receiving_channel, status, file_key, owner_id
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `,
             [
                 reference_no || newRefNo,
@@ -325,7 +408,8 @@ app.post("/api/documents", async (req, res) => {
                 remarks || null,
                 receiving_channel || null,
                 status,
-                file_key
+                file_key,
+                req.session?.user?.id || null
             ]
         );
 
@@ -449,7 +533,7 @@ app.get("/api/receiving-channels", (req, res) => {
 
 
 // Create S3 upload URL
-app.get("/api/documents/:id/upload-url", async (req, res) => {
+app.get("/api/documents/:id/upload-url", requireAuth, async (req, res) => {
 
     try {
 
@@ -472,6 +556,13 @@ app.get("/api/documents/:id/upload-url", async (req, res) => {
         if (rows.length === 0) {
             return res.status(404).json({
                 error: "Document not found"
+            });
+        }
+
+        // จำกัด Upload - ตรวจสอบว่าผู้ใช้มีสิทธิ์หรือไม่ (เป็น Admin หรือเป็นเจ้าของเอกสาร)
+        if (req.session.user.role !== 'Admin' && req.session.user.role !== 'admin' && rows[0].owner_id !== req.session.user.id) {
+            return res.status(403).json({
+                error: "Forbidden. You do not have permission to upload to this document."
             });
         }
 
@@ -511,7 +602,7 @@ app.get("/api/documents/:id/upload-url", async (req, res) => {
 });
 
 // Create S3 download URL
-app.get("/api/documents/:id/download-url", async (req, res) => {
+app.get("/api/documents/:id/download-url", requireAuth, async (req, res) => {
 
     try {
 
@@ -519,13 +610,20 @@ app.get("/api/documents/:id/download-url", async (req, res) => {
 
         // Get document
         const [rows] = await pool.query(
-            "SELECT file_key FROM documents WHERE id = ?",
+            "SELECT file_key, owner_id FROM documents WHERE id = ?",
             [id]
         );
 
         if (rows.length === 0) {
             return res.status(404).json({
                 error: "Document not found"
+            });
+        }
+
+        // จำกัด Download - ตรวจสอบว่าผู้ใช้มีสิทธิ์หรือไม่
+        if (req.session.user.role !== 'Admin' && req.session.user.role !== 'admin' && rows[0].owner_id !== req.session.user.id) {
+            return res.status(403).json({
+                error: "Forbidden. You do not have permission to download this document."
             });
         }
 
