@@ -224,7 +224,12 @@ app.get("/api/documents", async (req, res) => {
         const { search, type, month } = req.query;
 
         if (search) {
-            sql += ` AND (reference_no LIKE ? OR sender_name LIKE ? OR receiver_name LIKE ?) `;
+            sql += ` AND (
+            sender_name LIKE ?
+            OR receiver_name LIKE ?
+            OR coordinator LIKE ?
+            OR document_number LIKE ?
+        ) `;
             const keyword = `%${search}%`;
             params.push(keyword, keyword, keyword);
         }
