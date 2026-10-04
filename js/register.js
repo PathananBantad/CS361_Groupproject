@@ -138,6 +138,7 @@ registerForm.addEventListener("submit", async (event) => {
         // 1. Save document to DB
         const response = await fetch("http://localhost:3000/api/documents", {
             method: "POST",
+            credentials: "include",
             headers: {
                 "Content-Type": "application/json"
             },
@@ -155,7 +156,9 @@ registerForm.addEventListener("submit", async (event) => {
         if (fileAttached) {
             
             // Get presigned URL
-            const s3UrlRes = await fetch(`http://localhost:3000/api/documents/${docData.id}/upload-url?fileName=${encodeURIComponent(file.name)}&contentType=${encodeURIComponent(file.type || 'application/octet-stream')}`);
+            const s3UrlRes = await fetch(`http://localhost:3000/api/documents/${docData.id}/upload-url?fileName=${encodeURIComponent(file.name)}&contentType=${encodeURIComponent(file.type || 'application/octet-stream')}`, {
+                credentials: "include"
+            });
             if (!s3UrlRes.ok) {
                 const errData = await s3UrlRes.json().catch(() => ({}));
                 throw new Error(errData.error || "Failed to get upload URL");

@@ -127,7 +127,7 @@ async function fetchDocuments() {
 
     try {
         const url = `http://localhost:3000/api/documents?${params.toString()}`;
-        const response = await fetch(url);
+        const response = await fetch(url, { credentials: "include" });
         if (!response.ok) throw new Error("Network response was not ok");
 
         const data = await response.json();
@@ -789,7 +789,7 @@ async function openDocument(id) {
     if (doc.file_key) {
 
         try {
-            const res = await fetch(`http://localhost:3000/api/documents/${id}/download-url`);
+            const res = await fetch(`http://localhost:3000/api/documents/${id}/download-url`, { credentials: "include" });
             if (res.ok) {
                 const data = await res.json();
                 if (data.download_url) {
