@@ -53,11 +53,8 @@ async function fetchDocuments() {
 
     try {
         const url =
-            `http://localhost:3000/api/documents?${params.toString()}`;
+            `https://utvhg6d6o3.execute-api.us-east-1.amazonaws.com/api/documents?${params.toString()}`;
 
-        const response = await fetch(url, {
-            credentials: "include"
-        });
 
         if (!response.ok) {
             throw new Error("ไม่สามารถโหลดข้อมูลเอกสารได้");
@@ -456,10 +453,8 @@ async function openDocument(id) {
     if (doc.file_key) {
         try {
             const response = await fetch(
-                `http://localhost:3000/api/documents/${id}/download-url`,
-                {
-                    credentials: "include"
-                }
+                `https://utvhg6d6o3.execute-api.us-east-1.amazonaws.com/api/documents/${id}/download-url`,
+  
             );
 
             if (!response.ok) {
@@ -517,10 +512,8 @@ async function openDocument(id) {
 async function downloadDocumentFile(documentId) {
     try {
         const response = await fetch(
-            `http://localhost:3000/api/documents/${documentId}/download-url`,
-            {
-                credentials: "include"
-            }
+            `https://utvhg6d6o3.execute-api.us-east-1.amazonaws.com/api/documents/${documentId}/download-url`,
+
         );
 
         if (!response.ok) {

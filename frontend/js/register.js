@@ -143,9 +143,8 @@ registerForm.addEventListener("submit", async (event) => {
         };
 
         // 1. Save document to DB
-        const response = await fetch("http://localhost:3000/api/documents", {
+        const response = await fetch("https://utvhg6d6o3.execute-api.us-east-1.amazonaws.com/api/documents", {
             method: "POST",
-            credentials: "include",
             headers: {
                 "Content-Type": "application/json"
             },
@@ -163,8 +162,7 @@ registerForm.addEventListener("submit", async (event) => {
         if (fileAttached) {
 
             // Get presigned URL
-            const s3UrlRes = await fetch(`http://localhost:3000/api/documents/${docData.id}/upload-url?fileName=${encodeURIComponent(file.name)}&contentType=${encodeURIComponent(file.type || 'application/octet-stream')}`, {
-                credentials: "include"
+            const s3UrlRes = await fetch(`https://utvhg6d6o3.execute-api.us-east-1.amazonaws.com/api/documents/${docData.id}/upload-url?fileName=${encodeURIComponent(file.name)}&contentType=${encodeURIComponent(file.type || 'application/octet-stream')}`, {
             });
 
             if (!s3UrlRes.ok) {
