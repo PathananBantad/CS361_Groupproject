@@ -36,16 +36,8 @@
                 หน้าหลัก
             </a>
         
-            <a href="documents.html">
-                การส่งเอกสาร
-            </a>
-        
             <a href="register.html">
                 ลงทะเบียนเอกสาร
-            </a>
-        
-            <a href="tracking.html">
-                คลังเอกสาร
             </a>
         
             <a href="guide.html">
@@ -84,26 +76,6 @@
             <button class="status-filter" data-filter="approval" role="tab">รอการอนุมัติ</button>
             <button class="status-filter" data-filter="completed" role="tab">เสร็จสิ้น</button>
             <button class="status-filter" data-filter="archived" role="tab">จัดเก็บแล้ว</button>
-
-            <!-- Advanced filters appended here -->
-            <select id="typeFilter" class="advanced-filter-input" aria-label="ประเภทเอกสาร">
-                <option value="all">ประเภทเอกสาร: ทั้งหมด</option>
-                <option value="ประชาสัมพันธ์">เอกสารประชาสัมพันธ์</option>
-                <option value="ขออนุมัติ">เอกสารขออนุมัติ</option>
-                <option value="มอบหมายงาน">เอกสารมอบหมายงาน</option>
-                <option value="แจ้งเพื่อทราบ">เอกสารแจ้งเพื่อทราบ</option>
-                <option value="รอการตอบกลับ">เอกสารรอการตอบกลับ</option>
-                <option value="กำหนดการ/การนัดหมาย">เอกสารแจ้งกำหนดการ/การนัดหมาย</option>
-                <option value="รายงานผล">เอกสารรายงานผล</option>
-            </select>
-            
-            <input type="date" id="dateFrom" class="advanced-filter-input" aria-label="ตั้งแต่วันที่" title="ตั้งแต่วันที่">
-            
-            <input type="date" id="dateTo" class="advanced-filter-input" aria-label="ถึงวันที่" title="ถึงวันที่">
-
-            <button id="clearFiltersBtn" type="button" class="advanced-filter-input" style="background: rgba(140, 91, 178, 0.1); color: var(--wine); font-weight: 600;">
-                ล้างตัวกรอง
-            </button>
         </div>
 
         <!-- Main registry -->
@@ -136,25 +108,6 @@
 
                 <div class="mobile-list" id="mobileList"></div>
             </div>
-
-            <aside class="detail-card" id="detailCard">
-                <div class="detail-heading">
-                    <div class="detail-heading-icon" aria-hidden="true">▤</div>
-                    <div>
-                        <h2>รายละเอียดเอกสาร</h2>
-                        <p>Document Details</p>
-                    </div>
-                </div>
-
-                <div id="detailContent" class="detail-empty">
-                    <div class="empty-document-icon" aria-hidden="true">▤</div>
-                    <p>เลือกเอกสารจากรายการเพื่อดูรายละเอียด</p>
-                    <div class="skeleton-line wide"></div>
-                    <div class="skeleton-line medium"></div>
-                    <div class="skeleton-line wide"></div>
-                    <div class="skeleton-line short"></div>
-                </div>
-            </aside>
         </section>
 
         <!-- Bottom legend -->

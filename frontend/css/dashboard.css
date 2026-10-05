@@ -108,19 +108,11 @@
 ========================= */
 
 .registry-layout {
-    display: grid;
-
-    grid-template-columns:
-        minmax(0, 1.85fr)
-        minmax(320px, .82fr);
-
-    gap: 34px;
-
-    align-items: stretch;
+    display: block;
+    width: 100%;
 }
 
-.registry-card,
-.detail-card {
+.registry-card {
     background: rgba(255, 253, 249, .95);
 
     border: 1px solid rgba(234, 216, 208, .7);
@@ -820,5 +812,23 @@
     .legend-item {
         padding: 6px 10px;
         font-size: 11px;
+    }
+
+    .file-actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        white-space: nowrap;
+    }
+    
+    .download-button {
+        border-color: var(--wine);
+        background: var(--wine);
+        color: white;
+    }
+    
+    .download-button:hover {
+        background: var(--wine-dark);
+        color: white;
     }
 }
