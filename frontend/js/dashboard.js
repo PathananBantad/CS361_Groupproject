@@ -55,6 +55,7 @@ async function fetchDocuments() {
         const url =
             `https://utvhg6d6o3.execute-api.us-east-1.amazonaws.com/api/documents?${params.toString()}`;
 
+        const response = await fetch(url); 
 
         if (!response.ok) {
             throw new Error("ไม่สามารถโหลดข้อมูลเอกสารได้");
@@ -241,60 +242,36 @@ function renderTable(list) {
     }
 
     tableBody.innerHTML = list.map(doc => `
-        <tr data-id="${doc.id}">
-
-            <td>
-                <div class="document-number">
-                    ${escapeHtml(doc.number)}
-                </div>
-            </td>
-
-            <td>
-                ${escapeHtml(doc.code)}
-            </td>
-
-            <td>
-                ${escapeHtml(doc.type)}
-            </td>
-
-            <td>
-                ${escapeHtml(doc.description)}
-            </td>
-
-            <td>
-                ${escapeHtml(doc.sender)}
-            </td>
-
-            <td>
-                <span class="status-badge ${doc.color}">
-                    ${escapeHtml(doc.statusLabel)}
-                </span>
-            </td>
-
-            <td>
-                <div class="file-actions">
-
-                    <button
-                        class="file-button"
-                        data-open="${doc.id}"
-                        type="button"
-                    >
-                        ▤ เปิดไฟล์
-                    </button>
-
-                    <button
-                        class="file-button download-button"
-                        data-download="${doc.id}"
-                        type="button"
-                    >
-                        ↓ ดาวน์โหลด
-                    </button>
-
-                </div>
-            </td>
-
-        </tr>
-    `).join("");
+    <tr data-id="${doc.id}">
+        <td>
+            <div class="doc-number">
+                ${escapeHtml(doc.number)}
+                <span class="doc-code">${escapeHtml(doc.code)}</span>
+            </div>
+        </td>
+        <td>
+            <div class="type-name">${escapeHtml(doc.type)}</div>
+            <span class="type-desc">${escapeHtml(doc.description)}</span>
+        </td>
+        <td class="person-cell">${escapeHtml(doc.sender)}</td>
+        <td class="person-cell">${escapeHtml(doc.receiver)}</td>
+        <td>
+            <span class="status-badge status-${doc.statusKey}">
+                ${escapeHtml(doc.statusLabel)}
+            </span>
+        </td>
+        <td class="received">
+            <strong>${escapeHtml(doc.receivedDate)}</strong>
+            <span>${escapeHtml(doc.receivedTime)}</span>
+        </td>
+        <td>
+            <div class="file-actions">
+                <button class="file-button" data-open="${doc.id}" type="button">▤ เปิดไฟล์</button>
+                <button class="file-button download-button" data-download="${doc.id}" type="button">↓ ดาวน์โหลด</button>
+            </div>
+        </td>
+    </tr>
+`).join("");
 
     // Open file
     tableBody
