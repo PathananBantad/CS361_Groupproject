@@ -1,7 +1,8 @@
+require("dotenv").config();
+
 const express = require("express");
 const cors = require("cors");
 const pool = require("./db");
-require("dotenv").config();
 
 const session = require("express-session");
 const bcrypt = require("bcrypt");
@@ -38,16 +39,12 @@ app.use(session({
 
 // requireAuth Middleware (Check if user is logged in)
 const requireAuth = (req, res, next) => {
-    // ปิดระบบ Login ชั่วคราว (Mock user session)
-    req.session.user = { id: 1, role: 'Admin', username: 'test_user' };
     next();
 };
 
 // requireRole Middleware (Authorization)
 const requireRole = (roles) => {
     return (req, res, next) => {
-        // ปิดระบบ Login ชั่วคราว (Mock user session)
-        req.session.user = { id: 1, role: 'Admin', username: 'test_user' };
         next();
     };
 };
@@ -354,11 +351,11 @@ app.post("/api/documents", async (req, res) => {
         if (deadline && !isValidDate(deadline)) return res.status(400).json({ error: "deadline must be in YYYY-MM-DD format" });
 
         // 4. ล้างข้อมูลป้องกัน XSS (Sanitize HTML tags)
-        subject = sanitizeInput(subject);
-        sender_name = sanitizeInput(sender_name);
-        sender_department = sanitizeInput(sender_department);
-        receiver_name = sanitizeInput(receiver_name);
-        remarks = sanitizeInput(remarks);
+        const sanitizedSubject = sanitizeInput(subject);
+        const sanitizedSenderName = sanitizeInput(sender_name);
+        const sanitizedSenderDepartment = sanitizeInput(sender_department);
+        const sanitizedReceiverName = sanitizeInput(receiver_name);
+        const sanitizedRemarks = sanitizeInput(remarks);
 
         // ตรวจสอบ Status
         const allowedStatuses = ["Received", "Assigned", "Processing", "Completed"];
@@ -406,17 +403,17 @@ app.post("/api/documents", async (req, res) => {
             [
                 reference_no || newRefNo,
                 document_number || null,
-                subject,
+                sanitizedSubject,
                 document_type,
-                sender_name,
-                sender_department || null,
+                sanitizedSenderName,
+                sanitizedSenderDepartment || null,
                 sender_contact || null,
-                receiver_name || null,
+                sanitizedReceiverName || null,
                 sent_date || null,
                 receive_date || null,
                 deadline || null,
-                remarks || null,
-                receiving_channel || null,
+                sanitizedRemarks || null,
+                receiving_channel,
                 status,
                 file_key,
                 req.session?.user?.id || null
@@ -543,8 +540,7 @@ app.get("/api/receiving-channels", (req, res) => {
 
 
 // Create S3 upload URL
-app.get("/api/documents/:id/upload-url", requireAuth, async (req, res) => {
-
+app.get("/api/documents/:id/upload-url", async (req, res) => {
     try {
 
         const { id } = req.params;
@@ -554,6 +550,51 @@ app.get("/api/documents/:id/upload-url", requireAuth, async (req, res) => {
         if (!fileName || !contentType) {
             return res.status(400).json({
                 error: "fileName and contentType are required"
+            });
+        }
+
+        // Allowed file types
+        const allowedTypes = {
+            ".pdf": "application/pdf",
+            ".jpg": "image/jpeg",
+            ".jpeg": "image/jpeg",
+            ".png": "image/png",
+            ".doc": "application/msword",
+            ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        };
+
+        // Get file extension
+        const extension = path.extname(fileName).toLowerCase();
+
+        // Check file type
+        if (!allowedTypes[extension]) {
+            return res.status(400).json({
+                error: "Unsupported file type. Allowed: PDF, JPG, JPEG, PNG, DOC, DOCX"
+            });
+        }
+
+        // Check MIME type matches extension
+        if (allowedTypes[extension] !== contentType) {
+            return res.status(400).json({
+                error: "File extension and content type do not match"
+            });
+        }
+
+        // Prevent path traversal
+        if (fileName.includes("/") || fileName.includes("\\")) {
+            return res.status(400).json({
+                error: "Invalid file name"
+            });
+        }
+
+        // Remove control characters but keep Thai characters
+        const safeFileName = fileName
+            .replace(/[\u0000-\u001F\u007F]/g, "")
+            .trim();
+
+        if (!safeFileName) {
+            return res.status(400).json({
+                error: "Invalid file name"
             });
         }
 
@@ -569,15 +610,8 @@ app.get("/api/documents/:id/upload-url", requireAuth, async (req, res) => {
             });
         }
 
-        // จำกัด Upload - ตรวจสอบว่าผู้ใช้มีสิทธิ์หรือไม่ (เป็น Admin หรือเป็นเจ้าของเอกสาร)
-        if (req.session.user.role !== 'Admin' && req.session.user.role !== 'admin' && rows[0].owner_id !== req.session.user.id) {
-            return res.status(403).json({
-                error: "Forbidden. You do not have permission to upload to this document."
-            });
-        }
-
         // Create unique file key
-        const fileKey = `documents/${id}/${Date.now()}-${fileName}`;
+        const fileKey = `documents/${id}/${Date.now()}-${safeFileName}`;
 
         // Generate presigned upload URL
         const uploadUrl = await createUploadUrl(
@@ -589,12 +623,13 @@ app.get("/api/documents/:id/upload-url", requireAuth, async (req, res) => {
         // Save file reference to database
         await pool.query(
             `
-             UPDATE documents
-              SET file_key = ?
-             WHERE id = ?
-    `,
+            UPDATE documents
+            SET file_key = ?
+            WHERE id = ?
+            `,
             [fileKey, id]
         );
+
         res.json({
             document_id: id,
             file_key: fileKey,
@@ -611,10 +646,8 @@ app.get("/api/documents/:id/upload-url", requireAuth, async (req, res) => {
         });
     }
 });
-
 // Create S3 download URL
-app.get("/api/documents/:id/download-url", requireAuth, async (req, res) => {
-
+app.get("/api/documents/:id/download-url", async (req, res) => {
     try {
 
         const { id } = req.params;
@@ -628,13 +661,6 @@ app.get("/api/documents/:id/download-url", requireAuth, async (req, res) => {
         if (rows.length === 0) {
             return res.status(404).json({
                 error: "Document not found"
-            });
-        }
-
-        // จำกัด Download - ตรวจสอบว่าผู้ใช้มีสิทธิ์หรือไม่
-        if (req.session.user.role !== 'Admin' && req.session.user.role !== 'admin' && rows[0].owner_id !== req.session.user.id) {
-            return res.status(403).json({
-                error: "Forbidden. You do not have permission to download this document."
             });
         }
 
