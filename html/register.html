@@ -244,12 +244,29 @@
 
                 <!-- แนบไฟล์เอกสาร -->
                 <div class="field">
-                    <label for="file">แนบไฟล์เอกสาร <span style="color: red;">*</span></label>
-                    <label class="upload-box" for="file">
-                        <span class="upload-icon">♧</span>
-                        <span id="fileText">เลือกไฟล์ หรือลากไฟล์มาวางที่นี่...</span>
-                        <input id="file" name="file" type="file" required>
+                    <label for="file">
+                        แนบไฟล์เอกสาร <span style="color: red;">*</span>
                     </label>
+
+                    <label class="upload-box" for="file">
+                         <span class="upload-icon">♧</span>
+
+                        <span id="fileText">
+                            เลือกไฟล์ หรือลากไฟล์มาวางที่นี่...
+                        </span>
+
+                        <input
+                            id="file"
+                            name="file"
+                            type="file"
+                            accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
+                            required
+                        >
+                    </label>
+
+                    <small class="file-hint">
+                        รองรับไฟล์ PDF, JPG, PNG, DOC และ DOCX ขนาดไม่เกิน 10 MB
+                    </small>
                 </div>
 
                 <!-- Submit -->
