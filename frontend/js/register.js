@@ -41,10 +41,61 @@ fileInput.addEventListener("change", () => {
 
 uploadBox.addEventListener("drop", (event) => {
     const files = event.dataTransfer.files;
-    if (files.length > 0) {
-        fileInput.files = files;
-        fileText.textContent = files[0].name;
+
+    if (files.length === 0) return;
+
+    const file = files[0];
+
+    const allowedExtensions = [
+        ".pdf",
+        ".jpg",
+        ".jpeg",
+        ".png",
+        ".doc",
+        ".docx"
+    ];
+
+    const allowedTypes = [
+        "application/pdf",
+        "image/jpeg",
+        "image/png",
+        "application/msword",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    ];
+
+    const extension = file.name
+        .substring(file.name.lastIndexOf("."))
+        .toLowerCase();
+
+    const maxFileSize = 10 * 1024 * 1024;
+
+    // ตรวจประเภทไฟล์
+    if (
+        !allowedExtensions.includes(extension) ||
+        !allowedTypes.includes(file.type)
+    ) {
+        alert(
+            "ไม่รองรับไฟล์ประเภทนี้\n\n" +
+            "รองรับเฉพาะ PDF, JPG, JPEG, PNG, DOC และ DOCX เท่านั้น"
+        );
+
+        fileInput.value = "";
+        fileText.textContent = "เลือกไฟล์ หรือลากไฟล์มาวางที่นี่...";
+        return;
     }
+
+    // ตรวจขนาด
+    if (file.size > maxFileSize) {
+        alert("ไฟล์มีขนาดเกิน 10 MB");
+
+        fileInput.value = "";
+        fileText.textContent = "เลือกไฟล์ หรือลากไฟล์มาวางที่นี่...";
+        return;
+    }
+
+    // ผ่าน validation แล้วค่อยใส่ไฟล์
+    fileInput.files = files;
+    fileText.textContent = file.name;
 });
 
 /* =====================================================
@@ -57,7 +108,7 @@ registerForm.addEventListener("submit", async (event) => {
     // 1. ป้องกันการกด Submit ซ้ำ
     if (submitBtn.disabled) return;
 
-    // 2. ดึงค่าจากฟิลด์ต่างๆ (เฉพาะที่ Required)
+    // 2. ดึงค่าจากฟิลด์ต่างๆ
     const receiveChannel = document.getElementById("receiveChannel").value;
     const documentType = document.getElementById("documentType").value;
     const docNo = document.getElementById("docNo").value.trim();
@@ -70,23 +121,28 @@ registerForm.addEventListener("submit", async (event) => {
     const receiveDate = document.getElementById("receiveDate").value;
     const deadline = document.getElementById("deadline").value;
     const remarks = document.getElementById("remarks").value.trim();
-    const fileAttached = fileInput.files.length > 0;
 
-    const allowedChannels = ["EMAIL", "PAPER"];
-
-    if (!allowedChannels.includes(receiveChannel)) {
-        alert("กรุณาเลือกช่องทางรับเอกสารเป็น EMAIL หรือ PAPER");
-        return;
-    }
+    // =====================================================
+    // FILE VALIDATION
+    // =====================================================
 
     const file = fileInput.files[0];
 
-    const fileName = file.name.trim();
-
-    if (!fileName) {
-        alert("ไม่พบชื่อไฟล์ กรุณาเลือกไฟล์ใหม่");
+    // ต้องแนบไฟล์ก่อน
+    if (!file) {
+        alert("กรุณาแนบไฟล์เอกสาร");
         return;
     }
+
+    // ประเภทไฟล์ที่อนุญาต
+    const allowedExtensions = [
+        ".pdf",
+        ".jpg",
+        ".jpeg",
+        ".png",
+        ".doc",
+        ".docx"
+    ];
 
     const allowedTypes = [
         "application/pdf",
@@ -98,20 +154,88 @@ registerForm.addEventListener("submit", async (event) => {
 
     const maxFileSize = 10 * 1024 * 1024; // 10 MB
 
-    if (!fileAttached) {
-        alert("กรุณาแนบไฟล์เอกสาร");
+    // เอานามสกุลไฟล์ออกมา
+    const fileName = file.name.trim();
+    const extension = fileName
+        .substring(fileName.lastIndexOf("."))
+        .toLowerCase();
+
+    // ตรวจชื่อไฟล์
+    if (!fileName) {
+        alert("ไม่พบชื่อไฟล์ กรุณาเลือกไฟล์ใหม่");
+        fileInput.value = "";
+        fileText.textContent = "เลือกไฟล์ หรือลากไฟล์มาวางที่นี่...";
         return;
     }
 
+    // ตรวจนามสกุลไฟล์
+    if (!allowedExtensions.includes(extension)) {
+        alert(
+            "ไม่รองรับไฟล์ประเภทนี้\n\n" +
+            "รองรับเฉพาะ PDF, JPG, JPEG, PNG, DOC และ DOCX เท่านั้น"
+        );
+
+        fileInput.value = "";
+        fileText.textContent = "เลือกไฟล์ หรือลากไฟล์มาวางที่นี่...";
+        return;
+    }
+
+    // ตรวจ MIME Type
     if (!allowedTypes.includes(file.type)) {
-        alert("ไม่รองรับไฟล์ประเภทนี้ กรุณาเลือก PDF, JPG, PNG, DOC หรือ DOCX");
+        alert(
+            "ไฟล์นี้ไม่ใช่ประเภทไฟล์ที่ระบบรองรับ\n\n" +
+            "กรุณาเลือก PDF, JPG, JPEG, PNG, DOC หรือ DOCX"
+        );
+
+        fileInput.value = "";
+        fileText.textContent = "เลือกไฟล์ หรือลากไฟล์มาวางที่นี่...";
         return;
     }
 
+    // ตรวจขนาดไฟล์
     if (file.size > maxFileSize) {
         alert("ไฟล์มีขนาดเกิน 10 MB");
+
+        fileInput.value = "";
+        fileText.textContent = "เลือกไฟล์ หรือลากไฟล์มาวางที่นี่...";
         return;
     }
+
+    // =====================================================
+    // OTHER VALIDATION
+    // =====================================================
+
+    const allowedChannels = ["EMAIL", "PAPER"];
+
+    if (!allowedChannels.includes(receiveChannel)) {
+        alert("กรุณาเลือกช่องทางรับเอกสารเป็น EMAIL หรือ PAPER");
+        return;
+    }
+
+    if (
+        !receiveChannel ||
+        !documentType ||
+        !docNo ||
+        !subject ||
+        !senderDept ||
+        !senderName ||
+        !senderContact ||
+        !recipient ||
+        !sendDate ||
+        !receiveDate
+    ) {
+        alert("กรุณากรอกข้อมูลที่จำเป็น (*) ให้ครบถ้วน");
+        return;
+    }
+
+    // =====================================================
+    // SUBMIT
+    // =====================================================
+
+    submitBtn.disabled = true;
+    submitBtn.style.opacity = "0.7";
+    submitBtn.style.cursor = "not-allowed";
+    submitText.textContent = "กำลังบันทึกข้อมูล...";
 
     // 3. ตรวจสอบข้อมูลก่อน Submit (Validation)
     if (!receiveChannel || !documentType || !docNo || !subject || !senderDept || !senderName || !senderContact || !recipient || !sendDate || !receiveDate || !fileAttached) {
