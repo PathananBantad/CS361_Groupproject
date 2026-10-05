@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="th">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -7,11 +8,11 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link
-    href="https://fonts.googleapis.com/css2?family=Bai+Jamjuree:wght@300;400;500;600;700&family=Playfair+Display:wght@400;500;600;700&display=swap"
-    rel="stylesheet">    
+        href="https://fonts.googleapis.com/css2?family=Bai+Jamjuree:wght@300;400;500;600;700&family=Playfair+Display:wght@400;500;600;700&display=swap"
+        rel="stylesheet">
     <link
-    href="https://fonts.googleapis.com/css2?family=Anuphan:wght@300;400;500;600;700;800&family=Playfair+Display:wght@400;500;600;700&display=swap"
-    rel="stylesheet">
+        href="https://fonts.googleapis.com/css2?family=Anuphan:wght@300;400;500;600;700;800&family=Playfair+Display:wght@400;500;600;700&display=swap"
+        rel="stylesheet">
     <link rel="stylesheet" href="../css/common.css">
     <link rel="stylesheet" href="../css/dashboard.css">
 </head>
@@ -35,15 +36,15 @@
             <a href="dashboard.html" class="active">
                 หน้าหลัก
             </a>
-        
+
             <a href="register.html">
                 ลงทะเบียนเอกสาร
             </a>
-        
+
             <a href="guide.html">
                 คู่มือ
             </a>
-        
+
         </nav>
 
         <div class="top-actions">
@@ -76,6 +77,24 @@
             <button class="status-filter" data-filter="approval" role="tab">รอการอนุมัติ</button>
             <button class="status-filter" data-filter="completed" role="tab">เสร็จสิ้น</button>
             <button class="status-filter" data-filter="archived" role="tab">จัดเก็บแล้ว</button>
+
+            <select id="typeFilter" class="advanced-filter-input" aria-label="ประเภทเอกสาร">
+                <option value="">ประเภทเอกสาร</option>
+                <option value="เอกสารประชาสัมพันธ์">เอกสารประชาสัมพันธ์</option>
+                <option value="เอกสารขออนุมัติ">เอกสารขออนุมัติ</option>
+                <option value="เอกสารมอบหมายงาน">เอกสารมอบหมายงาน</option>
+                <option value="เอกสารแจ้งเพื่อทราบ">เอกสารแจ้งเพื่อทราบ</option>
+                <option value="เอกสารรอการตอบกลับ">เอกสารรอการตอบกลับ</option>
+                <option value="เอกสารแจ้งกำหนดการ/การนัดหมาย">เอกสารแจ้งกำหนดการ/การนัดหมาย</option>
+                <option value="เอกสารรายงานผล">เอกสารรายงานผล</option>
+            </select>
+            <input type="date" id="dateStartFilter" class="advanced-filter-input" aria-label="วันที่เริ่มต้น"
+                title="วันที่เริ่มต้น">
+            <span style="align-self: center; color: #572435;">-</span>
+            <input type="date" id="dateEndFilter" class="advanced-filter-input" aria-label="วันที่สิ้นสุด"
+                title="วันที่สิ้นสุด">
+            <button id="clearFiltersBtn" class="status-filter"
+                style="background: transparent; color: #9f5265; border-color: #9f5265;">ล้าง Filter</button>
         </div>
 
         <!-- Main registry -->
@@ -114,7 +133,8 @@
         <div class="status-legend" aria-label="คำอธิบายสถานะ">
             <button class="legend-item active" data-filter="all"><i class="dot dot-all"></i>ทั้งหมด</button>
             <button class="legend-item" data-filter="waiting"><i class="dot dot-waiting"></i>รอดำเนินการ</button>
-            <button class="legend-item" data-filter="processing"><i class="dot dot-processing"></i>กำลังดำเนินการ</button>
+            <button class="legend-item" data-filter="processing"><i
+                    class="dot dot-processing"></i>กำลังดำเนินการ</button>
             <button class="legend-item" data-filter="approval"><i class="dot dot-approval"></i>รอการอนุมัติ</button>
             <button class="legend-item" data-filter="completed"><i class="dot dot-completed"></i>เสร็จสิ้น</button>
             <button class="legend-item" data-filter="archived"><i class="dot dot-archived"></i>จัดเก็บแล้ว</button>
@@ -123,4 +143,5 @@
 
     <script src="../js/dashboard.js"></script>
 </body>
+
 </html>
