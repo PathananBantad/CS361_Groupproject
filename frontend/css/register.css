@@ -142,10 +142,10 @@
 
     display: flex;
     align-items: center;
-
+    justify-content: center;    
     gap: 15px;
 
-    padding: 0 28px;
+    padding: 0 20px;
 
     border: 1.5px solid var(--line);
     border-radius: 13px;
@@ -156,6 +156,7 @@
     cursor: pointer;
 
     font-size: 15px;
+    line-height: 55px;
 
     transition: .2s ease;
 }
