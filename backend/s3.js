@@ -24,23 +24,27 @@ const bucketName = process.env.AWS_S3_BUCKET;
 // Create upload URL
 async function createUploadUrl(fileKey, contentType) {
 
-    const command = new GetObjectCommand({
-    Bucket: bucketName,
-    Key: fileKey,
-    ResponseContentType: "application/pdf",
-    ResponseContentDisposition: "inline"
-});
+    const command = new PutObjectCommand({
+        Bucket: bucketName,
+        Key: fileKey,
+        ContentType: contentType
+    });
+
+    return await getSignedUrl(s3, command, {
+        expiresIn: 300
+    });
 }
+
 
 // Create download URL
 async function createDownloadUrl(fileKey) {
 
     const command = new GetObjectCommand({
-    Bucket: bucketName,
-    Key: fileKey,
-    ResponseContentType: "application/pdf",
-    ResponseContentDisposition: "inline"
-});
+        Bucket: bucketName,
+        Key: fileKey,
+        ResponseContentType: "application/pdf",
+        ResponseContentDisposition: "inline"
+    });
 
     return await getSignedUrl(s3, command, {
         expiresIn: 300

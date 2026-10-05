@@ -223,8 +223,8 @@ app.get("/api/documents", async (req, res) => {
 
         const { search, type, month } = req.query;
 
-       if (search) {
-    sql += `
+        if (search) {
+            sql += `
         AND (
             sender_name LIKE ?
             OR receiver_name LIKE ?
@@ -232,14 +232,14 @@ app.get("/api/documents", async (req, res) => {
         )
     `;
 
-    const keyword = `%${search}%`;
+            const keyword = `%${search}%`;
 
-    params.push(
-        keyword,
-        keyword,
-        keyword
-    );
-}
+            params.push(
+                keyword,
+                keyword,
+                keyword
+            );
+        }
         if (type) {
             sql += " AND document_type = ?";
             params.push(type);
@@ -584,6 +584,7 @@ app.get("/api/documents/:id/upload-url", requireAuth, async (req, res) => {
             fileKey,
             contentType
         );
+
 
         // Save file reference to database
         await pool.query(
