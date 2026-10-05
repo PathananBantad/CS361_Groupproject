@@ -1,168 +1,129 @@
-/* =====================================================
-   SIDEBAR
-===================================================== */
-
-function toggleMenu() {
-
-    const sidebar = document.getElementById("sidebar");
-
-    if (sidebar) {
-        sidebar.classList.toggle("active");
-    }
-
-}
-
-
-document.addEventListener("click", function (e) {
-
-    const link = e.target.closest(".sidebar a");
-
-    if (link) {
-        window.location.href = link.href;
-    }
-
-});
-
-
-/* =====================================================
-   DOCUMENT DASHBOARD
-===================================================== */
-
 const tableBody = document.getElementById("documentTableBody");
 const mobileList = document.getElementById("mobileList");
 const globalSearch = document.getElementById("globalSearch");
 const shownCount = document.getElementById("shownCount");
-const detailContent = document.getElementById("detailContent");
-
-// New advanced filters
-const typeFilter = document.getElementById("typeFilter");
-const dateFrom = document.getElementById("dateFrom");
-const dateTo = document.getElementById("dateTo");
-const clearFiltersBtn = document.getElementById("clearFiltersBtn");
 
 let documents = [];
 let currentFilters = new Set(["all"]);
-let selectedId = null;
 let sortKey = null;
 let sortDirection = 1;
 
 
-/* =====================================================
-   STATUS
-===================================================== */
-
-const statusMap = {
-
-    waiting: {
-        label: "Received",
-        className: "status-waiting"
-    },
-
-    processing: {
-        label: "Processing",
-        className: "status-processing"
-    },
-
-    approval: {
-        label: "Pending Approval",
-        className: "status-approval"
-    },
-
-    completed: {
-        label: "Completed",
-        className: "status-completed"
-    },
-
-    archived: {
-        label: "Archived",
-        className: "status-archived"
-    }
-
-};
-
-
-/* =====================================================
-   TYPE ICON
-===================================================== */
-
-const typeIcons = {
-
-    red: "⚑",
-    orange: "▤",
-    purple: "♟",
-    green: "♟",
-    blue: "▣"
-
-};
-
-
-/* =====================================================
-   LOAD DATA
-===================================================== */
+/* =========================
+   FETCH DOCUMENTS
+========================= */
 
 async function fetchDocuments() {
-    const keyword = globalSearch ? globalSearch.value.trim() : "";
-    const selectedType = typeFilter ? typeFilter.value : "all";
-    const dFrom = dateFrom ? dateFrom.value : "";
-    const dTo = dateTo ? dateTo.value : "";
+    const keyword = globalSearch
+        ? globalSearch.value.trim()
+        : "";
 
     const params = new URLSearchParams();
-    if (keyword) params.append("search", keyword);
-    if (selectedType !== "all") params.append("document_type", selectedType);
 
+    if (keyword) {
+        params.append("search", keyword);
+    }
+
+    // Status filters
     if (!currentFilters.has("all")) {
-        currentFilters.forEach(f => {
+        currentFilters.forEach(filter => {
             let statusParam = "";
-            if (f === "waiting") statusParam = "Received";
-            else if (f === "processing") statusParam = "Processing";
-            else if (f === "approval") statusParam = "Assigned";
-            else if (f === "completed") statusParam = "Completed";
-            else if (f === "archived") statusParam = "Archived";
 
-            if (statusParam) params.append("status", statusParam);
+            if (filter === "waiting") {
+                statusParam = "Received";
+            } 
+            else if (filter === "processing") {
+                statusParam = "Processing";
+            } 
+            else if (filter === "approval") {
+                statusParam = "Assigned";
+            } 
+            else if (filter === "completed") {
+                statusParam = "Completed";
+            } 
+            else if (filter === "archived") {
+                statusParam = "Archived";
+            }
+
+            if (statusParam) {
+                params.append("status", statusParam);
+            }
         });
     }
-    if (dFrom) params.append("from_date", dFrom);
-    if (dTo) params.append("to_date", dTo);
 
     try {
-        const url = `http://localhost:3000/api/documents?${params.toString()}`;
-        const response = await fetch(url, { credentials: "include" });
-        if (!response.ok) throw new Error("Network response was not ok");
+        const url =
+            `http://localhost:3000/api/documents?${params.toString()}`;
+
+        const response = await fetch(url, {
+            credentials: "include"
+        });
+
+        if (!response.ok) {
+            throw new Error("ไม่สามารถโหลดข้อมูลเอกสารได้");
+        }
 
         const data = await response.json();
 
-        documents = (data.data || []).map(row => {
+        const rows = Array.isArray(data)
+            ? data
+            : (data.documents || data.data || []);
+
+        documents = rows.map(row => {
+            const status = row.status || "";
+
             let statusKey = "waiting";
-            if (row.status === "Processing") statusKey = "processing";
-            if (row.status === "Assigned") statusKey = "approval";
-            if (row.status === "Completed") statusKey = "completed";
+            let color = "default";
 
-            let rDate = "";
-            let rTime = "";
-            if (row.receive_date) {
-                const d = new Date(row.receive_date);
-                rDate = d.toLocaleDateString('th-TH', { year: 'numeric', month: 'short', day: 'numeric' });
+            if (
+                status === "Processing" ||
+                status === "กำลังดำเนินการ"
+            ) {
+                statusKey = "processing";
+                color = "blue";
             }
-            if (row.created_at) {
-                const d = new Date(row.created_at);
-                rTime = d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
+            else if (
+                status === "Assigned" ||
+                status === "รอการอนุมัติ"
+            ) {
+                statusKey = "approval";
+                color = "orange";
+            }
+            else if (
+                status === "Completed" ||
+                status === "เสร็จสิ้น"
+            ) {
+                statusKey = "completed";
+                color = "green";
+            }
+            else if (
+                status === "Archived" ||
+                status === "จัดเก็บแล้ว"
+            ) {
+                statusKey = "archived";
+                color = "gray";
             }
 
-            const colors = {
-                "ประชาสัมพันธ์": "red",
-                "ขออนุมัติ": "orange",
-                "มอบหมายงาน": "purple",
-                "แจ้งเพื่อทราบ": "green",
-                "รอการตอบกลับ": "blue",
-                "กำหนดการ/การนัดหมาย": "purple",
-                "รายงานผล": "green"
-            };
-            let color = "red";
-            for (const [key, val] of Object.entries(colors)) {
-                if (row.document_type && row.document_type.includes(key)) {
-                    color = val;
-                    break;
+            const dateValue =
+                row.received_at ||
+                row.created_at ||
+                row.updated_at;
+
+            let receivedDate = "-";
+            let receivedTime = "-";
+
+            if (dateValue) {
+                const date = new Date(dateValue);
+
+                if (!isNaN(date.getTime())) {
+                    receivedDate = date.toLocaleDateString("th-TH");
+                    receivedTime = date.toLocaleTimeString(
+                        "th-TH",
+                        {
+                            hour: "2-digit",
+                            minute: "2-digit"
+                        }
+                    );
                 }
             }
 
@@ -171,13 +132,16 @@ async function fetchDocuments() {
                 number: row.document_number || "-",
                 code: row.reference_no || "-",
                 type: row.document_type || "-",
-                description: row.subject || row.remarks || "-",
+                description:
+                    row.subject ||
+                    row.remarks ||
+                    "-",
                 sender: row.sender_name || "-",
                 receiver: row.receiver_name || "-",
                 statusKey: statusKey,
-                statusLabel: row.status,
-                receivedDate: rDate,
-                receivedTime: rTime,
+                statusLabel: row.status || "-",
+                receivedDate: receivedDate,
+                receivedTime: receivedTime,
                 color: color,
                 file_key: row.file_key || null,
                 path: null
@@ -187,201 +151,131 @@ async function fetchDocuments() {
         render();
 
     } catch (error) {
-        console.error(error);
+        console.error("Fetch documents error:", error);
+
         if (tableBody) {
-            tableBody.innerHTML = `<tr><td colspan="7" class="empty-table">ไม่สามารถโหลดข้อมูลเอกสารได้</td></tr>`;
+            tableBody.innerHTML = `
+                <tr>
+                    <td colspan="7" class="empty-state">
+                        ไม่สามารถโหลดข้อมูลเอกสารได้
+                    </td>
+                </tr>
+            `;
         }
-        if (mobileList) mobileList.innerHTML = "";
-        if (shownCount) shownCount.textContent = "0";
+
+        if (mobileList) {
+            mobileList.innerHTML = `
+                <div class="empty-state">
+                    ไม่สามารถโหลดข้อมูลเอกสารได้
+                </div>
+            `;
+        }
     }
 }
 
-async function init() {
-    await fetchDocuments();
-}
 
-
-/* =====================================================
-   FILTER + SEARCH + SORT
-===================================================== */
-
-function getFilteredDocuments() {
-
-    let result = [...documents];
-
-    if (sortKey) {
-
-        result.sort((a, b) => {
-
-            const av = String(a[sortKey] ?? "");
-            const bv = String(b[sortKey] ?? "");
-
-            return av.localeCompare(
-                bv,
-                "th",
-                {
-                    numeric: true
-                }
-            ) * sortDirection;
-
-        });
-
-    }
-
-
-    return result;
-
-}
-
-
-/* =====================================================
+/* =========================
    RENDER
-===================================================== */
+========================= */
 
 function render() {
+    let result = [...documents];
 
-    const result = getFilteredDocuments();
+    // Search
+    const keyword = globalSearch
+        ? globalSearch.value.trim().toLowerCase()
+        : "";
+
+    if (keyword) {
+        result = result.filter(doc => {
+            return (
+                doc.number.toLowerCase().includes(keyword) ||
+                doc.code.toLowerCase().includes(keyword) ||
+                doc.type.toLowerCase().includes(keyword) ||
+                doc.description.toLowerCase().includes(keyword) ||
+                doc.sender.toLowerCase().includes(keyword) ||
+                doc.receiver.toLowerCase().includes(keyword)
+            );
+        });
+    }
+
+    // Local status filter
+    if (!currentFilters.has("all")) {
+        result = result.filter(doc =>
+            currentFilters.has(doc.statusKey)
+        );
+    }
+
+    // Sort
+    if (sortKey) {
+        result.sort((a, b) => {
+            const valueA = String(a[sortKey] || "").toLowerCase();
+            const valueB = String(b[sortKey] || "").toLowerCase();
+
+            return valueA.localeCompare(valueB) * sortDirection;
+        });
+    }
+
+    renderTable(result);
+    renderMobile(result);
 
     if (shownCount) {
         shownCount.textContent = result.length;
     }
-
-
-    if (
-        selectedId &&
-        !result.some(doc => doc.id === selectedId)
-    ) {
-
-        selectedId = null;
-        showEmptyDetail();
-
-    }
-
-
-    renderTable(result);
-    renderMobile(result);
-    syncFilterButtons();
-
 }
 
 
-/* =====================================================
+/* =========================
    TABLE
-===================================================== */
+========================= */
 
-function renderTable(result) {
-
+function renderTable(list) {
     if (!tableBody) return;
 
-
-    if (!result.length) {
-
+    if (!list.length) {
         tableBody.innerHTML = `
             <tr>
-                <td colspan="7" class="empty-table">
-                    ไม่พบเอกสารที่ตรงกับเงื่อนไข
+                <td colspan="7" class="empty-state">
+                    ไม่พบข้อมูลเอกสาร
                 </td>
             </tr>
         `;
-
         return;
-
     }
 
+    tableBody.innerHTML = list.map(doc => `
+        <tr data-id="${doc.id}">
 
-    tableBody.innerHTML = result.map(doc => {
+            <td>
+                <div class="document-number">
+                    ${escapeHtml(doc.number)}
+                </div>
+            </td>
 
-        const status =
-            statusMap[doc.statusKey] ||
-            statusMap.waiting;
+            <td>
+                ${escapeHtml(doc.code)}
+            </td>
 
+            <td>
+                ${escapeHtml(doc.type)}
+            </td>
 
-        return `
+            <td>
+                ${escapeHtml(doc.description)}
+            </td>
 
-            <tr
-                class="${selectedId === doc.id ? "selected" : ""}"
-                data-id="${doc.id}"
-            >
+            <td>
+                ${escapeHtml(doc.sender)}
+            </td>
 
-                <td>
+            <td>
+                <span class="status-badge ${doc.color}">
+                    ${escapeHtml(doc.statusLabel)}
+                </span>
+            </td>
 
-                    <div class="doc-number">
-                        ${escapeHtml(doc.number)}
-                    </div>
-
-                    <span class="doc-code">
-                        ${escapeHtml(doc.code)}
-                    </span>
-
-                </td>
-
-
-                <td>
-
-                    <div class="type-cell">
-
-                        <span
-                            class="type-icon ${doc.color || "red"}"
-                        >
-                            ${typeIcons[doc.color] || "▤"}
-                        </span>
-
-                        <div>
-
-                            <div class="type-name">
-                                ${escapeHtml(doc.type)}
-                            </div>
-
-                            <span class="type-desc">
-                                ${escapeHtml(doc.description || "")}
-                            </span>
-
-                        </div>
-
-                    </div>
-
-                </td>
-
-
-                <td class="person-cell">
-                    ${escapeHtml(doc.sender)}
-                </td>
-
-
-                <td class="person-cell">
-                    ${escapeHtml(doc.receiver)}
-                </td>
-
-
-                <td>
-
-                    <span
-                        class="status-badge ${status.className}"
-                    >
-                        ${status.label}
-                    </span>
-
-                </td>
-
-
-                <td>
-
-                    <div class="received">
-
-                        <strong>
-                            ${escapeHtml(doc.receivedDate)}
-                        </strong>
-
-                        <span>
-                            ${escapeHtml(doc.receivedTime)}
-                        </span>
-
-                    </div>
-
-                </td>
-
-
-                <td>
+            <td>
+                <div class="file-actions">
 
                     <button
                         class="file-button"
@@ -391,593 +285,423 @@ function renderTable(result) {
                         ▤ เปิดไฟล์
                     </button>
 
-                </td>
+                    <button
+                        class="file-button download-button"
+                        data-download="${doc.id}"
+                        type="button"
+                    >
+                        ↓ ดาวน์โหลด
+                    </button>
 
-            </tr>
+                </div>
+            </td>
 
-        `;
+        </tr>
+    `).join("");
 
-    }).join("");
-
-
-    tableBody
-        .querySelectorAll("tr[data-id]")
-        .forEach(row => {
-
-            row.addEventListener("click", event => {
-
-                if (event.target.closest("[data-open]")) {
-                    return;
-                }
-
-                selectDocument(row.dataset.id);
-
-            });
-
-        });
-
-
+    // Open file
     tableBody
         .querySelectorAll("[data-open]")
         .forEach(button => {
-
             button.addEventListener("click", event => {
-
                 event.stopPropagation();
 
-                openDocument(button.dataset.open);
-
+                openDocument(
+                    button.dataset.open
+                );
             });
-
         });
 
+    // Download file
+    tableBody
+        .querySelectorAll("[data-download]")
+        .forEach(button => {
+            button.addEventListener("click", event => {
+                event.stopPropagation();
+
+                downloadDocumentFile(
+                    button.dataset.download
+                );
+            });
+        });
 }
 
 
-/* =====================================================
+/* =========================
    MOBILE
-===================================================== */
+========================= */
 
-function renderMobile(result) {
-
+function renderMobile(list) {
     if (!mobileList) return;
 
-
-    if (!result.length) {
-
+    if (!list.length) {
         mobileList.innerHTML = `
-            <div class="empty-table">
-                ไม่พบเอกสารที่ตรงกับเงื่อนไข
+            <div class="empty-state">
+                ไม่พบข้อมูลเอกสาร
             </div>
         `;
-
         return;
-
     }
 
+    mobileList.innerHTML = list.map(doc => `
+        <div class="mobile-document-card">
 
-    mobileList.innerHTML = result.map(doc => {
-
-        const status =
-            statusMap[doc.statusKey] ||
-            statusMap.waiting;
-
-
-        return `
-
-            <article
-                class="mobile-document"
-                data-id="${doc.id}"
-            >
-
-                <div class="mobile-top">
-
-                    <span
-                        class="type-icon ${doc.color || "red"}"
-                    >
-                        ${typeIcons[doc.color] || "▤"}
-                    </span>
-
-
-                    <div class="mobile-main">
-
-                        <div class="mobile-number">
-                            ${escapeHtml(doc.number)}
-                        </div>
-
-                        <div class="mobile-name">
-                            ${escapeHtml(doc.type)}
-                        </div>
-
-                        <div class="doc-code">
-                            ${escapeHtml(doc.code)}
-                        </div>
-
-                    </div>
-
-                </div>
-
-
-                <div class="mobile-meta">
-
-                    <span
-                        class="status-badge ${status.className}"
-                    >
-                        ${status.label}
-                    </span>
-
-
-                    <button
-                        class="file-button"
-                        data-open="${doc.id}"
-                        type="button"
-                    >
-                        ▤ เปิดไฟล์
-                    </button>
-
-                </div>
-
-            </article>
-
-        `;
-
-    }).join("");
-
-
-    mobileList
-        .querySelectorAll(".mobile-document")
-        .forEach(card => {
-
-            card.addEventListener("click", event => {
-
-                if (event.target.closest("[data-open]")) {
-                    return;
-                }
-
-                selectDocument(card.dataset.id);
-
-            });
-
-        });
-
-
-    mobileList
-        .querySelectorAll("[data-open]")
-        .forEach(button => {
-
-            button.addEventListener("click", event => {
-
-                event.stopPropagation();
-
-                openDocument(button.dataset.open);
-
-            });
-
-        });
-
-}
-
-
-/* =====================================================
-   SELECT DOCUMENT
-===================================================== */
-
-function selectDocument(id) {
-
-    selectedId = id;
-
-    const doc =
-        documents.find(item => item.id === id);
-
-    if (!doc) return;
-
-    render();
-
-    renderDetail(doc);
-
-
-    const detailCard =
-        document.getElementById("detailCard");
-
-    if (detailCard) {
-
-        detailCard.scrollIntoView({
-            behavior: "smooth",
-            block: "nearest"
-        });
-
-    }
-
-}
-
-
-/* =====================================================
-   DETAIL
-===================================================== */
-
-function renderDetail(doc) {
-
-    if (!detailContent) return;
-
-
-    const status =
-        statusMap[doc.statusKey] ||
-        statusMap.waiting;
-
-
-    detailContent.className = "detail-content";
-
-
-    detailContent.innerHTML = `
-
-        <div class="detail-document-id">
-            ${escapeHtml(doc.code)}
-        </div>
-
-
-        <h3 class="detail-document-title">
-            ${escapeHtml(doc.type)}
-        </h3>
-
-
-        <div class="detail-grid">
-
-            <div class="detail-field">
-
-                <label>เลขที่เอกสาร</label>
-
+            <div class="mobile-document-header">
                 <strong>
                     ${escapeHtml(doc.number)}
                 </strong>
 
-            </div>
-
-
-            <div class="detail-field">
-
-                <label>สถานะ</label>
-
-                <span
-                    class="status-badge ${status.className}"
-                >
-                    ${status.label}
+                <span class="status-badge ${doc.color}">
+                    ${escapeHtml(doc.statusLabel)}
                 </span>
+            </div>
+
+            <div class="mobile-document-info">
+
+                <div>
+                    <small>เลขอ้างอิง</small>
+                    <span>
+                        ${escapeHtml(doc.code)}
+                    </span>
+                </div>
+
+                <div>
+                    <small>ประเภทเอกสาร</small>
+                    <span>
+                        ${escapeHtml(doc.type)}
+                    </span>
+                </div>
+
+                <div>
+                    <small>เรื่อง</small>
+                    <span>
+                        ${escapeHtml(doc.description)}
+                    </span>
+                </div>
+
+                <div>
+                    <small>ผู้ส่ง</small>
+                    <span>
+                        ${escapeHtml(doc.sender)}
+                    </span>
+                </div>
 
             </div>
 
-
-            <div class="detail-field">
-
-                <label>ผู้ส่ง</label>
-
-                <strong>
-                    ${escapeHtml(doc.sender)}
-                </strong>
-
-            </div>
-
-
-            <div class="detail-field">
-
-                <label>ผู้รับ</label>
-
-                <strong>
-                    ${escapeHtml(doc.receiver)}
-                </strong>
-
-            </div>
-
-
-            <div class="detail-field">
-
-                <label>วันที่รับ</label>
-
-                <strong>
-                    ${escapeHtml(doc.receivedDate)}
-                </strong>
-
-            </div>
-
-
-            <div class="detail-field">
-
-                <label>เวลา</label>
-
-                <strong>
-                    ${escapeHtml(doc.receivedTime)}
-                </strong>
-
-            </div>
-
-
-            <div class="detail-field detail-full">
-
-                <label>รายละเอียด</label>
-
-                <strong>
-                    ${escapeHtml(
-        doc.description ||
-        "ไม่มีรายละเอียดเพิ่มเติม"
-    )}
-                </strong>
-
-            </div>
-
-
-            <div class="detail-field detail-full">
-
-                <label>ไฟล์</label>
+            <div class="file-actions">
 
                 <button
                     class="file-button"
+                    data-open="${doc.id}"
                     type="button"
-                    id="detailOpenButton"
                 >
                     ▤ เปิดไฟล์
+                </button>
+
+                <button
+                    class="file-button download-button"
+                    data-download="${doc.id}"
+                    type="button"
+                >
+                    ↓ ดาวน์โหลด
                 </button>
 
             </div>
 
         </div>
+    `).join("");
 
-    `;
+    // Open file
+    mobileList
+        .querySelectorAll("[data-open]")
+        .forEach(button => {
+            button.addEventListener("click", event => {
+                event.stopPropagation();
 
+                openDocument(
+                    button.dataset.open
+                );
+            });
+        });
 
-    const detailOpenButton =
-        document.getElementById("detailOpenButton");
+    // Download file
+    mobileList
+        .querySelectorAll("[data-download]")
+        .forEach(button => {
+            button.addEventListener("click", event => {
+                event.stopPropagation();
 
-
-    if (detailOpenButton) {
-
-        detailOpenButton.addEventListener(
-            "click",
-            () => openDocument(doc.id)
-        );
-
-    }
-
+                downloadDocumentFile(
+                    button.dataset.download
+                );
+            });
+        });
 }
 
 
-/* =====================================================
-   EMPTY DETAIL
-===================================================== */
-
-function showEmptyDetail() {
-
-    if (!detailContent) return;
-
-
-    detailContent.className = "detail-empty";
-
-
-    detailContent.innerHTML = `
-
-        <div
-            class="empty-document-icon"
-            aria-hidden="true"
-        >
-            ▤
-        </div>
-
-        <p>
-            เลือกเอกสารจากรายการเพื่อดูรายละเอียด
-        </p>
-
-        <div class="skeleton-line wide"></div>
-        <div class="skeleton-line medium"></div>
-        <div class="skeleton-line wide"></div>
-        <div class="skeleton-line short"></div>
-
-    `;
-
-}
-
-
-/* =====================================================
+/* =========================
    OPEN DOCUMENT
-===================================================== */
+========================= */
 
 async function openDocument(id) {
+    const doc = documents.find(
+        item => item.id === String(id)
+    );
 
-    const doc =
-        documents.find(item => item.id === id);
-
-    if (!doc) return;
-
+    if (!doc) {
+        alert("ไม่พบข้อมูลเอกสาร");
+        return;
+    }
 
     if (doc.file_key) {
-
         try {
-            const res = await fetch(`http://localhost:3000/api/documents/${id}/download-url`, { credentials: "include" });
-            if (res.ok) {
-                const data = await res.json();
-                if (data.download_url) {
-                    window.open(data.download_url, "_blank", "noopener,noreferrer");
-                    return;
+            const response = await fetch(
+                `http://localhost:3000/api/documents/${id}/download-url`,
+                {
+                    credentials: "include"
                 }
+            );
+
+            if (!response.ok) {
+                throw new Error(
+                    "ไม่สามารถสร้างลิงก์เปิดไฟล์ได้"
+                );
             }
-            alert("ไม่สามารถเปิดไฟล์ได้ หรือไม่พบไฟล์ในระบบ");
+
+            const data = await response.json();
+
+            if (!data.download_url) {
+                throw new Error(
+                    "ไม่พบลิงก์ไฟล์"
+                );
+            }
+
+            window.open(
+                data.download_url,
+                "_blank",
+                "noopener,noreferrer"
+            );
+
         } catch (error) {
-            console.error("Error opening document:", error);
-            alert("เกิดข้อผิดพลาดในการเชื่อมต่อเพื่อดึงไฟล์");
+            console.error(
+                "Open document error:",
+                error
+            );
+
+            alert(
+                "ไม่สามารถเปิดไฟล์ได้ หรือไม่พบไฟล์ในระบบ"
+            );
         }
 
-    } else if (doc.path) {
-        
+        return;
+    }
+
+    if (doc.path) {
         window.open(
             doc.path,
             "_blank",
             "noopener,noreferrer"
         );
 
-    } else {
-
-        selectDocument(id);
-
+        return;
     }
 
+    alert("ไม่พบไฟล์ในระบบ");
 }
 
 
-/* =====================================================
-   FILTER
-===================================================== */
+/* =========================
+   DOWNLOAD DOCUMENT
+========================= */
+
+async function downloadDocumentFile(documentId) {
+    try {
+        const response = await fetch(
+            `http://localhost:3000/api/documents/${documentId}/download-url`,
+            {
+                credentials: "include"
+            }
+        );
+
+        if (!response.ok) {
+            throw new Error(
+                "ไม่สามารถสร้างลิงก์ดาวน์โหลดได้"
+            );
+        }
+
+        const data = await response.json();
+
+        if (!data.download_url) {
+            throw new Error(
+                "ไม่พบลิงก์ดาวน์โหลด"
+            );
+        }
+
+        const link = document.createElement("a");
+
+        link.href = data.download_url;
+
+        // ให้ browser ดาวน์โหลดไฟล์
+        link.download = "";
+
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+
+        document.body.appendChild(link);
+
+        link.click();
+
+        link.remove();
+
+    } catch (error) {
+        console.error(
+            "Download error:",
+            error
+        );
+
+        alert(
+            "ไม่สามารถดาวน์โหลดไฟล์ได้"
+        );
+    }
+}
+
+
+/* =========================
+   STATUS FILTER
+========================= */
 
 function syncFilterButtons() {
-
     document
         .querySelectorAll("[data-filter]")
         .forEach(button => {
 
+            const filter =
+                button.dataset.filter;
+
             button.classList.toggle(
                 "active",
-                currentFilters.has(button.dataset.filter)
+                currentFilters.has(filter)
             );
-
         });
-
 }
 
 
 function setFilter(filter) {
 
     if (filter === "all") {
+
         currentFilters.clear();
         currentFilters.add("all");
+
     } else {
-        if (currentFilters.has("all")) {
-            currentFilters.delete("all");
-        }
+
+        currentFilters.delete("all");
+
         if (currentFilters.has(filter)) {
             currentFilters.delete(filter);
-            if (currentFilters.size === 0) {
-                currentFilters.add("all");
-            }
         } else {
             currentFilters.add(filter);
         }
+
+        if (currentFilters.size === 0) {
+            currentFilters.add("all");
+        }
     }
 
-    selectedId = null;
-
-    showEmptyDetail();
-
-    fetchDocuments();
-
+    syncFilterButtons();
+    render();
 }
 
 
-/* =====================================================
-   EVENT LISTENERS
-===================================================== */
+/* =========================
+   SORT
+========================= */
 
-document
-    .querySelectorAll(".status-filter, .legend-item")
-    .forEach(button => {
+function setupSorting() {
 
-        button.addEventListener("click", () => {
+    document
+        .querySelectorAll("[data-sort]")
+        .forEach(header => {
 
-            setFilter(button.dataset.filter);
+            header.addEventListener(
+                "click",
+                () => {
 
-        });
+                    const key =
+                        header.dataset.sort;
 
-    });
+                    if (sortKey === key) {
+                        sortDirection *= -1;
+                    } else {
+                        sortKey = key;
+                        sortDirection = 1;
+                    }
 
-
-document
-    .querySelectorAll(".nav-item")
-    .forEach(button => {
-
-        button.addEventListener("click", () => {
-
-            document
-                .querySelectorAll(".nav-item")
-                .forEach(item =>
-                    item.classList.remove("active")
-                );
-
-            button.classList.add("active");
+                    render();
+                }
+            );
 
         });
+}
 
-    });
 
+/* =========================
+   SEARCH
+========================= */
 
 if (globalSearch) {
-    let searchTimeout;
-    globalSearch.addEventListener("input", () => {
-        clearTimeout(searchTimeout);
-        searchTimeout = setTimeout(fetchDocuments, 300);
-    });
+
+    globalSearch.addEventListener(
+        "input",
+        () => {
+            render();
+        }
+    );
+
 }
 
-if (typeFilter) typeFilter.addEventListener("change", fetchDocuments);
 
-if (dateFrom) dateFrom.addEventListener("change", fetchDocuments);
-if (dateTo) dateTo.addEventListener("change", fetchDocuments);
-if (clearFiltersBtn) {
-    clearFiltersBtn.addEventListener("click", () => {
-        if (globalSearch) globalSearch.value = "";
-        if (typeFilter) typeFilter.value = "all";
-        if (dateFrom) dateFrom.value = "";
-        if (dateTo) dateTo.value = "";
-        currentFilters.clear();
-        currentFilters.add("all");
-        syncFilterButtons();
-        fetchDocuments();
-    });
-}
-
+/* =========================
+   FILTER BUTTONS
+========================= */
 
 document
-    .querySelectorAll(".document-table th[data-sort]")
-    .forEach(header => {
+    .querySelectorAll("[data-filter]")
+    .forEach(button => {
 
-        header.addEventListener("click", () => {
+        button.addEventListener(
+            "click",
+            () => {
 
-            const key =
-                header.dataset.sort;
-
-
-            if (sortKey === key) {
-
-                sortDirection *= -1;
-
-            } else {
-
-                sortKey = key;
-                sortDirection = 1;
+                setFilter(
+                    button.dataset.filter
+                );
 
             }
-
-
-            render();
-
-        });
+        );
 
     });
 
 
-/* =====================================================
+/* =========================
    ESCAPE HTML
-===================================================== */
+========================= */
 
 function escapeHtml(value) {
 
     return String(value ?? "")
-
-        .replaceAll("&", "&amp;")
-        .replaceAll("<", "&lt;")
-        .replaceAll(">", "&gt;")
-        .replaceAll('"', "&quot;")
-        .replaceAll("'", "&#039;");
-
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
 }
 
 
-/* =====================================================
-   START
-===================================================== */
+/* =========================
+   INITIALIZE
+========================= */
 
-init();
+syncFilterButtons();
+setupSorting();
+fetchDocuments();
