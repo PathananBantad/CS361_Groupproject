@@ -16,6 +16,9 @@ const path = require("path");
 const PORT = Number(process.env.PORT || 3000);
 
 
+// จำกัดขนาด Payload ไม่เกิน 1MB ป้องกัน DoS
+app.use(express.json({ limit: "1mb" }));
+
 
 // Helper ฟังก์ชันป้องกัน XSS
 function sanitizeInput(str) {
