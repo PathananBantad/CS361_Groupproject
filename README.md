@@ -94,7 +94,8 @@ V1 มุ่งเน้นการพัฒนา Information Service เพ�
 [http://my-project-v1-2026.s3-website-ap-southeast-2.amazonaws.com](http://cs361-v2-frontend-documentflow.s3-website-us-east-1.amazonaws.com)
 
 ## Architecture V2
-<img width="1920" height="819" alt="image" src="https://github.com/user-attachments/assets/341f8140-23e7-43c3-8d31-025088278c5f" />
+<img width="1942" height="809" alt="image" src="https://github.com/user-attachments/assets/a8e9f2b8-69b9-49e7-bc74-5797f4a0c817" />
+
 
 
 
