@@ -238,7 +238,7 @@ registerForm.addEventListener("submit", async (event) => {
     submitText.textContent = "กำลังบันทึกข้อมูล...";
 
     // 3. ตรวจสอบข้อมูลก่อน Submit (Validation)
-    if (!receiveChannel || !documentType || !docNo || !subject || !senderDept || !senderName || !senderContact || !recipient || !sendDate || !receiveDate || !fileAttached) {
+    if (!receiveChannel || !documentType || !docNo || !subject || !senderDept || !senderName || !senderContact || !recipient || !sendDate || !receiveDate || !file) {
         alert("กรุณากรอกข้อมูลที่จำเป็น (*) และแนบไฟล์ให้ครบถ้วน");
         return;
     }
@@ -283,7 +283,7 @@ registerForm.addEventListener("submit", async (event) => {
         const docData = await response.json();
 
         // 2. Upload file if attached
-        if (fileAttached) {
+        if (file) {
 
             // Get presigned URL
             const s3UrlRes = await fetch(`https://utvhg6d6o3.execute-api.us-east-1.amazonaws.com/api/documents/${docData.id}/upload-url?fileName=${encodeURIComponent(file.name)}&contentType=${encodeURIComponent(file.type || 'application/octet-stream')}`, {
