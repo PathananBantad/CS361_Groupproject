@@ -13,6 +13,8 @@ const {
 const app = express();
 const path = require("path");
 
+app.use(cors());
+
 const PORT = Number(process.env.PORT || 3000);
 
 
