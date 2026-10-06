@@ -1,4 +1,4 @@
-# Electronic Mailbox & Document Flow System(G6)
+Mailbox & Document Flow System(G6)
 
 ## Project Vision
 พัฒนาระบบรับและกระจายเอกสารอิเล็กทรอนิกส์ให้เป็นแพลตฟอร์มกลางที่ช่วยจัดการเอกสารตั้งแต่การรับ ลงทะเบียน จัดเก็บ และส่งต่ออย่างเป็นระบบ ผู้ใช้สามารถติดตามสถานะและตรวจสอบการดำเนินงานย้อนหลังได้ ช่วยลดปัญหาเอกสารสูญหาย งานล่าช้า และความไม่ชัดเจนในการส่งต่องานระหว่างฝ่าย
@@ -94,7 +94,8 @@ V1 มุ่งเน้นการพัฒนา Information Service เพ�
 [http://my-project-v1-2026.s3-website-ap-southeast-2.amazonaws.com](http://cs361-v2-frontend-documentflow.s3-website-us-east-1.amazonaws.com)
 
 ## Architecture V2
-<img width="1942" height="809" alt="image" src="https://github.com/user-attachments/assets/a8e9f2b8-69b9-49e7-bc74-5797f4a0c817" />
+<img width="2400" height="1110" alt="Architecture diagram" src="https://github.com/user-attachments/assets/afeae7a7-c9f6-49a5-87a0-635323757935" />
+
 
 
 

@@ -84,25 +84,6 @@
     box-shadow: 0 7px 18px rgba(125, 22, 52, .12);
 }
 
-.advanced-filter-input {
-    border: 1px solid #ddbdb8;
-    background: rgba(255, 249, 243, .72);
-    color: #572435;
-    border-radius: 25px;
-    padding: 10px 20px;
-    font-family: inherit;
-    font-size: 1rem;
-    transition: .2s ease;
-    cursor: pointer;
-    outline: none;
-}
-
-.advanced-filter-input:hover,
-.advanced-filter-input:focus {
-    border-color: var(--wine);
-    box-shadow: 0 4px 12px rgba(125, 22, 52, .08);
-}
-
 /* =========================
    REGISTRY
 ========================= */
@@ -456,167 +437,6 @@
     display: none;
 }
 
-/* =========================
-   DETAIL CARD
-========================= */
-
-.detail-card {
-    min-height: 540px;
-}
-
-.detail-heading {
-    min-height: 78px;
-
-    padding: 20px 22px;
-
-    display: flex;
-    align-items: center;
-    gap: 14px;
-
-    color: var(--wine-dark);
-}
-
-.detail-heading-icon {
-    color: white;
-    background: var(--wine);
-}
-
-.detail-heading p {
-    color: var(--text);
-    opacity: 1;
-}
-
-.detail-empty {
-    min-height: 430px;
-
-    margin: 0 22px 22px;
-    padding: 45px 28px;
-
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-
-    border: 1px dashed #e4cfc8;
-    border-radius: 15px;
-
-    background:
-        linear-gradient(
-            145deg,
-            rgba(255,252,247,.9),
-            rgba(251,242,232,.5)
-        );
-
-    text-align: center;
-}
-
-.empty-document-icon {
-    width: 94px;
-    height: 94px;
-
-    display: grid;
-    place-items: center;
-
-    margin-bottom: 20px;
-
-    border-radius: 50%;
-
-    color: var(--wine);
-    font-size: 40px;
-
-    background: #f4e1df;
-}
-
-.detail-empty p {
-    max-width: 270px;
-
-    color: #6e515b;
-    line-height: 1.5;
-
-    margin-bottom: 27px;
-}
-
-.skeleton-line {
-    height: 16px;
-
-    margin: 0 auto 14px;
-
-    border-radius: 10px;
-
-    background: #e9d8d2;
-    opacity: .9;
-}
-
-.skeleton-line.wide {
-    width: 88%;
-}
-
-.skeleton-line.medium {
-    width: 62%;
-}
-
-.skeleton-line.short {
-    width: 45%;
-}
-
-/* =========================
-   DETAIL CONTENT
-========================= */
-
-.detail-content {
-    margin: 0 22px 22px;
-    padding: 18px;
-
-    border: 1px solid #eadbd4;
-    border-radius: 15px;
-
-    background: #fffaf5;
-}
-
-.detail-document-id {
-    font-size: 12px;
-    color: #9a727c;
-}
-
-.detail-document-title {
-    margin: 6px 0 14px;
-
-    font-size: 19px;
-    line-height: 1.35;
-}
-
-.detail-grid {
-    display: grid;
-
-    grid-template-columns: 1fr 1fr;
-
-    gap: 10px;
-}
-
-.detail-field {
-    padding: 11px;
-
-    border-radius: 10px;
-
-    background: #f8eee8;
-}
-
-.detail-field label {
-    display: block;
-
-    margin-bottom: 4px;
-
-    color: #9b777e;
-    font-size: 11px;
-}
-
-.detail-field strong {
-    font-size: 13px;
-}
-
-.detail-full {
-    grid-column: 1 / -1;
-}
 
 /* =========================
    LEGEND
@@ -702,14 +522,6 @@
 
     .registry-layout {
         grid-template-columns: 1fr;
-    }
-
-    .detail-card {
-        min-height: auto;
-    }
-
-    .detail-empty {
-        min-height: 330px;
     }
 }
 
