@@ -2,10 +2,6 @@ const tableBody = document.getElementById("documentTableBody");
 const mobileList = document.getElementById("mobileList");
 const globalSearch = document.getElementById("globalSearch");
 const shownCount = document.getElementById("shownCount");
-const typeFilter = document.getElementById("typeFilter");
-const dateStartFilter = document.getElementById("dateStartFilter");
-const dateEndFilter = document.getElementById("dateEndFilter");
-const clearFiltersBtn = document.getElementById("clearFiltersBtn");
 
 let documents = [];
 let currentFilters = new Set(["all"]);
@@ -211,31 +207,6 @@ function render() {
         result = result.filter(doc =>
             currentFilters.has(doc.statusKey)
         );
-    }
-
-    // Type filter
-    if (typeFilter && typeFilter.value) {
-        const selectedType = typeFilter.value;
-        result = result.filter(doc => doc.type === selectedType);
-    }
-
-    // Date range filter
-    if (dateStartFilter && dateStartFilter.value) {
-        const start = new Date(dateStartFilter.value);
-        start.setHours(0, 0, 0, 0);
-        result = result.filter(doc => {
-            if (!doc.rawDate) return false;
-            return doc.rawDate >= start;
-        });
-    }
-
-    if (dateEndFilter && dateEndFilter.value) {
-        const end = new Date(dateEndFilter.value);
-        end.setHours(23, 59, 59, 999);
-        result = result.filter(doc => {
-            if (!doc.rawDate) return false;
-            return doc.rawDate <= end;
-        });
     }
 
     // Sort
@@ -701,36 +672,6 @@ function escapeHtml(value) {
         .replace(/'/g, "&#039;");
 }
 
-
-/* =========================
-   ADDITIONAL FILTERS
-========================= */
-
-if (typeFilter) {
-    typeFilter.addEventListener("change", render);
-}
-
-if (dateStartFilter) {
-    dateStartFilter.addEventListener("change", render);
-}
-
-if (dateEndFilter) {
-    dateEndFilter.addEventListener("change", render);
-}
-
-if (clearFiltersBtn) {
-    clearFiltersBtn.addEventListener("click", () => {
-        if (typeFilter) typeFilter.value = "";
-        if (dateStartFilter) dateStartFilter.value = "";
-        if (dateEndFilter) dateEndFilter.value = "";
-        if (globalSearch) globalSearch.value = "";
-        
-        currentFilters.clear();
-        currentFilters.add("all");
-        syncFilterButtons();
-        render();
-    });
-}
 
 /* =========================
    INITIALIZE
