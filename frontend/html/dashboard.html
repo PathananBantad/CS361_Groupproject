@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>DocuFlow | Document Registry</title>
+    <title>DocuFlow | Document Registry & Flow System</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link
@@ -15,6 +15,7 @@
         rel="stylesheet">
     <link rel="stylesheet" href="../css/common.css">
     <link rel="stylesheet" href="../css/dashboard.css">
+    <link rel="stylesheet" href="../css/document-modal.css">
 </head>
 
 <body>
@@ -24,7 +25,7 @@
 
     <!-- Top navigation -->
     <header class="topbar">
-        <a class="brand" href="#" aria-label="DocuFlow หน้าหลัก">
+        <a class="brand" href="dashboard.html" aria-label="DocuFlow หน้าหลัก">
             <span class="brand-mark" aria-hidden="true">
                 <span></span><span></span>
             </span>
@@ -32,19 +33,9 @@
         </a>
 
         <nav class="nav-links">
-
-            <a href="dashboard.html" class="active">
-                หน้าหลัก
-            </a>
-
-            <a href="register.html">
-                ลงทะเบียนเอกสาร
-            </a>
-
-            <a href="guide.html">
-                คู่มือ
-            </a>
-
+            <a href="dashboard.html" class="active">หน้าหลัก</a>
+            <a href="register.html">ลงทะเบียนเอกสาร</a>
+            <a href="guide.html">คู่มือ</a>
         </nav>
 
         <div class="top-actions">
@@ -53,11 +44,43 @@
                 <input id="globalSearch" type="search" placeholder="ค้นหาเอกสาร..." autocomplete="off">
             </label>
             <span class="top-divider"></span>
-            <button class="profile-button" type="button">
-                <span class="profile-icon" aria-hidden="true">●</span>
-                <span>คุณ</span>
-                <span class="chevron" aria-hidden="true">⌄</span>
-            </button>
+
+            <!-- Role Selector & Profile Menu สำหรับทดสอบสิทธิ์ -->
+            <div class="role-selector-wrap">
+                <button class="profile-button" id="roleMenuBtn" type="button" aria-expanded="false"
+                    title="คลิกเพื่อสลับสิทธิ์ผู้ใช้ (Permission Testing)">
+                    <span class="profile-icon role-staff" id="userRoleDot" aria-hidden="true">●</span>
+                    <span id="userRoleDisplay">เจ้าหน้าที่ (Staff)</span>
+                    <span class="chevron" aria-hidden="true">⌄</span>
+                </button>
+                <div class="role-dropdown" id="roleDropdown" hidden>
+                    <div class="role-dropdown-header">
+                        <span>สลับสิทธิ์ผู้ใช้งาน</span>
+                        <small>ทดสอบการเข้าถึง Preview & Download</small>
+                    </div>
+                    <button type="button" class="role-option active" data-role="staff" data-user="staff01">
+                        <span class="role-badge staff">Staff</span>
+                        <div class="role-info">
+                            <strong>เจ้าหน้าที่ (staff01)</strong>
+                            <small>สิทธิ์: ดูรายละเอียด + เรียกดู + ดาวน์โหลดได้</small>
+                        </div>
+                    </button>
+                    <button type="button" class="role-option" data-role="admin" data-user="admin01">
+                        <span class="role-badge admin">Admin</span>
+                        <div class="role-info">
+                            <strong>ผู้ดูแลระบบ (admin01)</strong>
+                            <small>สิทธิ์: เข้าถึงและจัดการได้ทุกเอกสาร</small>
+                        </div>
+                    </button>
+                    <button type="button" class="role-option" data-role="guest" data-user="guest">
+                        <span class="role-badge guest">Guest</span>
+                        <div class="role-info">
+                            <strong>ผู้ใช้ภายนอก (Guest)</strong>
+                            <small>ไม่มีสิทธิ์: ถูกบล็อกการเปิด Preview และ Download</small>
+                        </div>
+                    </button>
+                </div>
+            </div>
         </div>
     </header>
 
@@ -65,7 +88,7 @@
         <!-- Heading -->
         <section class="page-heading">
             <div>
-                <h1>Document Registry <span>• <strong id="shownCount">0</strong> shown</span></h1>
+                <h1>Document Registry <span>• <strong id="shownCount">0</strong> รายการ</span></h1>
             </div>
         </section>
 
@@ -86,7 +109,7 @@
                     <div class="registry-title-icon" aria-hidden="true">☷</div>
                     <div>
                         <h2>รายการติดตามเอกสาร</h2>
-                        <p>Document Tracking</p>
+                        <p>Document Tracking & Verification</p>
                     </div>
                 </div>
 
@@ -100,7 +123,7 @@
                                 <th data-sort="receiver">ผู้รับ <small>Receiver</small><span>↕</span></th>
                                 <th data-sort="status">สถานะ <small>Status</small><span>↕</span></th>
                                 <th data-sort="received">วันที่รับ <small>Received</small><span>↕</span></th>
-                                <th>ไฟล์ <small>File</small></th>
+                                <th style="text-align: center;">จัดการเอกสาร <small>Action</small></th>
                             </tr>
                         </thead>
                         <tbody id="documentTableBody"></tbody>
@@ -123,6 +146,10 @@
         </div>
     </main>
 
+    <!-- Document Details & Preview Modal Container (โหลดเทมเพลตแยกจาก document-modal.html) -->
+    <div id="documentModalContainer"></div>
+
+    <script src="../js/document-modal.js"></script>
     <script src="../js/dashboard.js"></script>
 </body>
 

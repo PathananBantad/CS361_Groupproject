@@ -120,11 +120,9 @@
     color: white;
 
     background:
-        linear-gradient(
-            90deg,
+        linear-gradient(90deg,
             var(--wine-dark),
-            #8c1d3d
-        );
+            #8c1d3d);
 }
 
 .registry-title-icon,
@@ -142,7 +140,7 @@
     color: white;
     font-size: 25px;
 
-    background: rgba(255,255,255,.18);
+    background: rgba(255, 255, 255, .18);
 }
 
 .registry-title h2,
@@ -184,11 +182,9 @@
     color: #fff;
 
     background:
-        linear-gradient(
-            90deg,
+        linear-gradient(90deg,
             #a03352,
-            #8f2947
-        );
+            #8f2947);
 
     font-size: 14px;
     font-weight: 600;
@@ -282,7 +278,7 @@
     color: white;
     font-size: 20px;
 
-    box-shadow: inset 0 -4px 0 rgba(0,0,0,.06);
+    box-shadow: inset 0 -4px 0 rgba(0, 0, 0, .06);
 }
 
 .type-icon.red {
@@ -399,34 +395,70 @@
 }
 
 /* =========================
-   FILE BUTTON
+   FILE ACTION BUTTON (ยุบเหลือปุ่มหลักเพียงปุ่มเดียว: เรียกดูเอกสาร)
 ========================= */
 
-.file-button {
-    min-width: 95px;
+.file-actions {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
 
-    padding: 9px 14px;
-
+.btn-preview {
+    min-width: 120px;
+    padding: 9px 16px;
     display: inline-flex;
     justify-content: center;
     align-items: center;
-
-    gap: 6px;
-
-    border: 1px solid #9f5265;
-    border-radius: 19px;
-
+    gap: 7px;
+    border: 1px solid var(--wine);
+    border-radius: 20px;
+    font-size: 13px;
+    font-weight: 600;
+    font-family: inherit;
     color: var(--wine);
-    background: #fffaf6;
-
+    background: #fff8f5;
     cursor: pointer;
-
-    transition: .2s ease;
+    box-shadow: 0 2px 6px rgba(125, 22, 52, 0.06);
+    transition: all 0.22s ease;
 }
 
-.file-button:hover {
+.btn-preview:hover {
     color: white;
     background: var(--wine);
+    border-color: var(--wine);
+    box-shadow: 0 6px 14px rgba(125, 22, 52, 0.22);
+    transform: translateY(-1px);
+}
+
+.btn-preview:active {
+    transform: translateY(0);
+}
+
+.btn-preview svg.btn-icon {
+    flex-shrink: 0;
+    transition: transform 0.2s ease;
+}
+
+.btn-preview:hover svg.btn-icon {
+    transform: scale(1.1);
+}
+
+.btn-no-file {
+    min-width: 100px;
+    padding: 7px 12px;
+    display: inline-flex;
+    justify-content: center;
+    align-items: center;
+    gap: 5px;
+    border: 1px dashed #d5c0b8;
+    border-radius: 20px;
+    font-size: 12px;
+    color: #a48c85;
+    background: rgba(248, 244, 240, 0.6);
+    cursor: not-allowed;
+    user-select: none;
 }
 
 /* =========================
@@ -461,7 +493,7 @@
 
     gap: 8px;
 
-    background: rgba(255,249,243,.72);
+    background: rgba(255, 249, 243, .72);
     border-color: transparent;
 
     font-size: 13px;
@@ -470,7 +502,7 @@
 .legend-item:hover,
 .legend-item.active {
     border-color: #e1c7c0;
-    background: rgba(255,255,255,.65);
+    background: rgba(255, 255, 255, .65);
 }
 
 .dot {
@@ -631,16 +663,169 @@
         align-items: center;
         gap: 8px;
         white-space: nowrap;
-    }
-    
-    .download-button {
-        border-color: var(--wine);
-        background: var(--wine);
-        color: white;
-    }
-    
-    .download-button:hover {
-        background: var(--wine-dark);
-        color: white;
+        justify-content: flex-start;
+        margin-top: 10px;
     }
 }
+
+/* ==========================================
+   ROLE SELECTOR & PERMISSION TESTING
+========================================== */
+.role-selector-wrap {
+    position: relative;
+}
+
+.profile-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 14px;
+    border-radius: 20px;
+    border: 1px solid #ddbdb8;
+    background: rgba(255, 255, 255, 0.85);
+    color: var(--wine-dark);
+    font-size: 13px;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.profile-button:hover,
+.profile-button[aria-expanded="true"] {
+    background: white;
+    border-color: var(--wine);
+    box-shadow: 0 4px 12px rgba(125, 22, 52, 0.1);
+}
+
+.profile-icon {
+    font-size: 10px;
+    transition: color 0.2s;
+}
+
+.profile-icon.role-staff {
+    color: #2563eb;
+}
+
+.profile-icon.role-admin {
+    color: #9333ea;
+}
+
+.profile-icon.role-guest {
+    color: #dc2626;
+}
+
+.role-dropdown {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    width: 290px;
+    background: white;
+    border: 1px solid #e8d7cf;
+    border-radius: 16px;
+    box-shadow: 0 16px 36px rgba(60, 20, 30, 0.16);
+    padding: 8px;
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    animation: dropdownFadeIn 0.2s ease;
+}
+
+.role-dropdown[hidden] {
+    display: none;
+}
+
+@keyframes dropdownFadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(-6px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.role-dropdown-header {
+    padding: 8px 12px 6px;
+    border-bottom: 1px solid #f2e8e3;
+    margin-bottom: 4px;
+}
+
+.role-dropdown-header span {
+    display: block;
+    font-weight: 700;
+    font-size: 13px;
+    color: var(--wine-dark);
+}
+
+.role-dropdown-header small {
+    display: block;
+    font-size: 11px;
+    color: #8c7378;
+    margin-top: 1px;
+}
+
+.role-option {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    padding: 10px 12px;
+    border: none;
+    background: transparent;
+    border-radius: 10px;
+    cursor: pointer;
+    text-align: left;
+    font-family: inherit;
+    transition: background 0.18s;
+}
+
+.role-option:hover {
+    background: #fff4f1;
+}
+
+.role-option.active {
+    background: #fdf0ec;
+    box-shadow: inset 3px 0 0 var(--wine);
+}
+
+.role-badge {
+    padding: 3px 8px;
+    border-radius: 10px;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.role-badge.staff {
+    background: #dbeafe;
+    color: #1e40af;
+}
+
+.role-badge.admin {
+    background: #f3e8ff;
+    color: #6b21a8;
+}
+
+.role-badge.guest {
+    background: #fee2e2;
+    color: #b91c1c;
+}
+
+.role-info strong {
+    display: block;
+    font-size: 12.5px;
+    color: #3b1923;
+}
+
+.role-info small {
+    display: block;
+    font-size: 11px;
+    color: #7d656b;
+    margin-top: 1px;
+}
+

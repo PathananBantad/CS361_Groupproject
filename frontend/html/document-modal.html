@@ -1,0 +1,102 @@
+<!-- ==========================================
+     DOCUMENT DETAILS & PREVIEW MODAL
+     DocuFlow Electronic Mailbox & Document Flow System
+     (โมดูลหน้าต่าง Popup แสดงรายละเอียดและตัวอย่างเอกสาร)
+========================================== -->
+<dialog id="documentModal" class="document-modal" aria-labelledby="modalDocSubject">
+    <div class="modal-card">
+        <header class="modal-header">
+            <div class="modal-header-text">
+                <div class="modal-top-meta">
+                    <span class="modal-type-badge" id="modalTypeBadge">ประเภทเอกสาร</span>
+                    <span class="modal-ref-no" id="modalRefNo">DOC-XXXXXXXX</span>
+                    <span class="status-badge" id="modalStatusBadge">สถานะ</span>
+                </div>
+                <h2 id="modalDocSubject" class="modal-title">ชื่อเรื่องเอกสาร</h2>
+            </div>
+            <button type="button" class="modal-close-btn" id="modalCloseBtn" aria-label="ปิดหน้าต่าง">✕</button>
+        </header>
+
+        <div class="modal-body">
+            <!-- ข้อมูลรายละเอียดเอกสาร -->
+            <section class="modal-details-card">
+                <div class="details-section-title">
+                    <span aria-hidden="true">📋</span> รายละเอียดเอกสาร
+                </div>
+                <div class="modal-meta-grid">
+                    <div class="meta-item">
+                        <span class="meta-label">เลขที่หนังสือ</span>
+                        <span class="meta-value" id="modalDocNumber">-</span>
+                    </div>
+                    <div class="meta-item">
+                        <span class="meta-label">ช่องทางรับเอกสาร</span>
+                        <span class="meta-value" id="modalChannel">-</span>
+                    </div>
+                    <div class="meta-item">
+                        <span class="meta-label">หน่วยงานผู้ส่ง</span>
+                        <span class="meta-value" id="modalSenderDept">-</span>
+                    </div>
+                    <div class="meta-item">
+                        <span class="meta-label">ชื่อผู้ส่ง</span>
+                        <span class="meta-value" id="modalSenderName">-</span>
+                    </div>
+                    <div class="meta-item">
+                        <span class="meta-label">ช่องทางติดต่อผู้ส่ง</span>
+                        <span class="meta-value" id="modalSenderContact">-</span>
+                    </div>
+                    <div class="meta-item">
+                        <span class="meta-label">ผู้รับ</span>
+                        <span class="meta-value" id="modalReceiver">-</span>
+                    </div>
+                    <div class="meta-item">
+                        <span class="meta-label">วันที่ส่ง</span>
+                        <span class="meta-value" id="modalSendDate">-</span>
+                    </div>
+                    <div class="meta-item">
+                        <span class="meta-label">วันที่รับ</span>
+                        <span class="meta-value" id="modalReceiveDate">-</span>
+                    </div>
+                    <div class="meta-item">
+                        <span class="meta-label">วันครบกำหนด (DEADLINE)</span>
+                        <span class="meta-value" id="modalDeadline">-</span>
+                    </div>
+                    <div class="meta-item full-width" id="modalRemarksWrap">
+                        <span class="meta-label">หมายเหตุ</span>
+                        <p class="meta-value remarks-box" id="modalRemarks">-</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ส่วนแสดงตัวอย่างและดาวน์โหลดไฟล์ (Preview & Download) -->
+            <section class="modal-preview-card">
+                <div class="preview-header">
+                    <div class="preview-file-summary">
+                        <div class="file-icon-box" id="previewFileIconBox">
+                            <span id="previewFileIcon">📄</span>
+                        </div>
+                        <div class="preview-file-titles">
+                            <h3 id="previewFileName">ชื่อไฟล์เอกสาร</h3>
+                            <div class="preview-file-sub">
+                                <span id="previewFileTypeTag" class="file-type-pill">PDF</span>
+                                <span id="previewFileSize">-</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="preview-actions">
+                        <button type="button" class="btn-download-primary" id="modalDownloadBtn">
+                            <span>↓</span> ดาวน์โหลดไฟล์
+                        </button>
+                    </div>
+                </div>
+
+                <!-- พื้นที่แสดงตัวอย่างเอกสาร (Preview Viewport) -->
+                <div class="preview-viewport" id="previewViewport">
+                    <div class="preview-loader" id="previewLoader">
+                        <div class="spinner"></div>
+                        <p>กำลังเตรียมการแสดงตัวอย่างเอกสาร...</p>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </div>
+</dialog>

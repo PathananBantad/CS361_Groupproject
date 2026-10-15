@@ -47,7 +47,11 @@ body {
             #f9eadf 100%
         );
 
-    overflow-x: hidden;
+    overflow-x: clip;
+}
+
+html {
+    overflow-x: clip;
 }
 
 /* English font */
@@ -158,8 +162,9 @@ button {
 ========================= */
 
 .topbar {
-    position: relative;
-    z-index: 5;
+    position: sticky;
+    top: 14px;
+    z-index: 1000;
 
     margin: 14px 28px 0;
     min-height: 78px;
@@ -173,12 +178,14 @@ button {
 
     border-radius: 48px;
 
-    background: rgba(255, 250, 244, .9);
+    background: rgba(255, 250, 244, .94);
 
     box-shadow:
-        0 8px 28px rgba(91, 30, 43, .08);
+        0 8px 28px rgba(91, 30, 43, .10);
 
-    backdrop-filter: blur(8px);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    transition: box-shadow 0.2s ease, background 0.2s ease;
 }
 
 
@@ -462,7 +469,8 @@ button {
 @media (max-width: 700px) {
 
     .topbar {
-        margin: 10px 12px 0;
+        margin: 8px 12px 0;
+        top: 8px;
     }
 
     .brand {
