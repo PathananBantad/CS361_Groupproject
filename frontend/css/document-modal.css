@@ -480,10 +480,523 @@ dialog.document-modal::backdrop {
     }
 }
 
+/* =====================================================
+   [V3] WORKFLOW STEPPER & PIPELINE
+===================================================== */
+.workflow-stepper-wrap {
+    background: #ffffff;
+    border-bottom: 1px solid #eeddd4;
+    padding: 16px 28px;
+    box-shadow: 0 2px 6px rgba(40, 14, 22, 0.03);
+}
+
+.stepper-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.stepper-title {
+    font-family: "Bai Jamjuree", sans-serif;
+    font-size: 13.5px;
+    font-weight: 700;
+    color: #581528;
+}
+
+.workflow-current-tag {
+    font-size: 12px;
+    font-weight: 600;
+    color: #0369a1;
+    background: #e0f2fe;
+    border: 1px solid rgba(3, 105, 161, 0.25);
+    padding: 3px 12px;
+    border-radius: 12px;
+}
+
+.workflow-steps {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: relative;
+    padding: 4px 0;
+}
+
+.workflow-step {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    opacity: 0.55;
+    transition: all 0.25s ease;
+}
+
+.workflow-step.active {
+    opacity: 1;
+    transform: scale(1.03);
+}
+
+.workflow-step.completed {
+    opacity: 0.95;
+}
+
+.workflow-step .step-circle {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: #f8fafc;
+    border: 2px solid #cbd5e1;
+    display: grid;
+    place-items: center;
+    font-size: 16px;
+    transition: all 0.3s ease;
+}
+
+.workflow-step.active .step-circle {
+    background: #ffffff;
+    border-color: #0284c7;
+    box-shadow: 0 0 0 4px rgba(2, 132, 199, 0.18);
+    transform: scale(1.05);
+}
+
+.workflow-step.completed .step-circle {
+    background: #dcfce7;
+    border-color: #16a34a;
+    box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.15);
+}
+
+.workflow-step .step-labels {
+    display: flex;
+    flex-direction: column;
+}
+
+.workflow-step .step-labels strong {
+    font-size: 12.5px;
+    font-weight: 700;
+    color: #1e293b;
+    line-height: 1.2;
+}
+
+.workflow-step.active .step-labels strong {
+    color: #0284c7;
+}
+
+.workflow-step.completed .step-labels strong {
+    color: #15803d;
+}
+
+.workflow-step .step-labels small {
+    font-size: 10.5px;
+    color: #64748b;
+    font-weight: 500;
+}
+
+.step-connector {
+    flex: 1;
+    height: 3px;
+    background: #e2e8f0;
+    margin: 0 12px;
+    border-radius: 3px;
+    transition: background 0.3s ease;
+}
+
+.step-connector.completed {
+    background: linear-gradient(90deg, #16a34a, #0284c7);
+}
+
+/* =====================================================
+   [V3] MODAL ALERT BOX (Task 8: ข้อความแจ้งเตือน)
+===================================================== */
+.modal-alert-box {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 24px;
+    border-bottom: 1px solid transparent;
+    animation: alertSlideDown 0.25s ease-out;
+}
+
+@keyframes alertSlideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-8px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.modal-alert-box.alert-error {
+    background: #fef2f2;
+    border-color: #fecaca;
+    color: #991b1b;
+}
+
+.modal-alert-box.alert-success {
+    background: #f0fdf4;
+    border-color: #bbf7d0;
+    color: #166534;
+}
+
+.modal-alert-box.alert-warning {
+    background: #fffbeb;
+    border-color: #fde68a;
+    color: #92400e;
+}
+
+.modal-alert-box .alert-icon {
+    font-size: 20px;
+    flex-shrink: 0;
+}
+
+.modal-alert-box .alert-content {
+    flex: 1;
+}
+
+.modal-alert-box .alert-content strong {
+    display: block;
+    font-size: 13px;
+    font-weight: 700;
+    margin-bottom: 2px;
+}
+
+.modal-alert-box .alert-content p {
+    margin: 0;
+    font-size: 12.5px;
+    line-height: 1.4;
+}
+
+.modal-alert-box .alert-close-btn {
+    background: transparent;
+    border: none;
+    font-size: 16px;
+    cursor: pointer;
+    color: inherit;
+    opacity: 0.6;
+    padding: 4px;
+    border-radius: 4px;
+    transition: opacity 0.15s;
+}
+
+.modal-alert-box .alert-close-btn:hover {
+    opacity: 1;
+}
+
+/* =====================================================
+   [V3] WORKFLOW ACTION CONTROLS & AUDIT TIMELINE
+===================================================== */
+.modal-left-col {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+}
+
+.modal-right-col {
+    display: flex;
+    flex-direction: column;
+}
+
+/* Workflow Action Card */
+.modal-workflow-card {
+    background: #ffffff;
+    border: 1px solid #eeddd4;
+    border-radius: 18px;
+    padding: 18px 20px;
+    box-shadow: 0 4px 14px rgba(70, 25, 35, 0.04);
+}
+
+.current-status-display {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 14px;
+    flex-wrap: wrap;
+    gap: 10px;
+    background: #faf5f3;
+    padding: 10px 14px;
+    border-radius: 12px;
+    border: 1px solid #f1e2dc;
+}
+
+.status-summary-line {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.status-indicator-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: #64748b;
+}
+
+.role-permission-hint {
+    font-size: 11.5px;
+    color: #64748b;
+}
+
+.role-permission-hint strong {
+    color: #7d203b;
+}
+
+.status-input-label {
+    display: block;
+    font-size: 12px;
+    font-weight: 600;
+    color: #475569;
+    margin-bottom: 6px;
+}
+
+.status-remarks-input {
+    width: 100%;
+    padding: 9px 12px;
+    border: 1px solid #cbd5e1;
+    border-radius: 10px;
+    font-size: 13px;
+    font-family: inherit;
+    outline: none;
+    background: #ffffff;
+    box-sizing: border-box;
+    transition: border-color 0.2s, box-shadow 0.2s;
+    margin-bottom: 12px;
+}
+
+.status-remarks-input:focus {
+    border-color: #7d203b;
+    box-shadow: 0 0 0 3px rgba(125, 32, 59, 0.12);
+}
+
+.action-buttons-group {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.btn-workflow-primary {
+    width: 100%;
+    padding: 12px 18px;
+    background: linear-gradient(135deg, #7d203b, #581528);
+    color: #ffffff;
+    border: none;
+    border-radius: 12px;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    box-shadow: 0 4px 14px rgba(88, 21, 40, 0.22);
+    transition: all 0.2s ease;
+}
+
+.btn-workflow-primary:hover:not(:disabled) {
+    background: linear-gradient(135deg, #912745, #67192f);
+    transform: translateY(-1px);
+    box-shadow: 0 6px 18px rgba(88, 21, 40, 0.32);
+}
+
+.btn-workflow-primary:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.btn-spinner {
+    width: 16px;
+    height: 16px;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-top-color: white;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    display: inline-block;
+}
+
+/* Admin Override Panel */
+.admin-override-wrap {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px dashed #e2e8f0;
+}
+
+.admin-select-label {
+    display: block;
+    font-size: 11.5px;
+    font-weight: 600;
+    color: #64748b;
+    margin-bottom: 6px;
+}
+
+.admin-select-row {
+    display: flex;
+    gap: 8px;
+}
+
+.admin-status-dropdown {
+    flex: 1;
+    padding: 8px 10px;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    font-size: 12.5px;
+    font-family: inherit;
+    background: #ffffff;
+    color: #1e293b;
+    outline: none;
+}
+
+.btn-admin-apply {
+    padding: 8px 14px;
+    background: #1e293b;
+    color: #ffffff;
+    border: none;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.btn-admin-apply:hover {
+    background: #334155;
+}
+
+.status-disabled-message {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 14px;
+    background: #f8fafc;
+    border: 1px dashed #cbd5e1;
+    border-radius: 10px;
+    color: #64748b;
+    font-size: 12.5px;
+    line-height: 1.4;
+}
+
+.status-disabled-message .disabled-icon {
+    font-size: 18px;
+    flex-shrink: 0;
+}
+
+/* Status History Card (Audit Trail) */
+.modal-history-card {
+    background: #ffffff;
+    border: 1px solid #eeddd4;
+    border-radius: 18px;
+    padding: 18px 20px;
+    box-shadow: 0 4px 14px rgba(70, 25, 35, 0.04);
+}
+
+.history-timeline {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    max-height: 240px;
+    overflow-y: auto;
+    padding-right: 4px;
+}
+
+.history-timeline::-webkit-scrollbar {
+    width: 5px;
+}
+
+.history-timeline::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 3px;
+}
+
+.history-item {
+    display: flex;
+    gap: 10px;
+    position: relative;
+}
+
+.history-marker {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: #7d203b;
+    margin-top: 5px;
+    flex-shrink: 0;
+    box-shadow: 0 0 0 3px rgba(125, 32, 59, 0.18);
+}
+
+.history-content {
+    flex: 1;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 9px 12px;
+}
+
+.history-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 4px;
+}
+
+.history-step-change {
+    font-size: 12.5px;
+    font-weight: 700;
+    color: #1e293b;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.history-step-change .arrow {
+    color: #94a3b8;
+    font-size: 11px;
+}
+
+.history-time {
+    font-size: 11px;
+    color: #94a3b8;
+}
+
+.history-meta {
+    font-size: 11.5px;
+    color: #64748b;
+}
+
+.history-remarks {
+    margin-top: 5px;
+    font-style: italic;
+    color: #475569;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    padding: 4px 8px;
+    border-radius: 6px;
+}
+
+.history-loading,
+.history-empty,
+.history-error {
+    text-align: center;
+    padding: 20px;
+    font-size: 12.5px;
+    color: #94a3b8;
+}
+
 /* Modal Responsive */
 @media (max-width: 900px) {
     .modal-body {
         grid-template-columns: 1fr;
+    }
+
+    .workflow-steps {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 12px;
+    }
+
+    .step-connector {
+        display: none;
     }
 
     dialog.document-modal {

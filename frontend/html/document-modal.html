@@ -1,7 +1,7 @@
 <!-- ==========================================
      DOCUMENT DETAILS & PREVIEW MODAL
      DocuFlow Electronic Mailbox & Document Flow System
-     (โมดูลหน้าต่าง Popup แสดงรายละเอียดและตัวอย่างเอกสาร)
+     (โมดูลหน้าต่าง Popup แสดงรายละเอียด ตัวอย่างเอกสาร และจัดการสถานะตาม Workflow V3)
 ========================================== -->
 <dialog id="documentModal" class="document-modal" aria-labelledby="modalDocSubject">
     <div class="modal-card">
@@ -17,86 +17,207 @@
             <button type="button" class="modal-close-btn" id="modalCloseBtn" aria-label="ปิดหน้าต่าง">✕</button>
         </header>
 
-        <div class="modal-body">
-            <!-- ข้อมูลรายละเอียดเอกสาร -->
-            <section class="modal-details-card">
-                <div class="details-section-title">
-                    <span aria-hidden="true">📋</span> รายละเอียดเอกสาร
-                </div>
-                <div class="modal-meta-grid">
-                    <div class="meta-item">
-                        <span class="meta-label">เลขที่หนังสือ</span>
-                        <span class="meta-value" id="modalDocNumber">-</span>
-                    </div>
-                    <div class="meta-item">
-                        <span class="meta-label">ช่องทางรับเอกสาร</span>
-                        <span class="meta-value" id="modalChannel">-</span>
-                    </div>
-                    <div class="meta-item">
-                        <span class="meta-label">หน่วยงานผู้ส่ง</span>
-                        <span class="meta-value" id="modalSenderDept">-</span>
-                    </div>
-                    <div class="meta-item">
-                        <span class="meta-label">ชื่อผู้ส่ง</span>
-                        <span class="meta-value" id="modalSenderName">-</span>
-                    </div>
-                    <div class="meta-item">
-                        <span class="meta-label">ช่องทางติดต่อผู้ส่ง</span>
-                        <span class="meta-value" id="modalSenderContact">-</span>
-                    </div>
-                    <div class="meta-item">
-                        <span class="meta-label">ผู้รับ</span>
-                        <span class="meta-value" id="modalReceiver">-</span>
-                    </div>
-                    <div class="meta-item">
-                        <span class="meta-label">วันที่ส่ง</span>
-                        <span class="meta-value" id="modalSendDate">-</span>
-                    </div>
-                    <div class="meta-item">
-                        <span class="meta-label">วันที่รับ</span>
-                        <span class="meta-value" id="modalReceiveDate">-</span>
-                    </div>
-                    <div class="meta-item">
-                        <span class="meta-label">วันครบกำหนด (DEADLINE)</span>
-                        <span class="meta-value" id="modalDeadline">-</span>
-                    </div>
-                    <div class="meta-item full-width" id="modalRemarksWrap">
-                        <span class="meta-label">หมายเหตุ</span>
-                        <p class="meta-value remarks-box" id="modalRemarks">-</p>
+        <!-- แถบแสดงสถานะตาม Workflow V3 (Workflow Stepper) -->
+        <section class="workflow-stepper-wrap" aria-label="ขั้นตอนการดำเนินงานตาม Workflow">
+            <div class="stepper-header">
+                <span class="stepper-title">ขั้นตอนการดำเนินงานตาม Workflow (V3)</span>
+                <span class="workflow-current-tag" id="stepperCurrentTag">สถานะ: ได้รับเอกสารแล้ว</span>
+            </div>
+            <div class="workflow-steps" id="workflowStepper">
+                <div class="workflow-step active" data-step="Received">
+                    <div class="step-circle"><span class="step-icon">📥</span></div>
+                    <div class="step-labels">
+                        <strong>ได้รับเอกสารแล้ว</strong>
+                        <small>Received</small>
                     </div>
                 </div>
-            </section>
+                <div class="step-connector"></div>
+                <div class="workflow-step" data-step="Assigned">
+                    <div class="step-circle"><span class="step-icon">👤</span></div>
+                    <div class="step-labels">
+                        <strong>มอบหมายแล้ว</strong>
+                        <small>Assigned</small>
+                    </div>
+                </div>
+                <div class="step-connector"></div>
+                <div class="workflow-step" data-step="Processing">
+                    <div class="step-circle"><span class="step-icon">⚙️</span></div>
+                    <div class="step-labels">
+                        <strong>กำลังดำเนินการ</strong>
+                        <small>Processing</small>
+                    </div>
+                </div>
+                <div class="step-connector"></div>
+                <div class="workflow-step" data-step="Completed">
+                    <div class="step-circle"><span class="step-icon">✅</span></div>
+                    <div class="step-labels">
+                        <strong>ดำเนินการเสร็จสิ้น</strong>
+                        <small>Completed</small>
+                    </div>
+                </div>
+            </div>
+        </section>
 
-            <!-- ส่วนแสดงตัวอย่างและดาวน์โหลดไฟล์ (Preview & Download) -->
-            <section class="modal-preview-card">
-                <div class="preview-header">
-                    <div class="preview-file-summary">
-                        <div class="file-icon-box" id="previewFileIconBox">
-                            <span id="previewFileIcon">📄</span>
+        <!-- กล่องแจ้งเตือนผลการเปลี่ยนสถานะหรือข้อผิดพลาด (Task 8) -->
+        <div id="modalAlertBox" class="modal-alert-box" hidden role="alert">
+            <span class="alert-icon" id="modalAlertIcon">⚠️</span>
+            <div class="alert-content">
+                <strong id="modalAlertTitle">แจ้งเตือน</strong>
+                <p id="modalAlertMessage">ข้อความแจ้งเตือน</p>
+            </div>
+            <button type="button" class="alert-close-btn" id="modalAlertCloseBtn" aria-label="ปิดการแจ้งเตือน">✕</button>
+        </div>
+
+        <div class="modal-body">
+            <!-- คอลัมน์ซ้าย: จัดการสถานะ, รายละเอียดเอกสาร, ประวัติ Workflow -->
+            <div class="modal-left-col">
+                <!-- 1. ส่วนจัดการเปลี่ยนสถานะเอกสารตาม Workflow V3 -->
+                <section class="modal-workflow-card">
+                    <div class="details-section-title">
+                        <span aria-hidden="true">🔄</span> จัดการสถานะเอกสาร (Workflow V3)
+                    </div>
+                    
+                    <div class="workflow-action-body">
+                        <div class="current-status-display">
+                            <div class="status-summary-line">
+                                <span class="status-indicator-label">สถานะปัจจุบัน:</span>
+                                <span class="status-badge" id="actionCurrentStatusBadge">ได้รับเอกสารแล้ว</span>
+                            </div>
+                            <span class="role-permission-hint" id="actionRoleHint">
+                                ผู้ดำเนินการ: <strong id="actionCurrentRoleDisplay">เจ้าหน้าที่ (Staff)</strong>
+                            </span>
                         </div>
-                        <div class="preview-file-titles">
-                            <h3 id="previewFileName">ชื่อไฟล์เอกสาร</h3>
-                            <div class="preview-file-sub">
-                                <span id="previewFileTypeTag" class="file-type-pill">PDF</span>
-                                <span id="previewFileSize">-</span>
+
+                        <!-- ฟอร์มเปลี่ยนสถานะตามขั้นตอน -->
+                        <div class="status-change-controls" id="statusChangeControls">
+                            <div class="status-next-action" id="statusNextActionWrap">
+                                <label for="statusRemarksInput" class="status-input-label">บันทึกหมายเหตุการเปลี่ยนสถานะ (ทางเลือก):</label>
+                                <input type="text" id="statusRemarksInput" class="status-remarks-input" placeholder="ระบุเหตุผลหรือบันทึกช่วยจำ...">
+                                
+                                <div class="action-buttons-group">
+                                    <!-- ปุ่มเปลี่ยนสถานะเป็นขั้นตอนถัดไป -->
+                                    <button type="button" class="btn-workflow-primary" id="btnNextStatus">
+                                        <span class="btn-spinner" id="btnNextStatusSpinner" hidden></span>
+                                        <span id="btnNextStatusText">➡️ ดำเนินการขั้นตอนถัดไป</span>
+                                    </button>
+
+                                    <!-- สำหรับ Admin: เลือกสถานะได้ตามต้องการหรือ Rollback -->
+                                    <div class="admin-override-wrap" id="adminOverrideWrap" hidden>
+                                        <label class="admin-select-label">ผู้ดูแลระบบ (Admin Override):</label>
+                                        <div class="admin-select-row">
+                                            <select id="adminStatusSelect" class="admin-status-dropdown">
+                                                <option value="Received">Received (ได้รับเอกสารแล้ว)</option>
+                                                <option value="Assigned">Assigned (มอบหมายแล้ว)</option>
+                                                <option value="Processing">Processing (กำลังดำเนินการ)</option>
+                                                <option value="Completed">Completed (ดำเนินการเสร็จสิ้น)</option>
+                                            </select>
+                                            <button type="button" class="btn-admin-apply" id="btnAdminApplyStatus">ปรับสถานะ</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- ข้อความกรณีไม่มีสิทธิ์ (Guest) หรือสถานะสิ้นสุด (Completed) -->
+                            <div class="status-disabled-message" id="statusDisabledMessage" hidden>
+                                <span class="disabled-icon" id="statusDisabledIcon">🔒</span>
+                                <span id="statusDisabledText">คุณไม่มีสิทธิ์ในการเปลี่ยนสถานะเอกสารนี้</span>
                             </div>
                         </div>
                     </div>
-                    <div class="preview-actions">
-                        <button type="button" class="btn-download-primary" id="modalDownloadBtn">
-                            <span>↓</span> ดาวน์โหลดไฟล์
-                        </button>
-                    </div>
-                </div>
+                </section>
 
-                <!-- พื้นที่แสดงตัวอย่างเอกสาร (Preview Viewport) -->
-                <div class="preview-viewport" id="previewViewport">
-                    <div class="preview-loader" id="previewLoader">
-                        <div class="spinner"></div>
-                        <p>กำลังเตรียมการแสดงตัวอย่างเอกสาร...</p>
+                <!-- 2. ข้อมูลรายละเอียดเอกสาร -->
+                <section class="modal-details-card">
+                    <div class="details-section-title">
+                        <span aria-hidden="true">📋</span> รายละเอียดเอกสาร
                     </div>
-                </div>
-            </section>
+                    <div class="modal-meta-grid">
+                        <div class="meta-item">
+                            <span class="meta-label">เลขที่หนังสือ</span>
+                            <span class="meta-value" id="modalDocNumber">-</span>
+                        </div>
+                        <div class="meta-item">
+                            <span class="meta-label">ช่องทางรับเอกสาร</span>
+                            <span class="meta-value" id="modalChannel">-</span>
+                        </div>
+                        <div class="meta-item">
+                            <span class="meta-label">หน่วยงานผู้ส่ง</span>
+                            <span class="meta-value" id="modalSenderDept">-</span>
+                        </div>
+                        <div class="meta-item">
+                            <span class="meta-label">ชื่อผู้ส่ง</span>
+                            <span class="meta-value" id="modalSenderName">-</span>
+                        </div>
+                        <div class="meta-item">
+                            <span class="meta-label">ช่องทางติดต่อผู้ส่ง</span>
+                            <span class="meta-value" id="modalSenderContact">-</span>
+                        </div>
+                        <div class="meta-item">
+                            <span class="meta-label">ผู้รับ</span>
+                            <span class="meta-value" id="modalReceiver">-</span>
+                        </div>
+                        <div class="meta-item">
+                            <span class="meta-label">วันที่ส่ง</span>
+                            <span class="meta-value" id="modalSendDate">-</span>
+                        </div>
+                        <div class="meta-item">
+                            <span class="meta-label">วันที่รับ</span>
+                            <span class="meta-value" id="modalReceiveDate">-</span>
+                        </div>
+                        <div class="meta-item">
+                            <span class="meta-label">วันครบกำหนด (DEADLINE)</span>
+                            <span class="meta-value" id="modalDeadline">-</span>
+                        </div>
+                        <div class="meta-item full-width" id="modalRemarksWrap">
+                            <span class="meta-label">หมายเหตุ</span>
+                            <p class="meta-value remarks-box" id="modalRemarks">-</p>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- 3. ประวัติการเปลี่ยนสถานะเอกสาร (Status History & Audit Trail - Task 6 & 7) -->
+                <section class="modal-history-card">
+                    <div class="details-section-title">
+                        <span aria-hidden="true">⏱️</span> ประวัติการเปลี่ยนสถานะ (Workflow Audit Trail)
+                    </div>
+                    <div class="history-timeline" id="statusHistoryTimeline">
+                        <div class="history-loading">กำลังโหลดประวัติการเปลี่ยนสถานะ...</div>
+                    </div>
+                </section>
+            </div>
+
+            <!-- คอลัมน์ขวา: ส่วนแสดงตัวอย่างและดาวน์โหลดไฟล์ (Preview & Download) -->
+            <div class="modal-right-col">
+                <section class="modal-preview-card">
+                    <div class="preview-header">
+                        <div class="preview-file-summary">
+                            <div class="file-icon-box" id="previewFileIconBox">
+                                <span id="previewFileIcon">📄</span>
+                            </div>
+                            <div class="preview-file-titles">
+                                <h3 id="previewFileName">ชื่อไฟล์เอกสาร</h3>
+                                <div class="preview-file-sub">
+                                    <span id="previewFileTypeTag" class="file-type-pill">PDF</span>
+                                    <span id="previewFileSize">-</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="preview-actions">
+                            <button type="button" class="btn-download-primary" id="modalDownloadBtn">
+                                <span>↓</span> ดาวน์โหลดไฟล์
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- พื้นที่แสดงตัวอย่างเอกสาร (Preview Viewport) -->
+                    <div class="preview-viewport" id="previewViewport">
+                        <div class="preview-loader" id="previewLoader">
+                            <div class="spinner"></div>
+                            <p>กำลังเตรียมการแสดงตัวอย่างเอกสาร...</p>
+                        </div>
+                    </div>
+                </section>
+            </div>
         </div>
     </div>
 </dialog>

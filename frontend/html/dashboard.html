@@ -92,14 +92,13 @@
             </div>
         </section>
 
-        <!-- Filters Area -->
-        <div class="status-filters" role="tablist" aria-label="กรองข้อมูลเอกสาร">
+        <!-- Filters Area (V3 Workflow Statuses) -->
+        <div class="status-filters" role="tablist" aria-label="กรองข้อมูลเอกสารตามสถานะ">
             <button class="status-filter active" data-filter="all" role="tab">ทั้งหมด</button>
-            <button class="status-filter" data-filter="waiting" role="tab">รอดำเนินการ</button>
-            <button class="status-filter" data-filter="processing" role="tab">กำลังดำเนินการ</button>
-            <button class="status-filter" data-filter="approval" role="tab">รอการอนุมัติ</button>
-            <button class="status-filter" data-filter="completed" role="tab">เสร็จสิ้น</button>
-            <button class="status-filter" data-filter="archived" role="tab">จัดเก็บแล้ว</button>
+            <button class="status-filter" data-filter="Received" role="tab">ได้รับเอกสารแล้ว</button>
+            <button class="status-filter" data-filter="Assigned" role="tab">มอบหมายแล้ว</button>
+            <button class="status-filter" data-filter="Processing" role="tab">กำลังดำเนินการ</button>
+            <button class="status-filter" data-filter="Completed" role="tab">ดำเนินการเสร็จสิ้น</button>
         </div>
 
         <!-- Main registry -->
@@ -134,15 +133,13 @@
             </div>
         </section>
 
-        <!-- Bottom legend -->
+        <!-- Bottom legend (V3 Workflow Statuses) -->
         <div class="status-legend" aria-label="คำอธิบายสถานะ">
             <button class="legend-item active" data-filter="all"><i class="dot dot-all"></i>ทั้งหมด</button>
-            <button class="legend-item" data-filter="waiting"><i class="dot dot-waiting"></i>รอดำเนินการ</button>
-            <button class="legend-item" data-filter="processing"><i
-                    class="dot dot-processing"></i>กำลังดำเนินการ</button>
-            <button class="legend-item" data-filter="approval"><i class="dot dot-approval"></i>รอการอนุมัติ</button>
-            <button class="legend-item" data-filter="completed"><i class="dot dot-completed"></i>เสร็จสิ้น</button>
-            <button class="legend-item" data-filter="archived"><i class="dot dot-archived"></i>จัดเก็บแล้ว</button>
+            <button class="legend-item" data-filter="Received"><i class="dot dot-received"></i>ได้รับเอกสารแล้ว</button>
+            <button class="legend-item" data-filter="Assigned"><i class="dot dot-assigned"></i>มอบหมายแล้ว</button>
+            <button class="legend-item" data-filter="Processing"><i class="dot dot-processing"></i>กำลังดำเนินการ</button>
+            <button class="legend-item" data-filter="Completed"><i class="dot dot-completed"></i>ดำเนินการเสร็จสิ้น</button>
         </div>
     </main>
 

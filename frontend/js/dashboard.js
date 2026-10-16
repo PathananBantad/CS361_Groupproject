@@ -71,6 +71,10 @@ function setUserRole(role, user) {
     localStorage.setItem("docuflow_role", role);
     localStorage.setItem("docuflow_user", user);
     updateRoleUI();
+
+    if (window.DocuFlowModal && typeof window.DocuFlowModal.refreshWorkflowUI === "function") {
+        window.DocuFlowModal.refreshWorkflowUI();
+    }
 }
 
 // Expose ให้โมดูลอื่นเรียกใช้ได้
@@ -111,14 +115,14 @@ async function fetchDocuments() {
 
     if (!currentFilters.has("all")) {
         currentFilters.forEach(filter => {
-            let statusParam = "";
-            if (filter === "waiting") statusParam = "Received";
-            else if (filter === "processing") statusParam = "Processing";
-            else if (filter === "approval") statusParam = "Assigned";
-            else if (filter === "completed") statusParam = "Completed";
-            else if (filter === "archived") statusParam = "Archived";
+            let statusParam = filter;
+            const lower = filter.toLowerCase();
+            if (lower === "received" || filter === "waiting") statusParam = "Received";
+            else if (lower === "assigned" || filter === "approval") statusParam = "Assigned";
+            else if (lower === "processing") statusParam = "Processing";
+            else if (lower === "completed") statusParam = "Completed";
 
-            if (statusParam) {
+            if (statusParam && statusParam !== "all") {
                 params.append("status", statusParam);
             }
         });
@@ -141,24 +145,21 @@ async function fetchDocuments() {
         const data = await response.json();
         const rows = Array.isArray(data) ? data : (data.documents || data.data || []);
 
-        documents = rows.map(row => {
-            const status = row.status || "";
-            let statusKey = "waiting";
-            let color = "default";
+        const V3_STATUS_CONFIG = {
+            Received: { key: "received", label: "ได้รับเอกสารแล้ว", color: "teal", step: 1 },
+            Assigned: { key: "assigned", label: "มอบหมายแล้ว", color: "orange", step: 2 },
+            Processing: { key: "processing", label: "กำลังดำเนินการ", color: "blue", step: 3 },
+            Completed: { key: "completed", label: "ดำเนินการเสร็จสิ้น", color: "green", step: 4 }
+        };
 
-            if (status === "Processing" || status === "กำลังดำเนินการ") {
-                statusKey = "processing";
-                color = "blue";
-            } else if (status === "Assigned" || status === "รอการอนุมัติ") {
-                statusKey = "approval";
-                color = "orange";
-            } else if (status === "Completed" || status === "เสร็จสิ้น") {
-                statusKey = "completed";
-                color = "green";
-            } else if (status === "Archived" || status === "จัดเก็บแล้ว") {
-                statusKey = "archived";
-                color = "gray";
-            }
+        documents = rows.map(row => {
+            const rawStatus = row.status || "Received";
+            const cfg = V3_STATUS_CONFIG[rawStatus] || {
+                key: rawStatus.toLowerCase(),
+                label: rawStatus,
+                color: "gray",
+                step: 1
+            };
 
             const dateValue = row.received_at || row.created_at || row.updated_at;
             let receivedDate = "-";
@@ -206,11 +207,13 @@ async function fetchDocuments() {
                 deadline: safeFormatDate(row.deadline),
                 remarks: row.remarks || "-",
                 channel: row.receiving_channel || "-",
-                statusKey: statusKey,
-                statusLabel: row.status || "-",
+                rawStatus: rawStatus,
+                statusKey: cfg.key,
+                statusLabel: cfg.label,
+                statusStep: cfg.step,
+                color: cfg.color,
                 receivedDate: receivedDate,
                 receivedTime: receivedTime,
-                color: color,
                 file_key: row.file_key || null,
                 file_name: originalFileName || null,
                 file_size: row.file_size || null,
@@ -260,7 +263,19 @@ function render() {
     }
 
     if (!currentFilters.has("all")) {
-        result = result.filter(doc => currentFilters.has(doc.statusKey));
+        result = result.filter(doc => {
+            for (const filter of currentFilters) {
+                const fLower = String(filter).toLowerCase();
+                if (
+                    doc.statusKey === fLower ||
+                    (doc.rawStatus && doc.rawStatus.toLowerCase() === fLower) ||
+                    (doc.statusLabel && doc.statusLabel.toLowerCase() === fLower)
+                ) {
+                    return true;
+                }
+            }
+            return false;
+        });
     }
 
     if (sortKey) {
@@ -513,3 +528,9 @@ initRoleManagement();
 syncFilterButtons();
 setupSorting();
 fetchDocuments();
+
+// Expose fetchDocuments for external trigger and listen to status change events
+window.fetchDocuments = fetchDocuments;
+window.addEventListener("docuflow:statusChanged", () => {
+    fetchDocuments();
+});

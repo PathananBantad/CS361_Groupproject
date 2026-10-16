@@ -45,6 +45,20 @@ CREATE TABLE IF NOT EXISTS document_files (
     CONSTRAINT fk_file_document FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE
 );
 
+-- สร้างตารางบันทึกประวัติการเปลี่ยนสถานะ (Document Workflow Status Logs)
+CREATE TABLE IF NOT EXISTS document_status_logs (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    document_id INT NOT NULL,
+    old_status VARCHAR(50) NOT NULL,
+    new_status VARCHAR(50) NOT NULL,
+    changed_by VARCHAR(100) NULL,
+    changed_by_user_id INT NULL,
+    remarks TEXT NULL,
+    changed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_doc_id (document_id),
+    CONSTRAINT fk_status_log_document FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE
+);
+
 -- ช่องทางรับ
 INSERT IGNORE INTO channels (code, name) VALUES 
 ('EMAIL', 'อีเมล'),

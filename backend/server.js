@@ -358,11 +358,11 @@ app.post("/api/documents", async (req, res) => {
         const sanitizedReceiverName = sanitizeInput(receiver_name);
         const sanitizedRemarks = sanitizeInput(remarks);
 
-        // ตรวจสอบ Status
-        const allowedStatuses = ["Received", "Assigned", "Processing", "Completed", "Archived"];
+        // ตรวจสอบ Status ตาม Workflow V3
+        const allowedStatuses = ["Received", "Assigned", "Processing", "Completed"];
         if (!allowedStatuses.includes(status)) {
             return res.status(400).json({
-                error: "status must be one of: Received, Assigned, Processing, Completed, Archived"
+                error: "status must be one of: Received, Assigned, Processing, Completed"
             });
         }
 
@@ -439,47 +439,187 @@ app.post("/api/documents", async (req, res) => {
     }
 });
 
-// Update document status
-app.put("/api/documents/:id/status", async (req, res) => {
+// ============================================================================
+// [V3] WORKFLOW STATUS MANAGEMENT APIS
+// ============================================================================
+
+// V3 Workflow Constants
+const V3_STATUSES = ["Received", "Assigned", "Processing", "Completed"];
+
+const V3_STATUS_LABELS = {
+    Received: "ได้รับเอกสารแล้ว",
+    Assigned: "มอบหมายแล้ว",
+    Processing: "กำลังดำเนินการ",
+    Completed: "ดำเนินการเสร็จสิ้นแล้ว"
+};
+
+const V3_WORKFLOW_TRANSITIONS = {
+    Received: ["Assigned"],
+    Assigned: ["Processing"],
+    Processing: ["Completed"],
+    Completed: [] // Terminal state
+};
+
+// GET /api/workflow/config - เรียกดูการตั้งค่า Workflow สถานะเอกสาร V3
+app.get("/api/workflow/config", (req, res) => {
+    res.json({
+        version: "V3",
+        statuses: [
+            { key: "Received", label: "ได้รับเอกสารแล้ว", step: 1, color: "teal", description: "ได้รับเอกสารเข้าสู่ระบบเรียบร้อยแล้ว" },
+            { key: "Assigned", label: "มอบหมายแล้ว", step: 2, color: "orange", description: "มอบหมายเอกสารให้ผู้รับผิดชอบดำเนินการ" },
+            { key: "Processing", label: "กำลังดำเนินการ", step: 3, color: "blue", description: "ผู้รับผิดชอบกำลังดำเนินการกับเอกสาร" },
+            { key: "Completed", label: "ดำเนินการเสร็จสิ้นแล้ว", step: 4, color: "green", description: "ดำเนินการตามเอกสารเสร็จสิ้นสมบูรณ์แล้ว" }
+        ],
+        transitions: V3_WORKFLOW_TRANSITIONS,
+        permissions: {
+            staff: { can_change_status: true, rule: "เปลี่ยนสถานะตามลำดับ Workflow ทีละขั้นตอน" },
+            admin: { can_change_status: true, rule: "เปลี่ยนสถานะตาม Workflow หรือปรับปรุงแก้ไขตามความเหมาะสม" },
+            guest: { can_change_status: false, rule: "ไม่มีสิทธิ์เปลี่ยนสถานะเอกสาร (Read-only)" }
+        }
+    });
+});
+
+// GET /api/documents/:id/status-history - ดึงประวัติการเปลี่ยนสถานะของเอกสาร (Audit Log)
+app.get("/api/documents/:id/status-history", async (req, res) => {
     try {
-        const { status } = req.body;
         const { id } = req.params;
 
-        if (!status) {
-            return res.status(400).json({
-                error: "status is required"
-            });
+        const [docRows] = await pool.query("SELECT id, reference_no, subject, status FROM documents WHERE id = ?", [id]);
+        if (docRows.length === 0) {
+            return res.status(404).json({ error: "ไม่พบข้อมูลเอกสารในระบบ" });
         }
 
-        const [result] = await pool.query(
-            `
-            UPDATE documents
-            SET status = ?
-            WHERE id = ?
-            `,
-            [status, id]
-        );
-
-        if (result.affectedRows === 0) {
-            return res.status(404).json({
-                error: "Document not found"
-            });
-        }
-
-        const [rows] = await pool.query(
-            "SELECT * FROM documents WHERE id = ?",
+        const [logs] = await pool.query(
+            `SELECT id, document_id, old_status, new_status, changed_by, changed_by_user_id, remarks, changed_at
+             FROM document_status_logs
+             WHERE document_id = ?
+             ORDER BY changed_at ASC, id ASC`,
             [id]
         );
 
         res.json({
-            message: "Document status updated successfully",
-            data: rows[0]
+            document_id: id,
+            reference_no: docRows[0].reference_no,
+            current_status: docRows[0].status,
+            history: logs
+        });
+    } catch (error) {
+        console.error("Fetch status history error:", error);
+        res.status(500).json({ error: "ไม่สามารถดึงข้อมูลประวัติการเปลี่ยนสถานะเอกสารได้" });
+    }
+});
+
+// PUT /api/documents/:id/status - เปลี่ยนสถานะเอกสารตาม Workflow V3 พร้อมตรวจสอบสิทธิ์และเงื่อนไข
+app.put("/api/documents/:id/status", async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { status: newStatus, remarks } = req.body;
+
+        // 1. ดึงข้อมูลตัวตนและสิทธิ์จาก Request Headers หรือ Body / Query
+        const role = (req.headers["x-user-role"] || req.query.role || req.body.role || "staff").toString().trim().toLowerCase();
+        const username = req.headers["x-username"] || req.headers["x-user-id"] || req.body.changed_by || req.body.username || (role === "admin" ? "admin01" : "staff01");
+        const userId = req.headers["x-user-id"] || req.body.user_id || null;
+        const sanitizedRemarks = sanitizeInput(remarks || "");
+
+        // 2. ตรวจสอบสิทธิ์ผู้ใช้ (Task 3 & 5): เฉพาะ staff และ admin ที่มีสิทธิ์เปลี่ยนสถานะ
+        if (role === "guest" || role === "unauthorized" || (role !== "staff" && role !== "admin")) {
+            return res.status(403).json({
+                error: "คุณไม่มีสิทธิ์ในการเปลี่ยนสถานะเอกสาร (ต้องการสิทธิ์ Staff หรือ Admin เท่านั้น)"
+            });
+        }
+
+        // 3. ตรวจสอบค่าสถานะใหม่ที่ส่งมา (Task 1 & 9)
+        if (!newStatus) {
+            return res.status(400).json({
+                error: "กรุณาระบุสถานะใหม่ที่ต้องการเปลี่ยน (status is required)"
+            });
+        }
+
+        if (!V3_STATUSES.includes(newStatus)) {
+            return res.status(400).json({
+                error: `สถานะ "${newStatus}" ไม่ถูกต้อง สถานะที่อนุญาตใน V3 ได้แก่: ${V3_STATUSES.join(", ")}`
+            });
+        }
+
+        // 4. ตรวจสอบว่าเอกสารมีอยู่จริงในระบบหรือไม่
+        const [docRows] = await pool.query("SELECT * FROM documents WHERE id = ?", [id]);
+        if (docRows.length === 0) {
+            return res.status(404).json({
+                error: "ไม่พบเอกสารที่ระบุในระบบ (Document not found)"
+            });
+        }
+
+        const doc = docRows[0];
+        const oldStatus = doc.status || "Received";
+
+        // 5. ป้องกันการเปลี่ยนเป็นสถานะเดิม (Task 9)
+        if (oldStatus === newStatus) {
+            const label = V3_STATUS_LABELS[oldStatus] || oldStatus;
+            return res.status(400).json({
+                error: `เอกสารอยู่ในสถานะ "${label}" (${oldStatus}) อยู่แล้ว ไม่สามารถเปลี่ยนเป็นสถานะเดิมได้`
+            });
+        }
+
+        // 6. ตรวจสอบเงื่อนไขการเปลี่ยนสถานะตาม Workflow (Task 2, 5 & 9)
+        const isAdmin = role === "admin";
+        const allowedNextStatuses = V3_WORKFLOW_TRANSITIONS[oldStatus] || [];
+        const isStandardWorkflowStep = allowedNextStatuses.includes(newStatus);
+
+        if (!isAdmin && !isStandardWorkflowStep) {
+            // กรณีเอกสารเสร็จสิ้นแล้ว
+            if (oldStatus === "Completed") {
+                return res.status(400).json({
+                    error: `เอกสารนี้อยู่ในสถานะ "ดำเนินการเสร็จสิ้นแล้ว" (Completed) ซึ่งเป็นสถานะสิ้นสุดของ Workflow ไม่สามารถเปลี่ยนสถานะต่อไปได้อีก`
+                });
+            }
+
+            // กรณีข้ามขั้นตอนหรือไม่ตรงตาม Workflow
+            const allowedLabels = allowedNextStatuses.map(s => `"${V3_STATUS_LABELS[s] || s}" (${s})`).join(", ") || "ไม่มี";
+            return res.status(400).json({
+                error: `ไม่สามารถเปลี่ยนสถานะจาก "${V3_STATUS_LABELS[oldStatus] || oldStatus}" ไปเป็น "${V3_STATUS_LABELS[newStatus] || newStatus}" ได้ ตามเงื่อนไข Workflow V3 (สถานะถัดไปที่อนุญาตคือ: ${allowedLabels})`
+            });
+        }
+
+        // 7. อัปเดตสถานะในตาราง documents
+        const [updateResult] = await pool.query(
+            `UPDATE documents SET status = ? WHERE id = ?`,
+            [newStatus, id]
+        );
+
+        if (updateResult.affectedRows === 0) {
+            return res.status(500).json({
+                error: "เกิดข้อผิดพลาดในการอัปเดตสถานะเอกสารในฐานข้อมูล"
+            });
+        }
+
+        // 8. บันทึกประวัติการเปลี่ยนสถานะ (Task 6): สถานะเดิม, สถานะใหม่, ผู้ดำเนินการ, วันเวลา
+        await pool.query(
+            `INSERT INTO document_status_logs (document_id, old_status, new_status, changed_by, changed_by_user_id, remarks, changed_at)
+             VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+            [id, oldStatus, newStatus, username, userId, sanitizedRemarks || null]
+        );
+
+        // 9. ดึงข้อมูลเอกสารและประวัติล่าสุดส่งกลับไปให้ Frontend
+        const [updatedRows] = await pool.query("SELECT * FROM documents WHERE id = ?", [id]);
+        const [historyRows] = await pool.query(
+            `SELECT id, old_status, new_status, changed_by, remarks, changed_at
+             FROM document_status_logs
+             WHERE document_id = ?
+             ORDER BY changed_at DESC LIMIT 1`,
+            [id]
+        );
+
+        res.json({
+            ok: true,
+            message: `เปลี่ยนสถานะเอกสารเป็น "${V3_STATUS_LABELS[newStatus] || newStatus}" สำเร็จเรียบร้อย`,
+            data: updatedRows[0],
+            status_log: historyRows[0] || null
         });
 
     } catch (error) {
-        console.error(error);
+        console.error("Update document status error:", error);
         res.status(500).json({
-            error: "Failed to update document status"
+            error: "เกิดข้อผิดพลาดของเซิร์ฟเวอร์ในการเปลี่ยนสถานะเอกสาร: " + error.message
         });
     }
 });

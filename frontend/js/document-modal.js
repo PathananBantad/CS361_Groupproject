@@ -24,6 +24,32 @@
     let modalDeadline = null;
     let modalRemarks = null;
 
+    // V3 Workflow & Action Elements
+    let workflowStepper = null;
+    let stepperCurrentTag = null;
+    let modalAlertBox = null;
+    let modalAlertIcon = null;
+    let modalAlertTitle = null;
+    let modalAlertMessage = null;
+    let modalAlertCloseBtn = null;
+
+    let actionCurrentStatusBadge = null;
+    let actionRoleHint = null;
+    let actionCurrentRoleDisplay = null;
+    let statusNextActionWrap = null;
+    let statusRemarksInput = null;
+    let btnNextStatus = null;
+    let btnNextStatusText = null;
+    let btnNextStatusSpinner = null;
+
+    let adminOverrideWrap = null;
+    let adminStatusSelect = null;
+    let btnAdminApplyStatus = null;
+    let statusDisabledMessage = null;
+    let statusDisabledIcon = null;
+    let statusDisabledText = null;
+    let statusHistoryTimeline = null;
+
     let previewFileIcon = null;
     let previewFileName = null;
     let previewFileTypeTag = null;
@@ -54,6 +80,32 @@
         modalDeadline = document.getElementById("modalDeadline");
         modalRemarks = document.getElementById("modalRemarks");
 
+        // V3 Workflow DOM Elements
+        workflowStepper = document.getElementById("workflowStepper");
+        stepperCurrentTag = document.getElementById("stepperCurrentTag");
+        modalAlertBox = document.getElementById("modalAlertBox");
+        modalAlertIcon = document.getElementById("modalAlertIcon");
+        modalAlertTitle = document.getElementById("modalAlertTitle");
+        modalAlertMessage = document.getElementById("modalAlertMessage");
+        modalAlertCloseBtn = document.getElementById("modalAlertCloseBtn");
+
+        actionCurrentStatusBadge = document.getElementById("actionCurrentStatusBadge");
+        actionRoleHint = document.getElementById("actionRoleHint");
+        actionCurrentRoleDisplay = document.getElementById("actionCurrentRoleDisplay");
+        statusNextActionWrap = document.getElementById("statusNextActionWrap");
+        statusRemarksInput = document.getElementById("statusRemarksInput");
+        btnNextStatus = document.getElementById("btnNextStatus");
+        btnNextStatusText = document.getElementById("btnNextStatusText");
+        btnNextStatusSpinner = document.getElementById("btnNextStatusSpinner");
+
+        adminOverrideWrap = document.getElementById("adminOverrideWrap");
+        adminStatusSelect = document.getElementById("adminStatusSelect");
+        btnAdminApplyStatus = document.getElementById("btnAdminApplyStatus");
+        statusDisabledMessage = document.getElementById("statusDisabledMessage");
+        statusDisabledIcon = document.getElementById("statusDisabledIcon");
+        statusDisabledText = document.getElementById("statusDisabledText");
+        statusHistoryTimeline = document.getElementById("statusHistoryTimeline");
+
         previewFileIcon = document.getElementById("previewFileIcon");
         previewFileName = document.getElementById("previewFileName");
         previewFileTypeTag = document.getElementById("previewFileTypeTag");
@@ -61,12 +113,42 @@
         previewViewport = document.getElementById("previewViewport");
         modalDownloadBtn = document.getElementById("modalDownloadBtn");
 
-        if (modalCloseBtn && documentModal && !documentModal.dataset.eventsBound) {
+        if (documentModal && !documentModal.dataset.eventsBound) {
             documentModal.dataset.eventsBound = "true";
 
-            modalCloseBtn.addEventListener("click", () => {
-                documentModal.close();
-            });
+            if (modalCloseBtn) {
+                modalCloseBtn.addEventListener("click", () => {
+                    documentModal.close();
+                });
+            }
+
+            if (modalAlertCloseBtn) {
+                modalAlertCloseBtn.addEventListener("click", () => {
+                    hideAlert();
+                });
+            }
+
+            // ปุ่มเปลี่ยนสถานะขั้นตอนถัดไป (Task 4)
+            if (btnNextStatus) {
+                btnNextStatus.addEventListener("click", () => {
+                    const targetStatus = btnNextStatus.dataset.targetStatus;
+                    const remarks = statusRemarksInput ? statusRemarksInput.value.trim() : "";
+                    if (targetStatus) {
+                        changeDocumentStatus(targetStatus, remarks);
+                    }
+                });
+            }
+
+            // ปุ่ม Admin ปรับสถานะ / Override
+            if (btnAdminApplyStatus) {
+                btnAdminApplyStatus.addEventListener("click", () => {
+                    const targetStatus = adminStatusSelect ? adminStatusSelect.value : "";
+                    const remarks = statusRemarksInput ? statusRemarksInput.value.trim() : "";
+                    if (targetStatus) {
+                        changeDocumentStatus(targetStatus, remarks);
+                    }
+                });
+            }
 
             // ปิดเมื่อคลิกที่ Backdrop
             documentModal.addEventListener("click", (e) => {
@@ -84,6 +166,7 @@
 
             documentModal.addEventListener("close", () => {
                 if (previewViewport) previewViewport.innerHTML = "";
+                hideAlert();
                 currentActiveDoc = null;
             });
         }
@@ -149,32 +232,127 @@
                     </div>
                     <button type="button" class="modal-close-btn" id="modalCloseBtn" aria-label="ปิดหน้าต่าง">✕</button>
                 </header>
+
+                <!-- แถบแสดงสถานะตาม Workflow V3 -->
+                <section class="workflow-stepper-wrap" aria-label="ขั้นตอนการดำเนินงานตาม Workflow">
+                    <div class="stepper-header">
+                        <span class="stepper-title">ขั้นตอนการดำเนินงานตาม Workflow (V3)</span>
+                        <span class="workflow-current-tag" id="stepperCurrentTag">สถานะ: ได้รับเอกสารแล้ว</span>
+                    </div>
+                    <div class="workflow-steps" id="workflowStepper">
+                        <div class="workflow-step active" data-step="Received">
+                            <div class="step-circle"><span class="step-icon">📥</span></div>
+                            <div class="step-labels"><strong>ได้รับเอกสารแล้ว</strong><small>Received</small></div>
+                        </div>
+                        <div class="step-connector"></div>
+                        <div class="workflow-step" data-step="Assigned">
+                            <div class="step-circle"><span class="step-icon">👤</span></div>
+                            <div class="step-labels"><strong>มอบหมายแล้ว</strong><small>Assigned</small></div>
+                        </div>
+                        <div class="step-connector"></div>
+                        <div class="workflow-step" data-step="Processing">
+                            <div class="step-circle"><span class="step-icon">⚙️</span></div>
+                            <div class="step-labels"><strong>กำลังดำเนินการ</strong><small>Processing</small></div>
+                        </div>
+                        <div class="step-connector"></div>
+                        <div class="workflow-step" data-step="Completed">
+                            <div class="step-circle"><span class="step-icon">✅</span></div>
+                            <div class="step-labels"><strong>ดำเนินการเสร็จสิ้น</strong><small>Completed</small></div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- กล่องแจ้งเตือน (Task 8) -->
+                <div id="modalAlertBox" class="modal-alert-box" hidden role="alert">
+                    <span class="alert-icon" id="modalAlertIcon">⚠️</span>
+                    <div class="alert-content">
+                        <strong id="modalAlertTitle">แจ้งเตือน</strong>
+                        <p id="modalAlertMessage">ข้อความแจ้งเตือน</p>
+                    </div>
+                    <button type="button" class="alert-close-btn" id="modalAlertCloseBtn" aria-label="ปิดการแจ้งเตือน">✕</button>
+                </div>
+
                 <div class="modal-body">
-                    <section class="modal-details-card">
-                        <div class="details-section-title"><span aria-hidden="true">📋</span> รายละเอียดเอกสาร</div>
-                        <div class="modal-meta-grid">
-                            <div class="meta-item"><span class="meta-label">เลขที่หนังสือ</span><span class="meta-value" id="modalDocNumber">-</span></div>
-                            <div class="meta-item"><span class="meta-label">ช่องทางรับเอกสาร</span><span class="meta-value" id="modalChannel">-</span></div>
-                            <div class="meta-item"><span class="meta-label">หน่วยงานผู้ส่ง</span><span class="meta-value" id="modalSenderDept">-</span></div>
-                            <div class="meta-item"><span class="meta-label">ชื่อผู้ส่ง</span><span class="meta-value" id="modalSenderName">-</span></div>
-                            <div class="meta-item"><span class="meta-label">ช่องทางติดต่อผู้ส่ง</span><span class="meta-value" id="modalSenderContact">-</span></div>
-                            <div class="meta-item"><span class="meta-label">ผู้รับ</span><span class="meta-value" id="modalReceiver">-</span></div>
-                            <div class="meta-item"><span class="meta-label">วันที่ส่ง</span><span class="meta-value" id="modalSendDate">-</span></div>
-                            <div class="meta-item"><span class="meta-label">วันที่รับ</span><span class="meta-value" id="modalReceiveDate">-</span></div>
-                            <div class="meta-item"><span class="meta-label">วันครบกำหนด (DEADLINE)</span><span class="meta-value" id="modalDeadline">-</span></div>
-                            <div class="meta-item full-width" id="modalRemarksWrap"><span class="meta-label">หมายเหตุ</span><p class="meta-value remarks-box" id="modalRemarks">-</p></div>
-                        </div>
-                    </section>
-                    <section class="modal-preview-card">
-                        <div class="preview-header">
-                            <div class="preview-file-summary">
-                                <div class="file-icon-box" id="previewFileIconBox"><span id="previewFileIcon">📄</span></div>
-                                <div class="preview-file-titles"><h3 id="previewFileName">ชื่อไฟล์เอกสาร</h3><div class="preview-file-sub"><span id="previewFileTypeTag" class="file-type-pill">PDF</span><span id="previewFileSize">-</span></div></div>
+                    <div class="modal-left-col">
+                        <!-- ส่วนจัดการสถานะ Workflow -->
+                        <section class="modal-workflow-card">
+                            <div class="details-section-title"><span aria-hidden="true">🔄</span> จัดการสถานะเอกสาร (Workflow V3)</div>
+                            <div class="workflow-action-body">
+                                <div class="current-status-display">
+                                    <div class="status-summary-line">
+                                        <span class="status-indicator-label">สถานะปัจจุบัน:</span>
+                                        <span class="status-badge" id="actionCurrentStatusBadge">ได้รับเอกสารแล้ว</span>
+                                    </div>
+                                    <span class="role-permission-hint" id="actionRoleHint">ผู้ดำเนินการ: <strong id="actionCurrentRoleDisplay">เจ้าหน้าที่ (Staff)</strong></span>
+                                </div>
+                                <div class="status-change-controls" id="statusChangeControls">
+                                    <div class="status-next-action" id="statusNextActionWrap">
+                                        <label for="statusRemarksInput" class="status-input-label">บันทึกหมายเหตุการเปลี่ยนสถานะ (ทางเลือก):</label>
+                                        <input type="text" id="statusRemarksInput" class="status-remarks-input" placeholder="ระบุเหตุผลหรือบันทึกช่วยจำ...">
+                                        <div class="action-buttons-group">
+                                            <button type="button" class="btn-workflow-primary" id="btnNextStatus">
+                                                <span class="btn-spinner" id="btnNextStatusSpinner" hidden></span>
+                                                <span id="btnNextStatusText">➡️ ดำเนินการขั้นตอนถัดไป</span>
+                                            </button>
+                                            <div class="admin-override-wrap" id="adminOverrideWrap" hidden>
+                                                <label class="admin-select-label">ผู้ดูแลระบบ (Admin Override):</label>
+                                                <div class="admin-select-row">
+                                                    <select id="adminStatusSelect" class="admin-status-dropdown">
+                                                        <option value="Received">Received (ได้รับเอกสารแล้ว)</option>
+                                                        <option value="Assigned">Assigned (มอบหมายแล้ว)</option>
+                                                        <option value="Processing">Processing (กำลังดำเนินการ)</option>
+                                                        <option value="Completed">Completed (ดำเนินการเสร็จสิ้น)</option>
+                                                    </select>
+                                                    <button type="button" class="btn-admin-apply" id="btnAdminApplyStatus">ปรับสถานะ</button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="status-disabled-message" id="statusDisabledMessage" hidden>
+                                        <span class="disabled-icon" id="statusDisabledIcon">🔒</span>
+                                        <span id="statusDisabledText">คุณไม่มีสิทธิ์ในการเปลี่ยนสถานะเอกสารนี้</span>
+                                    </div>
+                                </div>
                             </div>
-                            <div class="preview-actions"><button type="button" class="btn-download-primary" id="modalDownloadBtn"><span>↓</span> ดาวน์โหลดไฟล์</button></div>
-                        </div>
-                        <div class="preview-viewport" id="previewViewport"><div class="preview-loader" id="previewLoader"><div class="spinner"></div><p>กำลังเตรียมการแสดงตัวอย่างเอกสาร...</p></div></div>
-                    </section>
+                        </section>
+
+                        <!-- รายละเอียดเอกสาร -->
+                        <section class="modal-details-card">
+                            <div class="details-section-title"><span aria-hidden="true">📋</span> รายละเอียดเอกสาร</div>
+                            <div class="modal-meta-grid">
+                                <div class="meta-item"><span class="meta-label">เลขที่หนังสือ</span><span class="meta-value" id="modalDocNumber">-</span></div>
+                                <div class="meta-item"><span class="meta-label">ช่องทางรับเอกสาร</span><span class="meta-value" id="modalChannel">-</span></div>
+                                <div class="meta-item"><span class="meta-label">หน่วยงานผู้ส่ง</span><span class="meta-value" id="modalSenderDept">-</span></div>
+                                <div class="meta-item"><span class="meta-label">ชื่อผู้ส่ง</span><span class="meta-value" id="modalSenderName">-</span></div>
+                                <div class="meta-item"><span class="meta-label">ช่องทางติดต่อผู้ส่ง</span><span class="meta-value" id="modalSenderContact">-</span></div>
+                                <div class="meta-item"><span class="meta-label">ผู้รับ</span><span class="meta-value" id="modalReceiver">-</span></div>
+                                <div class="meta-item"><span class="meta-label">วันที่ส่ง</span><span class="meta-value" id="modalSendDate">-</span></div>
+                                <div class="meta-item"><span class="meta-label">วันที่รับ</span><span class="meta-value" id="modalReceiveDate">-</span></div>
+                                <div class="meta-item"><span class="meta-label">วันครบกำหนด (DEADLINE)</span><span class="meta-value" id="modalDeadline">-</span></div>
+                                <div class="meta-item full-width" id="modalRemarksWrap"><span class="meta-label">หมายเหตุ</span><p class="meta-value remarks-box" id="modalRemarks">-</p></div>
+                            </div>
+                        </section>
+
+                        <!-- ประวัติการเปลี่ยนสถานะ (Task 6 & 7) -->
+                        <section class="modal-history-card">
+                            <div class="details-section-title"><span aria-hidden="true">⏱️</span> ประวัติการเปลี่ยนสถานะ (Workflow Audit Trail)</div>
+                            <div class="history-timeline" id="statusHistoryTimeline"><div class="history-loading">กำลังโหลดประวัติการเปลี่ยนสถานะ...</div></div>
+                        </section>
+                    </div>
+
+                    <!-- คอลัมน์ขวา: Preview & Download -->
+                    <div class="modal-right-col">
+                        <section class="modal-preview-card">
+                            <div class="preview-header">
+                                <div class="preview-file-summary">
+                                    <div class="file-icon-box" id="previewFileIconBox"><span id="previewFileIcon">📄</span></div>
+                                    <div class="preview-file-titles"><h3 id="previewFileName">ชื่อไฟล์เอกสาร</h3><div class="preview-file-sub"><span id="previewFileTypeTag" class="file-type-pill">PDF</span><span id="previewFileSize">-</span></div></div>
+                                </div>
+                                <div class="preview-actions"><button type="button" class="btn-download-primary" id="modalDownloadBtn"><span>↓</span> ดาวน์โหลดไฟล์</button></div>
+                            </div>
+                            <div class="preview-viewport" id="previewViewport"><div class="preview-loader" id="previewLoader"><div class="spinner"></div><p>กำลังเตรียมการแสดงตัวอย่างเอกสาร...</p></div></div>
+                        </section>
+                    </div>
                 </div>
             </div>
         </dialog>`;
@@ -241,6 +419,323 @@
     }
 
     /* =====================================================
+       [V3] WORKFLOW STATUS CONSTANTS & UI HELPERS
+    ===================================================== */
+    const V3_STATUS_DETAILS = {
+        Received: {
+            step: 1,
+            label: "ได้รับเอกสารแล้ว",
+            nextStatus: "Assigned",
+            nextActionText: "➡️ มอบหมายเอกสาร (Assigned)",
+            color: "teal",
+            badgeClass: "status-received"
+        },
+        Assigned: {
+            step: 2,
+            label: "มอบหมายแล้ว",
+            nextStatus: "Processing",
+            nextActionText: "➡️ เริ่มดำเนินการ (Processing)",
+            color: "orange",
+            badgeClass: "status-assigned"
+        },
+        Processing: {
+            step: 3,
+            label: "กำลังดำเนินการ",
+            nextStatus: "Completed",
+            nextActionText: "✅ ดำเนินการเสร็จสิ้น (Completed)",
+            color: "blue",
+            badgeClass: "status-processing"
+        },
+        Completed: {
+            step: 4,
+            label: "ดำเนินการเสร็จสิ้นแล้ว",
+            nextStatus: null,
+            nextActionText: "ดำเนินการเสร็จสิ้นสมบูรณ์แล้ว",
+            color: "green",
+            badgeClass: "status-completed"
+        }
+    };
+
+    // Alert notification helper (Task 8: แสดงข้อความแจ้งเตือนเมื่อไม่สามารถเปลี่ยนสถานะเอกสารได้)
+    function showAlert(message, type = "error", title = "") {
+        if (!modalAlertBox) return;
+        modalAlertBox.hidden = false;
+        modalAlertBox.className = `modal-alert-box alert-${type}`;
+        if (modalAlertIcon) {
+            modalAlertIcon.textContent = type === "success" ? "✅" : (type === "warning" ? "⚠️" : "⛔");
+        }
+        if (modalAlertTitle) {
+            modalAlertTitle.textContent = title || (type === "success" ? "สำเร็จ" : "ข้อผิดพลาด");
+        }
+        if (modalAlertMessage) {
+            modalAlertMessage.textContent = message;
+        }
+        if (documentModal) {
+            documentModal.scrollTop = 0;
+        }
+    }
+
+    function hideAlert() {
+        if (modalAlertBox) {
+            modalAlertBox.hidden = true;
+        }
+    }
+
+    // Render Workflow Stepper, Current Status Badges, and Action Controls
+    function renderWorkflowUI(status, auth) {
+        const rawStatus = status || "Received";
+        const details = V3_STATUS_DETAILS[rawStatus] || V3_STATUS_DETAILS["Received"];
+
+        // 1. Update Header & Action Badges (Task 7)
+        if (modalStatusBadge) {
+            modalStatusBadge.textContent = details.label;
+            modalStatusBadge.className = `status-badge ${details.badgeClass}`;
+        }
+        if (actionCurrentStatusBadge) {
+            actionCurrentStatusBadge.textContent = details.label;
+            actionCurrentStatusBadge.className = `status-badge ${details.badgeClass}`;
+        }
+        if (stepperCurrentTag) {
+            stepperCurrentTag.textContent = `สถานะ: ${details.label}`;
+        }
+
+        // 2. Update Current Role Display (Task 3)
+        if (actionCurrentRoleDisplay) {
+            if (auth.role === "admin") {
+                actionCurrentRoleDisplay.textContent = `ผู้ดูแลระบบ (${auth.user || "admin01"})`;
+            } else if (auth.role === "staff") {
+                actionCurrentRoleDisplay.textContent = `เจ้าหน้าที่ (${auth.user || "staff01"})`;
+            } else {
+                actionCurrentRoleDisplay.textContent = `ผู้ใช้ทั่วไป (Guest - ไม่มีสิทธิ์)`;
+            }
+        }
+
+        // 3. Update Stepper Circles & Connectors (Task 7)
+        if (workflowStepper) {
+            const stepItems = workflowStepper.querySelectorAll(".workflow-step");
+            const connectors = workflowStepper.querySelectorAll(".step-connector");
+            const currentStepNum = details.step;
+
+            stepItems.forEach(item => {
+                const stepName = item.dataset.step;
+                const itemStepNum = V3_STATUS_DETAILS[stepName] ? V3_STATUS_DETAILS[stepName].step : 1;
+
+                item.classList.remove("active", "completed", "pending");
+                if (itemStepNum < currentStepNum) {
+                    item.classList.add("completed");
+                } else if (itemStepNum === currentStepNum) {
+                    item.classList.add("active");
+                } else {
+                    item.classList.add("pending");
+                }
+            });
+
+            connectors.forEach((conn, idx) => {
+                conn.classList.toggle("completed", idx + 1 < currentStepNum);
+            });
+        }
+
+        // 4. Update Status Change Controls based on Role & Workflow (Task 3, 5, 8 & 9)
+        hideAlert();
+        if (statusRemarksInput) statusRemarksInput.value = "";
+
+        const isGuest = auth.role === "guest" || auth.role === "unauthorized" || !auth.hasPermission;
+        const isCompleted = rawStatus === "Completed";
+        const isAdmin = auth.role === "admin";
+
+        if (isGuest) {
+            // Guest role cannot change status
+            if (statusNextActionWrap) statusNextActionWrap.hidden = true;
+            if (statusDisabledMessage) {
+                statusDisabledMessage.hidden = false;
+                if (statusDisabledIcon) statusDisabledIcon.textContent = "🔒";
+                if (statusDisabledText) statusDisabledText.textContent = "คุณอยู่ในบทบาท Guest ไม่มีสิทธิ์เปลี่ยนสถานะเอกสาร กรุณาสลับเป็น Staff หรือ Admin เพื่อดำเนินการ";
+            }
+        } else if (isCompleted && !isAdmin) {
+            // Completed is terminal state for staff
+            if (statusNextActionWrap) statusNextActionWrap.hidden = true;
+            if (statusDisabledMessage) {
+                statusDisabledMessage.hidden = false;
+                if (statusDisabledIcon) statusDisabledIcon.textContent = "✅";
+                if (statusDisabledText) statusDisabledText.textContent = "เอกสารนี้ดำเนินการเสร็จสิ้นสมบูรณ์แล้ว (Workflow Completed)";
+            }
+        } else {
+            // Staff or Admin can proceed with workflow
+            if (statusNextActionWrap) statusNextActionWrap.hidden = false;
+            if (statusDisabledMessage) statusDisabledMessage.hidden = true;
+
+            if (btnNextStatus) {
+                if (details.nextStatus) {
+                    btnNextStatus.hidden = false;
+                    btnNextStatus.disabled = false;
+                    if (btnNextStatusText) btnNextStatusText.textContent = details.nextActionText;
+                    btnNextStatus.dataset.targetStatus = details.nextStatus;
+                } else {
+                    btnNextStatus.hidden = true;
+                }
+            }
+
+            // Admin override dropdown
+            if (adminOverrideWrap) {
+                adminOverrideWrap.hidden = !isAdmin;
+                if (isAdmin && adminStatusSelect) {
+                    adminStatusSelect.value = details.nextStatus || rawStatus;
+                }
+            }
+        }
+    }
+
+    // Change Document Status via API (Task 4, 5, 6, 8, 9)
+    async function changeDocumentStatus(targetStatus, remarks) {
+        if (!currentActiveDoc) return;
+        const auth = getCurrentAuth();
+        const docId = currentActiveDoc.id;
+        const apiBase = getApiBaseUrl();
+
+        // Check permission client-side
+        if (auth.role === "guest" || !auth.hasPermission) {
+            showAlert("คุณไม่มีสิทธิ์ในการเปลี่ยนสถานะเอกสาร (ต้องการสิทธิ์ Staff หรือ Admin เท่านั้น)", "error", "ไม่อนุญาต (Permission Denied)");
+            return;
+        }
+
+        if (btnNextStatus) btnNextStatus.disabled = true;
+        if (btnNextStatusSpinner) btnNextStatusSpinner.hidden = false;
+        if (btnAdminApplyStatus) btnAdminApplyStatus.disabled = true;
+
+        try {
+            let response = await fetch(`${apiBase}/documents/${docId}/status`, {
+                method: "PUT",
+                headers: {
+                    "Content-Type": "application/json",
+                    "x-user-role": auth.role,
+                    "x-user-id": auth.user,
+                    "x-username": auth.user
+                },
+                body: JSON.stringify({
+                    status: targetStatus,
+                    remarks: remarks || "",
+                    changed_by: auth.user
+                })
+            });
+
+            // Local fallback to AWS API Gateway if local failed
+            if (!response.ok && apiBase.includes("localhost") && response.status === 404) {
+                response = await fetch(`https://utvhg6d6o3.execute-api.us-east-1.amazonaws.com/api/documents/${docId}/status`, {
+                    method: "PUT",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "x-user-role": auth.role,
+                        "x-user-id": auth.user,
+                        "x-username": auth.user
+                    },
+                    body: JSON.stringify({
+                        status: targetStatus,
+                        remarks: remarks || "",
+                        changed_by: auth.user
+                    })
+                });
+            }
+
+            const result = await response.json().catch(() => ({}));
+
+            if (!response.ok) {
+                // Task 8: แสดงข้อความแจ้งเตือนเมื่อไม่สามารถเปลี่ยนสถานะเอกสารได้
+                const errorMsg = result.error || "เกิดข้อผิดพลาดในการเปลี่ยนสถานะเอกสาร";
+                showAlert(errorMsg, "error", "ไม่สามารถเปลี่ยนสถานะเอกสารได้");
+                return;
+            }
+
+            // Success feedback
+            showAlert(result.message || `เปลี่ยนสถานะเป็น "${targetStatus}" สำเร็จเรียบร้อย`, "success", "บันทึกสำเร็จ");
+
+            // Update active doc state
+            currentActiveDoc.status = targetStatus;
+            currentActiveDoc.rawStatus = targetStatus;
+            if (currentActiveDoc.raw) currentActiveDoc.raw.status = targetStatus;
+
+            // Re-render workflow UI & reload history
+            renderWorkflowUI(targetStatus, auth);
+            await loadStatusHistory(docId);
+
+            // Notify dashboard to re-fetch and update table / badges (Task 7)
+            window.dispatchEvent(new CustomEvent("docuflow:statusChanged", {
+                detail: { id: docId, status: targetStatus }
+            }));
+
+        } catch (err) {
+            console.error("Change status error:", err);
+            showAlert(`เกิดข้อผิดพลาดในการเชื่อมต่อ: ${err.message}`, "error", "การเชื่อมต่อล้มเหลว");
+        } finally {
+            if (btnNextStatus) btnNextStatus.disabled = false;
+            if (btnNextStatusSpinner) btnNextStatusSpinner.hidden = true;
+            if (btnAdminApplyStatus) btnAdminApplyStatus.disabled = false;
+        }
+    }
+
+    // Load and render document status change history / audit trail (Task 6 & 7)
+    async function loadStatusHistory(docId) {
+        if (!statusHistoryTimeline) return;
+        statusHistoryTimeline.innerHTML = `<div class="history-loading">กำลังโหลดประวัติการเปลี่ยนสถานะ...</div>`;
+
+        const apiBase = getApiBaseUrl();
+        try {
+            let res = await fetch(`${apiBase}/documents/${docId}/status-history`);
+            if (!res.ok && apiBase.includes("localhost")) {
+                res = await fetch(`https://utvhg6d6o3.execute-api.us-east-1.amazonaws.com/api/documents/${docId}/status-history`);
+            }
+
+            if (!res.ok) {
+                statusHistoryTimeline.innerHTML = `<div class="history-empty">ไม่มีประวัติการเปลี่ยนสถานะก่อนหน้านี้</div>`;
+                return;
+            }
+
+            const data = await res.json();
+            const logs = data.history || [];
+
+            if (!logs.length) {
+                statusHistoryTimeline.innerHTML = `
+                    <div class="history-empty">
+                        <span style="font-size: 20px;">📜</span>
+                        <p>เอกสารนี้ยังไม่มีประวัติการเปลี่ยนสถานะ (สถานะเริ่มต้น: ได้รับเอกสารแล้ว)</p>
+                    </div>
+                `;
+                return;
+            }
+
+            statusHistoryTimeline.innerHTML = logs.map((log) => {
+                const timeStr = log.changed_at ? new Date(log.changed_at).toLocaleString("th-TH") : "-";
+                const oldLabel = V3_STATUS_DETAILS[log.old_status] ? V3_STATUS_DETAILS[log.old_status].label : log.old_status;
+                const newLabel = V3_STATUS_DETAILS[log.new_status] ? V3_STATUS_DETAILS[log.new_status].label : log.new_status;
+                const badgeClass = V3_STATUS_DETAILS[log.new_status] ? V3_STATUS_DETAILS[log.new_status].badgeClass : "status-received";
+
+                return `
+                    <div class="history-item">
+                        <div class="history-marker"></div>
+                        <div class="history-content">
+                            <div class="history-header">
+                                <span class="history-step-change">
+                                    <span class="old-status">${escapeHtml(oldLabel)}</span>
+                                    <span class="arrow">➔</span>
+                                    <span class="status-badge ${badgeClass} inline">${escapeHtml(newLabel)}</span>
+                                </span>
+                                <span class="history-time">${escapeHtml(timeStr)}</span>
+                            </div>
+                            <div class="history-meta">
+                                <span class="history-actor">👤 ดำเนินการโดย: <strong>${escapeHtml(log.changed_by || "ระบบ")}</strong></span>
+                                ${log.remarks ? `<div class="history-remarks">💬 หมายเหตุ: ${escapeHtml(log.remarks)}</div>` : ""}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join("");
+
+        } catch (err) {
+            console.error("Load status history error:", err);
+            statusHistoryTimeline.innerHTML = `<div class="history-error">ไม่สามารถดึงประวัติการเปลี่ยนสถานะได้</div>`;
+        }
+    }
+
+    /* =====================================================
        OPEN DOCUMENT MODAL
     ===================================================== */
     async function openDocumentModal(docOrId) {
@@ -271,15 +766,16 @@
         }
 
         currentActiveDoc = doc;
+        const auth = getCurrentAuth();
 
         // 1. เติมข้อมูลรายละเอียดเอกสาร (Details)
         if (modalDocSubject) modalDocSubject.textContent = doc.description || doc.subject || doc.number || "เอกสาร";
         if (modalTypeBadge) modalTypeBadge.textContent = doc.type || doc.document_type || "เอกสารทั่วไป";
         if (modalRefNo) modalRefNo.textContent = doc.code || doc.reference_no || "-";
-        if (modalStatusBadge) {
-            modalStatusBadge.textContent = doc.statusLabel || doc.status || "-";
-            modalStatusBadge.className = `status-badge status-${doc.statusKey || "waiting"}`;
-        }
+
+        // Render Workflow UI & Load Audit History (Task 6 & 7)
+        renderWorkflowUI(doc.rawStatus || doc.status || "Received", auth);
+        loadStatusHistory(doc.id);
 
         if (modalDocNumber) modalDocNumber.textContent = doc.number || doc.document_number || "-";
         if (modalChannel) {
@@ -336,7 +832,6 @@
         }
 
         // 5. ตรวจสอบสิทธิ์ (Permission Check)
-        const auth = getCurrentAuth();
         if (!auth.hasPermission) {
             const fileName = doc.file_name || doc.display_file_name || "ไฟล์เอกสารแนบ";
             if (previewFileName) previewFileName.textContent = fileName;
@@ -624,12 +1119,21 @@
         ensureModalLoaded();
     }
 
+    function refreshWorkflowUI() {
+        if (currentActiveDoc && documentModal && documentModal.open) {
+            const auth = getCurrentAuth();
+            renderWorkflowUI(currentActiveDoc.rawStatus || currentActiveDoc.status || "Received", auth);
+        }
+    }
+
     // Expose ไปยัง window object
     window.DocuFlowModal = {
         open: openDocumentModal,
         download: downloadDocumentFile,
         close: () => { if (documentModal && documentModal.open) documentModal.close(); },
-        ensureLoaded: ensureModalLoaded
+        ensureLoaded: ensureModalLoaded,
+        refreshWorkflowUI: refreshWorkflowUI,
+        changeStatus: changeDocumentStatus
     };
     window.openDocumentModal = openDocumentModal;
     window.downloadDocumentFile = downloadDocumentFile;
