@@ -95,8 +95,8 @@ app.get('/', (req, res) => {
     res.redirect('/html/index.html');
 });
 
-// Serve frontend static files
-app.use(express.static(path.join(__dirname, '../')));
+// เปลี่ยนจาก path.join(__dirname, '../') เป็น:
+app.use(express.static(path.join(__dirname, '../frontend')));
 
 // Test API + Database
 app.get("/api/health", async (req, res) => {
