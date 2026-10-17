@@ -545,7 +545,7 @@ app.get("/api/documents/:id/status-history", async (req, res) => {
 });
 
 // PUT /api/documents/:id/status - เปลี่ยนสถานะเอกสารตาม Workflow V3 พร้อมตรวจสอบสิทธิ์และเงื่อนไข
-app.put("/api/documents/:id/status", requireCognitoAuth, async (req, res) => {
+app.get("/api/documents", requireCognitoAuth, async (req, res) => {
     try {
         const { id } = req.params;
         const { status: newStatus, remarks } = req.body;
