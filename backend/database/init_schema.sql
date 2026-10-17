@@ -81,3 +81,52 @@ INSERT IGNORE INTO document_types (name, description) VALUES
 ('เอกสารรอการตอบกลับ', 'ใช้สำหรับรอการยืนยันหรือการตอบกลับ'),
 ('เอกสารแจ้งกำหนดการ/การนัดหมาย', 'ใช้สำหรับแจ้งวัน เวลา และรายละเอียดการนัดหมาย'),
 ('เอกสารรายงานผล', 'ใช้สำหรับสรุปผลการดำเนินงาน');
+
+-- 8. ตาราง roles
+CREATE TABLE IF NOT EXISTS roles (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(50) NOT NULL UNIQUE,
+    description VARCHAR(255) NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 9. ตาราง users
+CREATE TABLE IF NOT EXISTS users (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    username VARCHAR(100) NOT NULL UNIQUE,
+    email VARCHAR(150) NOT NULL UNIQUE,
+    full_name VARCHAR(150) NOT NULL,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 10. ตาราง users_roles (ตารางเชื่อมความสัมพันธ์ ผู้ใช้งาน กับ บทบาท - Many-to-Many)
+CREATE TABLE IF NOT EXISTS users_roles (
+    user_id INT NOT NULL,
+    role_id INT NOT NULL,
+    PRIMARY KEY (user_id, role_id),
+    CONSTRAINT fk_ur_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT fk_ur_role FOREIGN KEY (role_id) REFERENCES roles(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 11. ตาราง document_assignments
+CREATE TABLE IF NOT EXISTS document_assignments (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    document_id INT NOT NULL,
+    assigned_by_user_id INT NOT NULL,
+    previous_assignee_id INT NULL,
+    new_assignee_id INT NOT NULL,
+    action_type VARCHAR(50) NOT NULL COMMENT 'ASSIGN หรือ FORWARD',
+    remarks TEXT NULL,
+    assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_assign_doc (document_id),
+    CONSTRAINT fk_assign_document FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 12. เพิ่ม Master Data บทบาททั้ง 5 ตาม Role Matrix ของ V3
+INSERT IGNORE INTO roles (name, description) VALUES 
+('DOCUMENT_RECEIVER', 'เจ้าหน้าที่รับเอกสาร'),
+('STAFF', 'อาจารย์ / เจ้าหน้าที่'),
+('RESPONSIBLE_PERSON', 'ผู้รับผิดชอบเรื่อง'),
+('ADMIN', 'ผู้ดูแลระบบ'),
+('EXECUTIVE', 'ผู้บริหาร');
