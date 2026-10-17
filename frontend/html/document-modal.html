@@ -65,7 +65,8 @@
                 <strong id="modalAlertTitle">แจ้งเตือน</strong>
                 <p id="modalAlertMessage">ข้อความแจ้งเตือน</p>
             </div>
-            <button type="button" class="alert-close-btn" id="modalAlertCloseBtn" aria-label="ปิดการแจ้งเตือน">✕</button>
+            <button type="button" class="alert-close-btn" id="modalAlertCloseBtn"
+                aria-label="ปิดการแจ้งเตือน">✕</button>
         </div>
 
         <div class="modal-body">
@@ -74,9 +75,9 @@
                 <!-- 1. ส่วนจัดการเปลี่ยนสถานะเอกสารตาม Workflow V3 -->
                 <section class="modal-workflow-card">
                     <div class="details-section-title">
-                        <span aria-hidden="true">🔄</span> จัดการสถานะเอกสาร (Workflow V3)
+                        <span aria-hidden="true">🔄</span> จัดการสถานะเอกสาร
                     </div>
-                    
+
                     <div class="workflow-action-body">
                         <div class="current-status-display">
                             <div class="status-summary-line">
@@ -91,9 +92,11 @@
                         <!-- ฟอร์มเปลี่ยนสถานะตามขั้นตอน -->
                         <div class="status-change-controls" id="statusChangeControls">
                             <div class="status-next-action" id="statusNextActionWrap">
-                                <label for="statusRemarksInput" class="status-input-label">บันทึกหมายเหตุการเปลี่ยนสถานะ (ทางเลือก):</label>
-                                <input type="text" id="statusRemarksInput" class="status-remarks-input" placeholder="ระบุเหตุผลหรือบันทึกช่วยจำ...">
-                                
+                                <label for="statusRemarksInput" class="status-input-label">บันทึกหมายเหตุการเปลี่ยนสถานะ
+                                    (ทางเลือก):</label>
+                                <input type="text" id="statusRemarksInput" class="status-remarks-input"
+                                    placeholder="ระบุเหตุผลหรือบันทึกช่วยจำ...">
+
                                 <div class="action-buttons-group">
                                     <!-- ปุ่มเปลี่ยนสถานะเป็นขั้นตอนถัดไป -->
                                     <button type="button" class="btn-workflow-primary" id="btnNextStatus">
@@ -103,7 +106,8 @@
 
                                     <!-- สำหรับ Admin: เลือกสถานะได้ตามต้องการหรือ Rollback -->
                                     <div class="admin-override-wrap" id="adminOverrideWrap" hidden>
-                                        <label class="admin-select-label">ผู้ดูแลระบบ (Admin Override):</label>
+                                        <label class="admin-select-label">ผู้ดูแลระบบ
+                                            (เลือกสถานะที่ต้องการเปลี่ยน):</label>
                                         <div class="admin-select-row">
                                             <select id="adminStatusSelect" class="admin-status-dropdown">
                                                 <option value="Received">Received (ได้รับเอกสารแล้ว)</option>
@@ -111,7 +115,8 @@
                                                 <option value="Processing">Processing (กำลังดำเนินการ)</option>
                                                 <option value="Completed">Completed (ดำเนินการเสร็จสิ้น)</option>
                                             </select>
-                                            <button type="button" class="btn-admin-apply" id="btnAdminApplyStatus">ปรับสถานะ</button>
+                                            <button type="button" class="btn-admin-apply"
+                                                id="btnAdminApplyStatus">ปรับสถานะ</button>
                                         </div>
                                     </div>
                                 </div>
