@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Login | DOCU FLOW</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+
+    <link href="https://fonts.googleapis.com/css2?family=Anuphan:wght@300;400;500;600;700&family=Bai+Jamjuree:wght@300;400;500;600;700&family=Playfair+Display:wght@500;600;700&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" href="../css/login.css">
+</head>
+
+<body>
+    <main class="login-page">
+
+        <a href="index.html" class="brand">
+            <span class="brand-mark">D</span>
+            <span class="brand-name">DOCU FLOW</span>
+        </a>
+
+        <section class="login-layout">
+
+            <div class="login-intro">
+                <p class="eyebrow">DOCUMENT MANAGEMENT SYSTEM</p>
+
+                <h1>
+                    Welcome<br>
+                    <span>back.</span>
+                </h1>
+
+                <div class="intro-line"></div>
+
+                <p class="intro-description">
+                    เข้าสู่ระบบเพื่อจัดการเอกสาร
+                    ติดตามสถานะ และดำเนินงานได้อย่างเป็นระบบ
+                </p>
+
+                <div class="document-decoration" aria-hidden="true">
+                    <div class="paper paper-back"></div>
+                    <div class="paper paper-front">
+                        <div class="paper-heading"></div>
+                        <div class="paper-line"></div>
+                        <div class="paper-line short"></div>
+                        <div class="paper-stamp">DF</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="login-card">
+                <p class="card-label">YOUR WORKSPACE</p>
+
+                <h2>Sign in</h2>
+                <p class="card-description">
+                    กรุณากรอกข้อมูลเพื่อเข้าสู่ระบบ
+                </p>
+
+                <form id="loginForm">
+
+                    <div class="form-group">
+                        <label for="username">Username</label>
+                        <input
+                            type="text"
+                            id="username"
+                            name="username"
+                            placeholder="กรอกชื่อผู้ใช้"
+                            autocomplete="username"
+                            required
+                        >
+                    </div>
+
+                    <div class="form-group">
+                        <label for="password">Password</label>
+
+                        <div class="password-wrapper">
+                            <input
+                                type="password"
+                                id="password"
+                                name="password"
+                                placeholder="กรอกรหัสผ่าน"
+                                autocomplete="current-password"
+                                required
+                            >
+
+                            <button
+                                type="button"
+                                id="togglePassword"
+                                class="toggle-password"
+                                aria-label="แสดงรหัสผ่าน"
+                            >
+                                SHOW
+                            </button>
+                        </div>
+                    </div>
+
+                    <p id="loginMessage" class="login-message" role="alert"></p>
+
+                    <button type="submit" id="loginButton" class="login-button">
+                        <span id="loginButtonText">SIGN IN</span>
+                        <span class="button-arrow">→</span>
+                    </button>
+
+                </form>
+
+                <p class="security-note">
+                    <span class="security-dot"></span>
+                    Secure access to your documents
+                </p>
+            </div>
+
+        </section>
+
+        <footer class="page-footer">
+            <span>DOCU FLOW</span>
+            <span>DOCUMENTS · ORGANIZED</span>
+        </footer>
+
+    </main>
+
+    <script src="../js/login.js"></script>
+</body>
+</html>
+```
