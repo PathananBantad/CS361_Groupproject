@@ -1,6 +1,5 @@
 
 version: 1
-
 applications:
   - appRoot: frontend
     frontend:
@@ -10,6 +9,6 @@ applications:
           commands:
             - echo "Deploying static frontend"
       artifacts:
-        baseDirectory: .
+        baseDirectory: frontend
         files:
           - '**/*'
