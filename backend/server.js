@@ -1,10 +1,14 @@
-require("dotenv").config();
+require("dotenv").config({
+    path: require("path").resolve(__dirname, "../.env")
+});
 
 const express = require("express");
 const cors = require("cors");
 const pool = require("./db");
 const path = require("path");
+
 const sessionMiddleware = require("./session");
+const authRouter = require("./auth");
 
 const {
     createUploadUrl,
@@ -20,12 +24,11 @@ app.use(cors({
     credentials: true
 }));
 
+app.use(express.json({ limit: "1mb" }));
 app.use(sessionMiddleware);
+app.use("/api/auth", authRouter);
 
 const PORT = Number(process.env.PORT || 3000);
-
-// จำกัดขนาด Payload ไม่เกิน 1MB ป้องกัน DoS
-app.use(express.json({ limit: "1mb" }));
 
 // Helper ฟังก์ชันป้องกัน XSS
 function sanitizeInput(str) {
@@ -61,40 +64,41 @@ function isPreviewable(fileNameOrKey) {
 }
 
 // Helper ตรวจสอบสิทธิ์การเข้าถึง Preview และ Download ไฟล์
-function checkDocumentAccess(req, document) {
-    // ดึงข้อมูลตัวตนและ role จาก request headers หรือ query params
-    const role = (req.headers["x-user-role"] || req.query.role || "staff").toString().trim().toLowerCase();
-    const userId = req.headers["x-user-id"] || req.query.userId || null;
 
-    // หากเป็น Guest หรือ Unauthorized หรือ Blocked ให้ปฏิเสธการเข้าถึง
-    if (role === "guest" || role === "unauthorized" || role === "blocked") {
+function checkDocumentAccess(req, document) {
+    // ใช้ข้อมูลผู้ใช้จาก Session หลัง Login เท่านั้น
+    const user = req.session?.user;
+
+    if (!user || !user.id || !Array.isArray(user.roles)) {
         return {
             allowed: false,
-            role: role,
-            reason: "คุณไม่มีสิทธิ์ในการเข้าถึงเอกสารนี้ (Role: Guest / ไม่อนุญาต)"
+            reason: "กรุณาเข้าสู่ระบบก่อนเข้าถึงเอกสาร"
         };
     }
 
-    // Role admin มีสิทธิ์ทุกเอกสาร
-    if (role === "admin") {
-        return { allowed: true, role: "admin", isAdmin: true };
+    const roles = user.roles.map(role =>
+        String(role).trim().toLowerCase()
+    );
+
+    // อนุญาตเฉพาะ Role ที่ระบบรองรับ
+    if (!roles.includes("admin") && !roles.includes("staff")) {
+        return {
+            allowed: false,
+            reason: "คุณไม่มีสิทธิ์ในการเข้าถึงเอกสารนี้"
+        };
     }
 
-    // Role staff มีสิทธิ์เข้าถึงเอกสารในระบบ
-    if (role === "staff") {
-        return { allowed: true, role: "staff", isStaff: true };
-    }
-
-    // ตรวจสอบความเป็นเจ้าของ (Owner)
-    if (document && document.owner_id && userId) {
-        if (String(document.owner_id) === String(userId)) {
-            return { allowed: true, role: "owner", isOwner: true };
-        }
-    }
-
-    // Default สำหรับผู้ใช้ที่ผ่านการยืนยันตัวตน
-    return { allowed: true, role: role };
+    // Admin และ Staff ที่ Login แล้วเข้าถึงเอกสารได้
+    // เนื่องจากเอกสารเดิมจำนวนมากยังไม่มี owner_id
+    return {
+        allowed: true,
+        role: roles.includes("admin") ? "admin" : "staff",
+        userId: user.id,
+        isAdmin: roles.includes("admin"),
+        isStaff: roles.includes("staff")
+    };
 }
+
 
 // Redirect root to html/index.html before static middleware catches it
 app.get('/', (req, res) => {
