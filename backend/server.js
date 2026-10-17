@@ -5,6 +5,8 @@ const cors = require("cors");
 const pool = require("./db");
 const path = require("path");
 
+const { requireCognitoAuth } = require("./cognito-auth");
+
 const {
     createUploadUrl,
     createDownloadUrl,
@@ -55,40 +57,73 @@ function isPreviewable(fileNameOrKey) {
 }
 
 // Helper ตรวจสอบสิทธิ์การเข้าถึง Preview และ Download ไฟล์
-function checkDocumentAccess(req, document) {
-    // ดึงข้อมูลตัวตนและ role จาก request headers หรือ query params
-    const role = (req.headers["x-user-role"] || req.query.role || "staff").toString().trim().toLowerCase();
-    const userId = req.headers["x-user-id"] || req.query.userId || null;
 
-    // หากเป็น Guest หรือ Unauthorized หรือ Blocked ให้ปฏิเสธการเข้าถึง
-    if (role === "guest" || role === "unauthorized" || role === "blocked") {
+const DOCUMENT_ROLES = [
+    "document_officer",
+    "faculty_staff",
+    "case_owner",
+    "admin",
+    "executive"
+];
+
+function checkDocumentAccess(req, document) {
+    // ต้องผ่าน Cognito Authentication ก่อน
+    if (!req.auth || !req.auth.sub) {
         return {
             allowed: false,
-            role: role,
-            reason: "คุณไม่มีสิทธิ์ในการเข้าถึงเอกสารนี้ (Role: Guest / ไม่อนุญาต)"
+            reason: "Authentication required"
         };
     }
 
-    // Role admin มีสิทธิ์ทุกเอกสาร
-    if (role === "admin") {
-        return { allowed: true, role: "admin", isAdmin: true };
+    // Role ต้องมาจากข้อมูลที่ผ่านการตรวจสอบแล้วเท่านั้น
+    const groups = Array.isArray(req.auth.groups)
+        ? req.auth.groups
+        : [];
+
+    const role = groups.find(group =>
+        DOCUMENT_ROLES.includes(
+            String(group).trim().toLowerCase()
+        )
+    );
+
+    if (!role) {
+        return {
+            allowed: false,
+            reason: "No valid document role assigned"
+        };
     }
 
-    // Role staff มีสิทธิ์เข้าถึงเอกสารในระบบ
-    if (role === "staff") {
-        return { allowed: true, role: "staff", isStaff: true };
+    // Admin และ Executive ดูเอกสารได้ตามนโยบายเริ่มต้น
+    if (role === "admin" || role === "executive") {
+        return {
+            allowed: true,
+            role,
+            userId: req.auth.sub
+        };
     }
 
-    // ตรวจสอบความเป็นเจ้าของ (Owner)
-    if (document && document.owner_id && userId) {
-        if (String(document.owner_id) === String(userId)) {
-            return { allowed: true, role: "owner", isOwner: true };
-        }
+    // Case owner ดูได้เฉพาะเอกสารที่ตนเป็นเจ้าของ
+    if (
+        role === "case_owner" &&
+        document &&
+        document.owner_id != null &&
+        String(document.owner_id) === String(req.auth.sub)
+    ) {
+        return {
+            allowed: true,
+            role,
+            userId: req.auth.sub
+        };
     }
 
-    // Default สำหรับผู้ใช้ที่ผ่านการยืนยันตัวตน
-    return { allowed: true, role: role };
+    // บทบาทอื่นยังไม่อนุญาตจนกว่าจะกำหนดสิทธิ์ตาม Role Matrix
+    return {
+        allowed: false,
+        role,
+        reason: "Access denied by role policy"
+    };
 }
+
 
 // Redirect root to html/index.html before static middleware catches it
 app.get('/', (req, res) => {
@@ -510,19 +545,21 @@ app.get("/api/documents/:id/status-history", async (req, res) => {
 });
 
 // PUT /api/documents/:id/status - เปลี่ยนสถานะเอกสารตาม Workflow V3 พร้อมตรวจสอบสิทธิ์และเงื่อนไข
-app.put("/api/documents/:id/status", async (req, res) => {
+app.put("/api/documents/:id/status", requireCognitoAuth, async (req, res) => {
     try {
         const { id } = req.params;
         const { status: newStatus, remarks } = req.body;
 
         // 1. ดึงข้อมูลตัวตนและสิทธิ์จาก Request Headers หรือ Body / Query
-        const role = (req.headers["x-user-role"] || req.query.role || req.body.role || "staff").toString().trim().toLowerCase();
-        const username = req.headers["x-username"] || req.headers["x-user-id"] || req.body.changed_by || req.body.username || (role === "admin" ? "admin01" : "staff01");
-        const userId = req.headers["x-user-id"] || req.body.user_id || null;
+        const userId = req.auth.sub;
+        const username = req.auth.username || req.auth.sub;
+        const role = (req.auth.groups || [])
+            .map(group => String(group).trim().toLowerCase())
+            .find(group => DOCUMENT_ROLES.includes(group));
         const sanitizedRemarks = sanitizeInput(remarks || "");
 
         // 2. ตรวจสอบสิทธิ์ผู้ใช้ (Task 3 & 5): เฉพาะ staff และ admin ที่มีสิทธิ์เปลี่ยนสถานะ
-        if (role === "guest" || role === "unauthorized" || (role !== "staff" && role !== "admin")) {
+        if (!role || !["document_officer", "case_owner", "admin"].includes(role)) {
             return res.status(403).json({
                 error: "คุณไม่มีสิทธิ์ในการเปลี่ยนสถานะเอกสาร (ต้องการสิทธิ์ Staff หรือ Admin เท่านั้น)"
             });
@@ -864,7 +901,7 @@ app.post("/api/documents/:id/file-metadata", async (req, res) => {
 // Create S3 preview URL พร้อมตรวจสอบสิทธิ์
 // เฉพาะ PDF, JPG/JPEG และ PNG สามารถแสดงตัวอย่างได้
 // สำหรับ DOCX, XLSX, PPTX จะส่ง metadata กลับเพื่อให้แสดงปุ่มดาวน์โหลด
-app.get("/api/documents/:id/preview-url", async (req, res) => {
+app.get("/api/documents/:id/preview-url", requireCognitoAuth, async (req, res) => {
     try {
         const { id } = req.params;
 
@@ -941,7 +978,7 @@ app.get("/api/documents/:id/preview-url", async (req, res) => {
 
 // Direct Download File (Stream file with attachment Content-Disposition)
 // ช่วยให้เบราว์เซอร์ดาวน์โหลดไฟล์ลงเครื่องทันที และไม่ติด Quarantine Policy ของ AWS
-app.get("/api/documents/:id/download-file", async (req, res) => {
+app.get("/api/documents/:id/download-file", requireCognitoAuth, async (req, res) => {
     try {
         const { id } = req.params;
 
@@ -997,7 +1034,7 @@ app.get("/api/documents/:id/download-file", async (req, res) => {
 });
 
 // Create S3 download URL พร้อมตรวจสอบสิทธิ์
-app.get("/api/documents/:id/download-url", async (req, res) => {
+app.get("/api/documents/:id/download-url", requireCognitoAuth, async (req, res) => {
     try {
         const { id } = req.params;
 
