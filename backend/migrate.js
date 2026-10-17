@@ -1,27 +1,110 @@
-const fs = require("fs");
-const path = require("path");
 const pool = require("./db");
 
 async function runMigration() {
   try {
-    const sqlPath = path.join(__dirname, "database", "init_schema.sql");
-    const sql = fs.readFileSync(sqlPath, "utf8");
+    console.log("🚀 กำลังตรวจสอบและ Migrate โครงสร้างฐานข้อมูล DocuFlow (AWS RDS)...");
 
-    const statements = sql
-      .split(";")
-      .map((st) => st.trim())
-      .filter((st) => st.length > 0);
+    // 1. ตาราง channels (ช่องทางการรับเอกสาร)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS channels (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        code VARCHAR(50) NOT NULL UNIQUE,
+        name VARCHAR(100) NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
 
-    console.log("กำลังสร้างตารางและ Master Data บน AWS RDS...");
+    // 2. ตาราง document_types (ประเภทเอกสาร)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS document_types (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        description TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
 
-    for (const statement of statements) {
-      await pool.query(statement);
-    }
+    // 3. ตาราง documents (เอกสารหลัก)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS documents (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        reference_no VARCHAR(50) NOT NULL UNIQUE,
+        document_number VARCHAR(100) NULL,
+        subject VARCHAR(255) NOT NULL,
+        document_type VARCHAR(100) NOT NULL,
+        sender_name VARCHAR(150) NOT NULL,
+        sender_department VARCHAR(150) NULL,
+        sender_contact VARCHAR(150) NULL,
+        receiver_name VARCHAR(150) NULL,
+        sent_date DATE NULL,
+        receive_date DATE NULL,
+        deadline DATE NULL,
+        remarks TEXT NULL,
+        receiving_channel VARCHAR(100) NOT NULL,
+        status VARCHAR(50) DEFAULT 'Received',
+        file_key VARCHAR(255) NULL,
+        owner_id INT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
 
-    console.log("สร้างตารางและบันทึก Master Data 7 ประเภทสำเร็จเรียบร้อย!");
+    // 4. ตาราง document_files (ไฟล์แนบเอกสาร)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS document_files (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        document_id INT NOT NULL,
+        file_name VARCHAR(255) NOT NULL,
+        file_path TEXT NOT NULL,
+        file_size INT NULL,
+        mime_type VARCHAR(100) NULL,
+        uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_file_doc (document_id),
+        CONSTRAINT fk_file_document FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+
+    // 5. ตาราง document_status_logs (ประวัติ Workflow V3 - รวมจาก migrate_v3.js)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS document_status_logs (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        document_id INT NOT NULL,
+        old_status VARCHAR(50) NOT NULL,
+        new_status VARCHAR(50) NOT NULL,
+        changed_by VARCHAR(100) NULL,
+        changed_by_user_id INT NULL,
+        remarks TEXT NULL,
+        changed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_doc_id (document_id),
+        CONSTRAINT fk_status_log_document FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
+    // 6. เพิ่ม Master Data ช่องทางรับเอกสาร
+    await pool.query(`
+      INSERT IGNORE INTO channels (code, name) VALUES 
+      ('EMAIL', 'อีเมล'),
+      ('PAPER', 'กระดาษ / ยื่นด้วยตนเอง');
+    `);
+
+    // 7. เพิ่ม Master Data ประเภทเอกสาร 7 ประเภท
+    await pool.query(`
+      INSERT IGNORE INTO document_types (name, description) VALUES 
+      ('เอกสารประชาสัมพันธ์', 'ใช้สำหรับแจ้งข่าวสาร หรือกิจกรรมต่าง ๆ'),
+      ('เอกสารขออนุมัติ', 'ใช้สำหรับเสนอเรื่องเพื่อขออนุมัติ'),
+      ('เอกสารมอบหมายงาน', 'ใช้สำหรับมอบหมายงานหรือหน้าที่'),
+      ('เอกสารแจ้งเพื่อทราบ', 'ใช้สำหรับแจ้งข้อมูลให้ผู้รับทราบ'),
+      ('เอกสารรอการตอบกลับ', 'ใช้สำหรับรอการยืนยันหรือการตอบกลับ'),
+      ('เอกสารแจ้งกำหนดการ/การนัดหมาย', 'ใช้สำหรับแจ้งวัน เวลา และรายละเอียดการนัดหมาย'),
+      ('เอกสารรายงานผล', 'ใช้สำหรับสรุปผลการดำเนินงาน');
+    `);
+
+    console.log("✅ ตรวจสอบและสร้างโครงสร้างตารางทุกส่วน (รวม Workflow V3) สำเร็จเรียบร้อย!");
+    const [tables] = await pool.query("SHOW TABLES");
+    console.log("📋 รายการตารางทั้งหมดในฐานข้อมูล:", tables.map(t => Object.values(t)[0]));
+
     process.exit(0);
   } catch (err) {
-    console.error("เกิดข้อผิดพลาด:", err.message);
+    console.error("❌ เกิดข้อผิดพลาดในการ Migrate:", err.message);
     process.exit(1);
   }
 }
