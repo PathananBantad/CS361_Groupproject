@@ -4,6 +4,7 @@ const express = require("express");
 const cors = require("cors");
 const pool = require("./db");
 const path = require("path");
+const sessionMiddleware = require("./session");
 
 const {
     createUploadUrl,
@@ -14,7 +15,12 @@ const {
 
 const app = express();
 
-app.use(cors());
+app.use(cors({
+    origin: true,
+    credentials: true
+}));
+
+app.use(sessionMiddleware);
 
 const PORT = Number(process.env.PORT || 3000);
 
