@@ -12,14 +12,11 @@ const path = require("path");
 
 require("dotenv").config();
 
-const bucketName = process.env.AWS_S3_BUCKET || "my-project-v1-2026";
+const bucketName = process.env.S3_BUCKET || process.env.AWS_S3_BUCKET || "cs361-v2-documents-documentflow";
 
-// แก้ไขปัญหา PermanentRedirect:
-// S3 Bucket my-project-v1-2026 อยู่ที่ region ap-southeast-2
+// Region ของ S3 Bucket:
 // cs361-v2-documents-documentflow อยู่ที่ us-east-1
-const s3Region = process.env.AWS_S3_REGION || (
-    bucketName === "my-project-v1-2026" ? "ap-southeast-2" : (process.env.AWS_REGION || "us-east-1")
-);
+const s3Region = process.env.AWS_S3_REGION || process.env.AWS_REGION || "us-east-1";
 
 const s3 = new S3Client({
     region: s3Region
