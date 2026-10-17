@@ -1,0 +1,14 @@
+
+version: 1
+applications:
+  - appRoot: frontend
+    frontend:
+      buildPath: /
+      phases:
+        build:
+          commands:
+            - echo "Deploying static frontend"
+      artifacts:
+        baseDirectory: frontend/html
+        files:
+          - '**/*'
