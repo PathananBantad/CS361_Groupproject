@@ -9,6 +9,7 @@ const path = require("path");
 
 const sessionMiddleware = require("./session");
 const authRouter = require("./auth");
+const { requireCognitoAuth } = require("./cognito-auth");
 
 const {
     createUploadUrl,
@@ -64,41 +65,89 @@ function isPreviewable(fileNameOrKey) {
 }
 
 // Helper ตรวจสอบสิทธิ์การเข้าถึง Preview และ Download ไฟล์
+const DOCUMENT_ROLES = [
+    "document_officer",
+    "faculty_staff",
+    "case_owner",
+    "admin",
+    "executive"
+];
 
 function checkDocumentAccess(req, document) {
-    // ใช้ข้อมูลผู้ใช้จาก Session หลัง Login เท่านั้น
+    // รองรับ Session Login
     const user = req.session?.user;
 
-    if (!user || !user.id || !Array.isArray(user.roles)) {
+    if (user && user.id && Array.isArray(user.roles)) {
+        const roles = user.roles.map(role =>
+            String(role).trim().toLowerCase()
+        );
+
+        if (!roles.includes("admin") && !roles.includes("staff")) {
+            return {
+                allowed: false,
+                reason: "คุณไม่มีสิทธิ์ในการเข้าถึงเอกสารนี้"
+            };
+        }
+
         return {
-            allowed: false,
-            reason: "กรุณาเข้าสู่ระบบก่อนเข้าถึงเอกสาร"
+            allowed: true,
+            role: roles.includes("admin") ? "admin" : "staff",
+            userId: user.id,
+            isAdmin: roles.includes("admin"),
+            isStaff: roles.includes("staff")
         };
     }
 
-    const roles = user.roles.map(role =>
-        String(role).trim().toLowerCase()
-    );
-
-    // อนุญาตเฉพาะ Role ที่ระบบรองรับ
-    if (!roles.includes("admin") && !roles.includes("staff")) {
+    // รองรับ Cognito Login
+    if (!req.auth || !req.auth.sub) {
         return {
             allowed: false,
-            reason: "คุณไม่มีสิทธิ์ในการเข้าถึงเอกสารนี้"
+            reason: "Authentication required"
         };
     }
 
-    // Admin และ Staff ที่ Login แล้วเข้าถึงเอกสารได้
-    // เนื่องจากเอกสารเดิมจำนวนมากยังไม่มี owner_id
+    const groups = Array.isArray(req.auth.groups)
+        ? req.auth.groups
+        : [];
+
+    const role = groups
+        .map(group => String(group).trim().toLowerCase())
+        .find(group => DOCUMENT_ROLES.includes(group));
+
+    if (!role) {
+        return {
+            allowed: false,
+            reason: "No valid document role assigned"
+        };
+    }
+
+    if (role === "admin" || role === "executive") {
+        return {
+            allowed: true,
+            role,
+            userId: req.auth.sub
+        };
+    }
+
+    if (
+        role === "case_owner" &&
+        document &&
+        document.owner_id != null &&
+        String(document.owner_id) === String(req.auth.sub)
+    ) {
+        return {
+            allowed: true,
+            role,
+            userId: req.auth.sub
+        };
+    }
+
     return {
-        allowed: true,
-        role: roles.includes("admin") ? "admin" : "staff",
-        userId: user.id,
-        isAdmin: roles.includes("admin"),
-        isStaff: roles.includes("staff")
+        allowed: false,
+        role,
+        reason: "Access denied by role policy"
     };
 }
-
 
 // Redirect root to html/index.html before static middleware catches it
 app.get('/', (req, res) => {
@@ -520,19 +569,21 @@ app.get("/api/documents/:id/status-history", async (req, res) => {
 });
 
 // PUT /api/documents/:id/status - เปลี่ยนสถานะเอกสารตาม Workflow V3 พร้อมตรวจสอบสิทธิ์และเงื่อนไข
-app.put("/api/documents/:id/status", async (req, res) => {
+app.get("/api/documents", requireCognitoAuth, async (req, res) => {
     try {
         const { id } = req.params;
         const { status: newStatus, remarks } = req.body;
 
         // 1. ดึงข้อมูลตัวตนและสิทธิ์จาก Request Headers หรือ Body / Query
-        const role = (req.headers["x-user-role"] || req.query.role || req.body.role || "staff").toString().trim().toLowerCase();
-        const username = req.headers["x-username"] || req.headers["x-user-id"] || req.body.changed_by || req.body.username || (role === "admin" ? "admin01" : "staff01");
-        const userId = req.headers["x-user-id"] || req.body.user_id || null;
+        const userId = req.auth.sub;
+        const username = req.auth.username || req.auth.sub;
+        const role = (req.auth.groups || [])
+            .map(group => String(group).trim().toLowerCase())
+            .find(group => DOCUMENT_ROLES.includes(group));
         const sanitizedRemarks = sanitizeInput(remarks || "");
 
         // 2. ตรวจสอบสิทธิ์ผู้ใช้ (Task 3 & 5): เฉพาะ staff และ admin ที่มีสิทธิ์เปลี่ยนสถานะ
-        if (role === "guest" || role === "unauthorized" || (role !== "staff" && role !== "admin")) {
+        if (!role || !["document_officer", "case_owner", "admin"].includes(role)) {
             return res.status(403).json({
                 error: "คุณไม่มีสิทธิ์ในการเปลี่ยนสถานะเอกสาร (ต้องการสิทธิ์ Staff หรือ Admin เท่านั้น)"
             });
@@ -874,7 +925,7 @@ app.post("/api/documents/:id/file-metadata", async (req, res) => {
 // Create S3 preview URL พร้อมตรวจสอบสิทธิ์
 // เฉพาะ PDF, JPG/JPEG และ PNG สามารถแสดงตัวอย่างได้
 // สำหรับ DOCX, XLSX, PPTX จะส่ง metadata กลับเพื่อให้แสดงปุ่มดาวน์โหลด
-app.get("/api/documents/:id/preview-url", async (req, res) => {
+app.get("/api/documents/:id/preview-url", requireCognitoAuth, async (req, res) => {
     try {
         const { id } = req.params;
 
@@ -951,7 +1002,7 @@ app.get("/api/documents/:id/preview-url", async (req, res) => {
 
 // Direct Download File (Stream file with attachment Content-Disposition)
 // ช่วยให้เบราว์เซอร์ดาวน์โหลดไฟล์ลงเครื่องทันที และไม่ติด Quarantine Policy ของ AWS
-app.get("/api/documents/:id/download-file", async (req, res) => {
+app.get("/api/documents/:id/download-file", requireCognitoAuth, async (req, res) => {
     try {
         const { id } = req.params;
 
@@ -1007,7 +1058,7 @@ app.get("/api/documents/:id/download-file", async (req, res) => {
 });
 
 // Create S3 download URL พร้อมตรวจสอบสิทธิ์
-app.get("/api/documents/:id/download-url", async (req, res) => {
+app.get("/api/documents/:id/download-url", requireCognitoAuth, async (req, res) => {
     try {
         const { id } = req.params;
 
