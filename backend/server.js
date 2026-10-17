@@ -1,10 +1,14 @@
-require("dotenv").config();
+require("dotenv").config({
+    path: require("path").resolve(__dirname, "../.env")
+});
 
 const express = require("express");
 const cors = require("cors");
 const pool = require("./db");
 const path = require("path");
 
+const sessionMiddleware = require("./session");
+const authRouter = require("./auth");
 const { requireCognitoAuth } = require("./cognito-auth");
 
 const {
@@ -16,12 +20,16 @@ const {
 
 const app = express();
 
-app.use(cors());
+app.use(cors({
+    origin: true,
+    credentials: true
+}));
+
+app.use(express.json({ limit: "1mb" }));
+app.use(sessionMiddleware);
+app.use("/api/auth", authRouter);
 
 const PORT = Number(process.env.PORT || 3000);
-
-// จำกัดขนาด Payload ไม่เกิน 1MB ป้องกัน DoS
-app.use(express.json({ limit: "1mb" }));
 
 // Helper ฟังก์ชันป้องกัน XSS
 function sanitizeInput(str) {
@@ -57,7 +65,6 @@ function isPreviewable(fileNameOrKey) {
 }
 
 // Helper ตรวจสอบสิทธิ์การเข้าถึง Preview และ Download ไฟล์
-
 const DOCUMENT_ROLES = [
     "document_officer",
     "faculty_staff",
@@ -67,7 +74,31 @@ const DOCUMENT_ROLES = [
 ];
 
 function checkDocumentAccess(req, document) {
-    // ต้องผ่าน Cognito Authentication ก่อน
+    // รองรับ Session Login
+    const user = req.session?.user;
+
+    if (user && user.id && Array.isArray(user.roles)) {
+        const roles = user.roles.map(role =>
+            String(role).trim().toLowerCase()
+        );
+
+        if (!roles.includes("admin") && !roles.includes("staff")) {
+            return {
+                allowed: false,
+                reason: "คุณไม่มีสิทธิ์ในการเข้าถึงเอกสารนี้"
+            };
+        }
+
+        return {
+            allowed: true,
+            role: roles.includes("admin") ? "admin" : "staff",
+            userId: user.id,
+            isAdmin: roles.includes("admin"),
+            isStaff: roles.includes("staff")
+        };
+    }
+
+    // รองรับ Cognito Login
     if (!req.auth || !req.auth.sub) {
         return {
             allowed: false,
@@ -75,16 +106,13 @@ function checkDocumentAccess(req, document) {
         };
     }
 
-    // Role ต้องมาจากข้อมูลที่ผ่านการตรวจสอบแล้วเท่านั้น
     const groups = Array.isArray(req.auth.groups)
         ? req.auth.groups
         : [];
 
-    const role = groups.find(group =>
-        DOCUMENT_ROLES.includes(
-            String(group).trim().toLowerCase()
-        )
-    );
+    const role = groups
+        .map(group => String(group).trim().toLowerCase())
+        .find(group => DOCUMENT_ROLES.includes(group));
 
     if (!role) {
         return {
@@ -93,7 +121,6 @@ function checkDocumentAccess(req, document) {
         };
     }
 
-    // Admin และ Executive ดูเอกสารได้ตามนโยบายเริ่มต้น
     if (role === "admin" || role === "executive") {
         return {
             allowed: true,
@@ -102,7 +129,6 @@ function checkDocumentAccess(req, document) {
         };
     }
 
-    // Case owner ดูได้เฉพาะเอกสารที่ตนเป็นเจ้าของ
     if (
         role === "case_owner" &&
         document &&
@@ -116,14 +142,12 @@ function checkDocumentAccess(req, document) {
         };
     }
 
-    // บทบาทอื่นยังไม่อนุญาตจนกว่าจะกำหนดสิทธิ์ตาม Role Matrix
     return {
         allowed: false,
         role,
         reason: "Access denied by role policy"
     };
 }
-
 
 // Redirect root to html/index.html before static middleware catches it
 app.get('/', (req, res) => {
