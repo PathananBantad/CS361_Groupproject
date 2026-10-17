@@ -4,6 +4,10 @@
     padding: 0;
 }
 
+[hidden] {
+    display: none !important;
+}
+
 :root {
     --wine: #7d1634;
     --wine-dark: #5e1026;

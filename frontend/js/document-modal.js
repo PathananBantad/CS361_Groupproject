@@ -56,6 +56,7 @@
     let previewFileSize = null;
     let previewViewport = null;
     let modalDownloadBtn = null;
+    let modalOpenTabBtn = null;
 
     let currentActiveDoc = null;
     let modalLoadPromise = null;
@@ -112,6 +113,7 @@
         previewFileSize = document.getElementById("previewFileSize");
         previewViewport = document.getElementById("previewViewport");
         modalDownloadBtn = document.getElementById("modalDownloadBtn");
+        modalOpenTabBtn = document.getElementById("modalOpenTabBtn");
 
         if (documentModal && !documentModal.dataset.eventsBound) {
             documentModal.dataset.eventsBound = "true";
@@ -143,6 +145,11 @@
             if (btnAdminApplyStatus) {
                 btnAdminApplyStatus.addEventListener("click", () => {
                     const targetStatus = adminStatusSelect ? adminStatusSelect.value : "";
+                    const currentStatus = currentActiveDoc ? (currentActiveDoc.rawStatus || currentActiveDoc.status) : "";
+                    if (targetStatus && targetStatus === currentStatus) {
+                        showAlert(`เอกสารนี้อยู่ในสถานะ "${V3_STATUS_DETAILS[currentStatus] ? V3_STATUS_DETAILS[currentStatus].label : currentStatus}" อยู่แล้ว กรุณาเลือกสถานะใหม่ที่ต้องการเปลี่ยน`, "warning", "แจ้งเตือน");
+                        return;
+                    }
                     const remarks = statusRemarksInput ? statusRemarksInput.value.trim() : "";
                     if (targetStatus) {
                         changeDocumentStatus(targetStatus, remarks);
@@ -276,7 +283,7 @@
                     <div class="modal-left-col">
                         <!-- ส่วนจัดการสถานะ Workflow -->
                         <section class="modal-workflow-card">
-                            <div class="details-section-title"><span aria-hidden="true">🔄</span> จัดการสถานะเอกสาร (Workflow V3)</div>
+                            <div class="details-section-title"><span aria-hidden="true">🔄</span> จัดการสถานะเอกสาร</div>
                             <div class="workflow-action-body">
                                 <div class="current-status-display">
                                     <div class="status-summary-line">
@@ -295,7 +302,7 @@
                                                 <span id="btnNextStatusText">➡️ ดำเนินการขั้นตอนถัดไป</span>
                                             </button>
                                             <div class="admin-override-wrap" id="adminOverrideWrap" hidden>
-                                                <label class="admin-select-label">ผู้ดูแลระบบ (Admin Override):</label>
+                                                <label class="admin-select-label">ผู้ดูแลระบบ (เลือกสถานะที่ต้องการเปลี่ยน):</label>
                                                 <div class="admin-select-row">
                                                     <select id="adminStatusSelect" class="admin-status-dropdown">
                                                         <option value="Received">Received (ได้รับเอกสารแล้ว)</option>
@@ -348,7 +355,10 @@
                                     <div class="file-icon-box" id="previewFileIconBox"><span id="previewFileIcon">📄</span></div>
                                     <div class="preview-file-titles"><h3 id="previewFileName">ชื่อไฟล์เอกสาร</h3><div class="preview-file-sub"><span id="previewFileTypeTag" class="file-type-pill">PDF</span><span id="previewFileSize">-</span></div></div>
                                 </div>
-                                <div class="preview-actions"><button type="button" class="btn-download-primary" id="modalDownloadBtn"><span>↓</span> ดาวน์โหลดไฟล์</button></div>
+                                <div class="preview-actions">
+                                    <button type="button" class="btn-preview-secondary" id="modalOpenTabBtn" title="เปิดดูเอกสารแบบเต็มหน้าต่างในแท็บใหม่" hidden><span>↗</span> เปิดแท็บใหม่</button>
+                                    <button type="button" class="btn-download-primary" id="modalDownloadBtn"><span>↓</span> ดาวน์โหลดไฟล์</button>
+                                </div>
                             </div>
                             <div class="preview-viewport" id="previewViewport"><div class="preview-loader" id="previewLoader"><div class="spinner"></div><p>กำลังเตรียมการแสดงตัวอย่างเอกสาร...</p></div></div>
                         </section>
@@ -426,7 +436,7 @@
             step: 1,
             label: "ได้รับเอกสารแล้ว",
             nextStatus: "Assigned",
-            nextActionText: "➡️ มอบหมายเอกสาร (Assigned)",
+            nextActionText: "➡️ เปลี่ยนสถานะเป็น 'มอบหมายแล้ว' (ขั้นตอนถัดไป)",
             color: "teal",
             badgeClass: "status-received"
         },
@@ -434,7 +444,7 @@
             step: 2,
             label: "มอบหมายแล้ว",
             nextStatus: "Processing",
-            nextActionText: "➡️ เริ่มดำเนินการ (Processing)",
+            nextActionText: "➡️ เปลี่ยนสถานะเป็น 'กำลังดำเนินการ' (ขั้นตอนถัดไป)",
             color: "orange",
             badgeClass: "status-assigned"
         },
@@ -442,7 +452,7 @@
             step: 3,
             label: "กำลังดำเนินการ",
             nextStatus: "Completed",
-            nextActionText: "✅ ดำเนินการเสร็จสิ้น (Completed)",
+            nextActionText: "✅ เปลี่ยนสถานะเป็น 'ดำเนินการเสร็จสิ้น' (ขั้นตอนถัดไป)",
             color: "blue",
             badgeClass: "status-processing"
         },
@@ -538,6 +548,7 @@
         // 4. Update Status Change Controls based on Role & Workflow (Task 3, 5, 8 & 9)
         hideAlert();
         if (statusRemarksInput) statusRemarksInput.value = "";
+        if (btnNextStatusSpinner) btnNextStatusSpinner.hidden = true;
 
         const isGuest = auth.role === "guest" || auth.role === "unauthorized" || !auth.hasPermission;
         const isCompleted = rawStatus === "Completed";
@@ -572,14 +583,17 @@
                     btnNextStatus.dataset.targetStatus = details.nextStatus;
                 } else {
                     btnNextStatus.hidden = true;
+                    btnNextStatus.disabled = true;
+                    if (btnNextStatusText) btnNextStatusText.textContent = "";
+                    btnNextStatus.dataset.targetStatus = "";
                 }
             }
 
-            // Admin override dropdown
+            // เมนูเลือกสถานะสำหรับ Admin: ตั้งค่าให้ตรงกับสถานะปัจจุบันของเอกสารที่เปิดอยู่เสมอ (ไม่ใช่ขั้นตอนถัดไป)
             if (adminOverrideWrap) {
                 adminOverrideWrap.hidden = !isAdmin;
                 if (isAdmin && adminStatusSelect) {
-                    adminStatusSelect.value = details.nextStatus || rawStatus;
+                    adminStatusSelect.value = rawStatus;
                 }
             }
         }
@@ -666,7 +680,9 @@
             console.error("Change status error:", err);
             showAlert(`เกิดข้อผิดพลาดในการเชื่อมต่อ: ${err.message}`, "error", "การเชื่อมต่อล้มเหลว");
         } finally {
-            if (btnNextStatus) btnNextStatus.disabled = false;
+            if (btnNextStatus && btnNextStatus.dataset.targetStatus) {
+                btnNextStatus.disabled = false;
+            }
             if (btnNextStatusSpinner) btnNextStatusSpinner.hidden = true;
             if (btnAdminApplyStatus) btnAdminApplyStatus.disabled = false;
         }
@@ -818,6 +834,7 @@
                 previewFileTypeTag.className = "file-type-pill";
             }
             if (modalDownloadBtn) modalDownloadBtn.disabled = true;
+            if (modalOpenTabBtn) modalOpenTabBtn.hidden = true;
 
             if (previewViewport) {
                 previewViewport.innerHTML = `
@@ -841,6 +858,7 @@
                 previewFileTypeTag.className = "file-type-pill";
             }
             if (modalDownloadBtn) modalDownloadBtn.disabled = true;
+            if (modalOpenTabBtn) modalOpenTabBtn.hidden = true;
 
             if (previewViewport) {
                 previewViewport.innerHTML = `
@@ -943,6 +961,10 @@
             // เงื่อนไขที่ 1: PDF, JPG/JPEG, PNG (เปิดดูเนื้อหา + ดาวน์โหลดจากหน้าตัวอย่าง)
             if (canPreview) {
                 const finalPreviewUrl = previewUrl || streamUrl;
+                if (modalOpenTabBtn) {
+                    modalOpenTabBtn.hidden = false;
+                    modalOpenTabBtn.onclick = () => window.open(finalPreviewUrl, "_blank");
+                }
 
                 if (fileExt === ".pdf") {
                     previewViewport.innerHTML = `
@@ -968,6 +990,7 @@
             }
 
             // เงื่อนไขที่ 2: DOCX, XLSX, PPTX (แสดงชื่อไฟล์และปุ่มดาวน์โหลดไฟล์)
+            if (modalOpenTabBtn) modalOpenTabBtn.hidden = true;
             let iconClass = "word";
             let iconEmoji = "📝";
             let typeName = "Microsoft Word Document (.docx)";
