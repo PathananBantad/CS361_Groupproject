@@ -154,8 +154,16 @@ app.get("/api/health", async (req, res) => {
 });
 
 // ดึงรายการเอกสารพร้อม Metadata ของไฟล์
-app.get("/api/documents", async (req, res) => {
+app.get("/api/documents", requireCognitoAuth, async (req, res) => {
     try {
+        const userId = req.auth ? req.auth.sub : null;
+        const groups = req.auth && Array.isArray(req.auth.groups) ? req.auth.groups : [];
+        const role = groups.find(group => DOCUMENT_ROLES.includes(String(group).trim().toLowerCase()));
+
+        if (!role) {
+            return res.status(403).json({ error: "No valid document role assigned" });
+        }
+        
         const {
             reference_no,
             subject,
@@ -183,6 +191,11 @@ app.get("/api/documents", async (req, res) => {
         `;
 
         const params = [];
+
+        if (role === "case_owner") {
+            sql += " AND d.owner_id = ?";
+            params.push(userId);
+        }
 
         // Search by reference number
         if (reference_no) {
@@ -293,7 +306,7 @@ app.get("/api/documents", async (req, res) => {
 });
 
 // Get document by ID พร้อม Metadata ของไฟล์
-app.get("/api/documents/:id", async (req, res) => {
+app.get("/api/documents/:id", requireCognitoAuth, async (req, res) => {
     try {
         const [rows] = await pool.query(
             `
@@ -317,6 +330,11 @@ app.get("/api/documents/:id", async (req, res) => {
         }
 
         const doc = rows[0];
+        const access = checkDocumentAccess(req, doc);
+        if (!access.allowed) {
+            return res.status(403).json({ error: access.reason || "Permission Denied" });
+        }
+
         const finalFileName = doc.file_name || extractFileNameFromKey(doc.file_key);
         const ext = finalFileName ? path.extname(finalFileName).toLowerCase() : "";
         const canPreview = isPreviewable(finalFileName || doc.file_key);
@@ -545,7 +563,7 @@ app.get("/api/documents/:id/status-history", async (req, res) => {
 });
 
 // PUT /api/documents/:id/status - เปลี่ยนสถานะเอกสารตาม Workflow V3 พร้อมตรวจสอบสิทธิ์และเงื่อนไข
-app.get("/api/documents", requireCognitoAuth, async (req, res) => {
+app.put("/api/documents/:id/status", requireCognitoAuth, async (req, res) => {
     try {
         const { id } = req.params;
         const { status: newStatus, remarks } = req.body;
@@ -698,7 +716,7 @@ app.get("/api/receiving-channels", (req, res) => {
 
 // Create S3 upload URL พร้อมบันทึก Metadata
 // รองรับไฟล์: PDF, DOCX, JPG/JPEG, PNG, XLSX, PPTX
-app.get("/api/documents/:id/upload-url", async (req, res) => {
+app.get("/api/documents/:id/upload-url", requireCognitoAuth, async (req, res) => {
     try {
         const { id } = req.params;
         const { fileName, contentType, fileSize } = req.query;
@@ -707,6 +725,17 @@ app.get("/api/documents/:id/upload-url", async (req, res) => {
             return res.status(400).json({
                 error: "fileName is required"
             });
+        }
+
+        // ตรวจสอบเอกสารว่ามีอยู่จริงไหมก่อน
+        const [docRows] = await pool.query("SELECT * FROM documents WHERE id = ?", [id]);
+        if (docRows.length === 0) {
+            return res.status(404).json({ error: "Document not found" });
+        }
+
+        const access = checkDocumentAccess(req, docRows[0]);
+        if (!access.allowed) {
+            return res.status(403).json({ error: access.reason || "Permission Denied: ไม่มีสิทธิ์อัปโหลดไฟล์" });
         }
 
         // รายการประเภทไฟล์ที่ระบบรองรับ (Upload: PDF, DOCX, JPG/JPEG, PNG, XLSX, PPTX)
@@ -832,13 +861,24 @@ app.get("/api/documents/:id/upload-url", async (req, res) => {
 });
 
 // Endpoint สำหรับบันทึก/ยืนยัน Metadata ไฟล์หลังการ Upload สำเร็จ
-app.post("/api/documents/:id/file-metadata", async (req, res) => {
+app.post("/api/documents/:id/file-metadata", requireCognitoAuth, async (req, res) => {
     try {
         const { id } = req.params;
         const { fileName, fileSize, mimeType, fileKey } = req.body;
 
         if (!fileName) {
             return res.status(400).json({ error: "fileName is required" });
+        }
+
+        const [docRows] = await pool.query("SELECT * FROM documents WHERE id = ?", [id]);
+        if (docRows.length === 0) {
+            return res.status(404).json({ error: "Document not found" });
+        }
+
+        // [เพิ่มใหม่] ตรวจสอบสิทธิ์ก่อนยอมให้บันทึก Metadata ไฟล์
+        const access = checkDocumentAccess(req, docRows[0]);
+        if (!access.allowed) {
+            return res.status(403).json({ error: access.reason || "Permission Denied" });
         }
 
         const safeFileName = fileName.replace(/[\u0000-\u001F\u007F]/g, "").trim();
