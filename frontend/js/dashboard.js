@@ -55,13 +55,25 @@ function initRoleManagement() {
 
         roleDropdown.querySelectorAll(".role-option").forEach(btn => {
             btn.addEventListener("click", () => {
+                if (btn.id === "logoutBtn") return;
                 const role = btn.dataset.role;
                 const user = btn.dataset.user;
-                setUserRole(role, user);
+                if (role && user) {
+                    setUserRole(role, user);
+                }
                 roleMenuBtn.setAttribute("aria-expanded", "false");
                 roleDropdown.hidden = true;
             });
         });
+
+        const logoutBtn = document.getElementById("logoutBtn");
+        if (logoutBtn) {
+            logoutBtn.addEventListener("click", () => {
+                localStorage.removeItem("docuflow_role");
+                localStorage.removeItem("docuflow_user");
+                window.location.href = "login.html";
+            });
+        }
     }
 }
 
