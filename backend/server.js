@@ -114,13 +114,28 @@ const DOCUMENT_ROLES = [
 ];
 
 function checkDocumentAccess(req, document) {
-    // ต้องผ่าน Cognito Authentication ก่อน
+    // 1. รองรับ Session Login
+    const user = req.session?.user;
+    if (user && user.id && Array.isArray(user.roles)) {
+        const roles = user.roles.map(r => String(r).trim().toLowerCase());
+        return {
+            allowed: true,
+            role: roles.includes("admin") ? "admin" : "staff",
+            userId: String(user.id),
+            isAdmin: roles.includes("admin"),
+            isStaff: roles.includes("staff")
+        };
+    }
+
+    // 2. ตรวจสอบ Authentication ผ่าน req.auth
     if (!req.auth || !req.auth.sub) {
         return {
             allowed: false,
             reason: "Authentication required"
         };
     }
+
+    const userId = req.auth.sub;
 
     // Role ต้องมาจากข้อมูลที่ผ่านการตรวจสอบแล้วเท่านั้น
     const groups = Array.isArray(req.auth.groups)
@@ -131,14 +146,7 @@ function checkDocumentAccess(req, document) {
         DOCUMENT_ROLES.includes(
             String(group).trim().toLowerCase()
         )
-    );
-
-    if (!role) {
-        return {
-            allowed: false,
-            reason: "No valid role assigned"
-        };
-    }
+    ) || (req.userRole && DOCUMENT_ROLES.includes(String(req.userRole).trim().toLowerCase()) ? String(req.userRole).trim().toLowerCase() : null) || "staff";
 
     if (["admin", "executive", "staff", "document_officer", "faculty_staff"].includes(role)) {
         return {
@@ -1308,9 +1316,14 @@ app.get(
 
             file.Body.pipe(res);
         } catch (error) {
-            console.error("Preview file error:", error);
+            console.error("Preview file error:", error.name, error.message);
 
             if (!res.headersSent) {
+                if (error.name === "NoSuchKey" || error.Code === "NoSuchKey" || error.$metadata?.httpStatusCode === 404) {
+                    return res.status(404).json({
+                        error: "ไม่พบไฟล์นี้ในระบบจัดเก็บ S3 Storage (NoSuchKey)"
+                    });
+                }
                 res.status(500).json({
                     error: "Failed to preview document"
                 });
