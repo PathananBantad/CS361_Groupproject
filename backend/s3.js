@@ -63,6 +63,20 @@ async function createUploadUrl(fileKey, contentType) {
     });
 }
 
+// Read a file from S3 through the backend
+async function getS3Object(fileKey) {
+    if (!fileKey) {
+        throw new Error("File key is required.");
+    }
+
+    const command = new GetObjectCommand({
+        Bucket: bucketName,
+        Key: fileKey
+    });
+
+    return await s3.send(command);
+}
+
 // Create download or preview URL with proper ContentType and Disposition
 async function createDownloadUrl(fileKey, options = {}) {
     const {
@@ -88,8 +102,10 @@ async function createDownloadUrl(fileKey, options = {}) {
     // เนื่องจาก AWS IAM Key โดน Quarantine บล็อก GetObject ผ่าน signed URL
     // แต่ตัว Bucket เป็น Public Read สามารถเข้าถึงผ่าน Public URL ได้ 100%
     if (bucketName === "my-project-v1-2026") {
-        return getPublicUrl(fileKey);
-    }
+    throw new Error(
+        "Public S3 download is disabled. Configure secure presigned URLs."
+    );
+}
 
     // กรณี Bucket ทั่วไปหรือบน Lambda ที่ใช้ IAM Role
     try {
@@ -108,14 +124,15 @@ async function createDownloadUrl(fileKey, options = {}) {
             expiresIn: 300
         });
     } catch (e) {
-        // Fallback to public URL
-        return getPublicUrl(fileKey);
+    console.error("Failed to create S3 presigned download URL:", e);
+    throw new Error("Unable to generate a secure download URL.");
     }
 }
 
 module.exports = {
     createUploadUrl,
     createDownloadUrl,
+    getS3Object,
     getPublicUrl,
     getMimeTypeByExtension,
     bucketName,

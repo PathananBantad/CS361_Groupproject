@@ -11,9 +11,35 @@ const sessionMiddleware = require("./session");
 const authRouter = require("./auth");
 const { requireCognitoAuth } = require("./cognito-auth");
 
+async function loadUserRole(req, res, next) {
+    try {
+        const [rows] = await pool.execute(
+            "SELECT role FROM user_roles WHERE cognito_sub = ? LIMIT 1",
+            [req.auth.sub]
+        );
+
+        if (rows.length === 0) {
+            return res.status(403).json({
+                error: "Forbidden",
+                message: "No role assigned to this user."
+            });
+        }
+
+        req.userRole = rows[0].role;
+        return next();
+    } catch (error) {
+        console.error("Failed to load user role:", error);
+
+        return res.status(500).json({
+            error: "Failed to verify user permissions."
+        });
+    }
+}
+
 const {
     createUploadUrl,
     createDownloadUrl,
+    getS3Object,
     getPublicUrl,
     getMimeTypeByExtension
 } = require("./s3");
@@ -74,31 +100,7 @@ const DOCUMENT_ROLES = [
 ];
 
 function checkDocumentAccess(req, document) {
-    // รองรับ Session Login
-    const user = req.session?.user;
-
-    if (user && user.id && Array.isArray(user.roles)) {
-        const roles = user.roles.map(role =>
-            String(role).trim().toLowerCase()
-        );
-
-        if (!roles.includes("admin") && !roles.includes("staff")) {
-            return {
-                allowed: false,
-                reason: "คุณไม่มีสิทธิ์ในการเข้าถึงเอกสารนี้"
-            };
-        }
-
-        return {
-            allowed: true,
-            role: roles.includes("admin") ? "admin" : "staff",
-            userId: user.id,
-            isAdmin: roles.includes("admin"),
-            isStaff: roles.includes("staff")
-        };
-    }
-
-    // รองรับ Cognito Login
+    // ต้องผ่าน Cognito Authentication ก่อน
     if (!req.auth || !req.auth.sub) {
         return {
             allowed: false,
@@ -106,18 +108,21 @@ function checkDocumentAccess(req, document) {
         };
     }
 
+    // Role ต้องมาจากข้อมูลที่ผ่านการตรวจสอบแล้วเท่านั้น
     const groups = Array.isArray(req.auth.groups)
         ? req.auth.groups
         : [];
 
-    const role = groups
-        .map(group => String(group).trim().toLowerCase())
-        .find(group => DOCUMENT_ROLES.includes(group));
+    const role = groups.find(group =>
+        DOCUMENT_ROLES.includes(
+            String(group).trim().toLowerCase()
+        )
+    );
 
     if (!role) {
         return {
             allowed: false,
-            reason: "No valid document role assigned"
+            reason: "No valid role assigned"
         };
     }
 
@@ -125,20 +130,19 @@ function checkDocumentAccess(req, document) {
         return {
             allowed: true,
             role,
-            userId: req.auth.sub
+            userId
         };
     }
 
     if (
         role === "case_owner" &&
-        document &&
-        document.owner_id != null &&
-        String(document.owner_id) === String(req.auth.sub)
+        document?.owner_id != null &&
+        String(document.owner_id) === String(userId)
     ) {
         return {
             allowed: true,
             role,
-            userId: req.auth.sub
+            userId
         };
     }
 
@@ -587,7 +591,9 @@ app.get("/api/documents/:id/status-history", async (req, res) => {
 });
 
 // PUT /api/documents/:id/status - เปลี่ยนสถานะเอกสารตาม Workflow V3 พร้อมตรวจสอบสิทธิ์และเงื่อนไข
-app.put("/api/documents/:id/status", requireCognitoAuth, async (req, res) => {
+
+app.put("/api/documents/:id/status", requireCognitoAuth, loadUserRole, async (req, res) => {
+
     try {
         const { id } = req.params;
         const { status: newStatus, remarks } = req.body;
@@ -595,9 +601,7 @@ app.put("/api/documents/:id/status", requireCognitoAuth, async (req, res) => {
         // 1. ดึงข้อมูลตัวตนและสิทธิ์จาก Request Headers หรือ Body / Query
         const userId = req.auth.sub;
         const username = req.auth.username || req.auth.sub;
-        const role = (req.auth.groups || [])
-            .map(group => String(group).trim().toLowerCase())
-            .find(group => DOCUMENT_ROLES.includes(group));
+        const role = req.userRole;
         const sanitizedRemarks = sanitizeInput(remarks || "");
 
         // 2. ตรวจสอบสิทธิ์ผู้ใช้ (Task 3 & 5): เฉพาะ staff และ admin ที่มีสิทธิ์เปลี่ยนสถานะ
@@ -740,7 +744,7 @@ app.get("/api/receiving-channels", (req, res) => {
 
 // Create S3 upload URL พร้อมบันทึก Metadata
 // รองรับไฟล์: PDF, DOCX, JPG/JPEG, PNG, XLSX, PPTX
-app.get("/api/documents/:id/upload-url", requireCognitoAuth, async (req, res) => {
+app.get("/api/documents/:id/upload-url", async (req, res) => {
     try {
         const { id } = req.params;
         const { fileName, contentType, fileSize } = req.query;
@@ -869,11 +873,10 @@ app.get("/api/documents/:id/upload-url", requireCognitoAuth, async (req, res) =>
 
         res.json({
             document_id: id,
-            file_key: fileKey,
-            file_name: safeFileName,
-            mime_type: finalContentType,
-            upload_url: uploadUrl,
-            expires_in: 300
+            file_name: finalFileName,
+            file_size: doc.file_size,
+            mime_type: resolvedMime,
+            download_url: downloadUrl
         });
 
     } catch (error) {
@@ -965,12 +968,16 @@ app.post("/api/documents/:id/file-metadata", requireCognitoAuth, async (req, res
 // Create S3 preview URL พร้อมตรวจสอบสิทธิ์
 // เฉพาะ PDF, JPG/JPEG และ PNG สามารถแสดงตัวอย่างได้
 // สำหรับ DOCX, XLSX, PPTX จะส่ง metadata กลับเพื่อให้แสดงปุ่มดาวน์โหลด
-app.get("/api/documents/:id/preview-url", requireCognitoAuth, async (req, res) => {
-    try {
-        const { id } = req.params;
+app.get(
+    "/api/documents/:id/preview-url",
+    requireCognitoAuth,
+    loadUserRole,
+    async (req, res) => {
+        try {
+            const { id } = req.params;
 
-        const [rows] = await pool.query(
-            `
+            const [rows] = await pool.query(
+                `
             SELECT 
                 d.*,
                 f.file_name,
@@ -980,74 +987,76 @@ app.get("/api/documents/:id/preview-url", requireCognitoAuth, async (req, res) =
             LEFT JOIN document_files f ON d.id = f.document_id
             WHERE d.id = ?
             `,
-            [id]
-        );
+                [id]
+            );
 
-        if (rows.length === 0) {
-            return res.status(404).json({
-                error: "Document not found"
+            if (rows.length === 0) {
+                return res.status(404).json({
+                    error: "Document not found"
+                });
+            }
+
+            const doc = rows[0];
+            const fileKey = doc.file_key;
+
+            if (!fileKey) {
+                return res.status(404).json({
+                    error: "Document file not found"
+                });
+            }
+
+            // ตรวจสอบสิทธิ์การเข้าถึง
+            const access = checkDocumentAccess(req, doc);
+            if (!access.allowed) {
+                return res.status(403).json({
+                    error: access.reason || "ไม่มีสิทธิ์ในการเรียกดูเอกสารนี้ (Permission Denied)"
+                });
+            }
+
+            const finalFileName = doc.file_name || extractFileNameFromKey(fileKey);
+            const ext = finalFileName ? path.extname(finalFileName).toLowerCase() : "";
+            const canPreview = PREVIEWABLE_EXTENSIONS.includes(ext);
+            const resolvedMime = doc.mime_type || getMimeTypeByExtension(finalFileName);
+
+            let previewUrl = null;
+            if (canPreview) {
+                previewUrl = `/api/documents/${id}/preview-file`;
+            }
+
+
+            res.json({
+                document_id: id,
+                file_name: finalFileName,
+                file_size: doc.file_size,
+                mime_type: resolvedMime,
+                file_extension: ext,
+                can_preview: canPreview,
+                preview_url: previewUrl,
+                download_url: `/api/documents/${id}/download-file`
+            });
+
+        } catch (error) {
+            console.error(error);
+            res.status(500).json({
+                error: "Failed to generate preview URL"
             });
         }
-
-        const doc = rows[0];
-        const fileKey = doc.file_key;
-
-        if (!fileKey) {
-            return res.status(404).json({
-                error: "Document file not found"
-            });
-        }
-
-        // ตรวจสอบสิทธิ์การเข้าถึง
-        const access = checkDocumentAccess(req, doc);
-        if (!access.allowed) {
-            return res.status(403).json({
-                error: access.reason || "ไม่มีสิทธิ์ในการเรียกดูเอกสารนี้ (Permission Denied)"
-            });
-        }
-
-        const finalFileName = doc.file_name || extractFileNameFromKey(fileKey);
-        const ext = finalFileName ? path.extname(finalFileName).toLowerCase() : "";
-        const canPreview = PREVIEWABLE_EXTENSIONS.includes(ext);
-        const resolvedMime = doc.mime_type || getMimeTypeByExtension(finalFileName);
-
-        let previewUrl = null;
-        if (canPreview) {
-            previewUrl = getPublicUrl(fileKey);
-        }
-
-        const downloadUrl = `/api/documents/${id}/download-file?role=${encodeURIComponent(access.role || "staff")}`;
-
-        res.json({
-            document_id: id,
-            file_key: fileKey,
-            file_name: finalFileName,
-            file_size: doc.file_size,
-            mime_type: resolvedMime,
-            file_extension: ext,
-            can_preview: canPreview,
-            preview_url: previewUrl,
-            download_url: downloadUrl,
-            direct_s3_url: getPublicUrl(fileKey),
-            expires_in: 300
-        });
-
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({
-            error: "Failed to generate preview URL"
-        });
-    }
-});
+    });
 
 // Direct Download File (Stream file with attachment Content-Disposition)
 // ช่วยให้เบราว์เซอร์ดาวน์โหลดไฟล์ลงเครื่องทันที และไม่ติด Quarantine Policy ของ AWS
-app.get("/api/documents/:id/download-file", requireCognitoAuth, async (req, res) => {
-    try {
-        const { id } = req.params;
 
-        const [rows] = await pool.query(
-            `
+app.get(
+    "/api/documents/:id/download-file",
+    requireCognitoAuth,
+    loadUserRole,
+    async (req, res) => {
+
+        try {
+            const { id } = req.params;
+
+            const [rows] = await pool.query(
+                `
             SELECT 
                 d.*,
                 f.file_name,
@@ -1057,54 +1066,153 @@ app.get("/api/documents/:id/download-file", requireCognitoAuth, async (req, res)
             LEFT JOIN document_files f ON d.id = f.document_id
             WHERE d.id = ?
             `,
-            [id]
-        );
+                [id]
+            );
 
-        if (rows.length === 0 || !rows[0].file_key) {
-            return res.status(404).send("Document or file not found");
+            if (rows.length === 0 || !rows[0].file_key) {
+                return res.status(404).send("Document or file not found");
+            }
+
+            const doc = rows[0];
+            const access = checkDocumentAccess(req, doc);
+            if (!access.allowed) {
+                return res.status(403).send("Permission Denied: ไม่มีสิทธิ์ในการดาวน์โหลดเอกสารนี้");
+            }
+
+            const finalFileName = doc.file_name || extractFileNameFromKey(doc.file_key) || "document";
+            const resolvedMime = doc.mime_type || getMimeTypeByExtension(finalFileName);
+            const safeAsciiName = finalFileName.replace(/[^\x20-\x7E]/g, "_");
+            const encodedName = encodeURIComponent(finalFileName);
+
+            const s3DownloadUrl = await createDownloadUrl(doc.file_key, {
+                disposition: "attachment",
+                fileName: finalFileName,
+                contentType: resolvedMime
+            });
+
+            const s3Response = await fetch(s3DownloadUrl);
+
+            if (!s3Response.ok) {
+                return res.status(s3Response.status).send("Failed to retrieve file from storage");
+            }
+
+            res.setHeader("Content-Type", resolvedMime);
+            res.setHeader("Content-Disposition", `attachment; filename="${safeAsciiName}"; filename*=UTF-8''${encodedName}`);
+            if (doc.file_size) {
+                res.setHeader("Content-Length", doc.file_size);
+            }
+
+            const arrayBuffer = await s3Response.arrayBuffer();
+            res.send(Buffer.from(arrayBuffer));
+
+        } catch (error) {
+            console.error("Direct download file error:", error);
+            res.status(500).send("Error downloading file");
         }
+    });
 
-        const doc = rows[0];
-        const access = checkDocumentAccess(req, doc);
-        if (!access.allowed) {
-            return res.status(403).send("Permission Denied: ไม่มีสิทธิ์ในการดาวน์โหลดเอกสารนี้");
+    app.get(
+    "/api/documents/:id/preview-file",
+    requireCognitoAuth,
+    loadUserRole,
+    async (req, res) => {
+        try {
+            const { id } = req.params;
+
+            const [rows] = await pool.query(
+                `SELECT d.*, f.file_name, f.file_size, f.mime_type
+                 FROM documents d
+                 LEFT JOIN document_files f ON d.id = f.document_id
+                 WHERE d.id = ?`,
+                [id]
+            );
+
+            if (rows.length === 0 || !rows[0].file_key) {
+                return res.status(404).json({
+                    error: "Document or file not found"
+                });
+            }
+
+            const doc = rows[0];
+
+            const access = checkDocumentAccess(req, doc);
+            if (!access.allowed) {
+                return res.status(403).json({
+                    error: access.reason || "Permission denied"
+                });
+            }
+
+            const fileName =
+                doc.file_name ||
+                extractFileNameFromKey(doc.file_key) ||
+                "document";
+
+            const ext = path.extname(fileName).toLowerCase();
+
+            if (!PREVIEWABLE_EXTENSIONS.includes(ext)) {
+                return res.status(415).json({
+                    error: "This file type cannot be previewed"
+                });
+            }
+
+            const file = await getS3Object(doc.file_key);
+            const mimeType =
+                doc.mime_type || getMimeTypeByExtension(fileName);
+
+            res.setHeader("Content-Type", mimeType);
+            res.setHeader(
+                "Content-Disposition",
+                `inline; filename="${fileName.replace(/[^\x20-\x7E]/g, "_")}"`
+            );
+            res.setHeader("X-Content-Type-Options", "nosniff");
+
+            if (file.ContentLength != null) {
+                res.setHeader("Content-Length", file.ContentLength);
+            }
+
+            if (!file.Body) {
+                return res.status(502).json({
+                    error: "File content is unavailable"
+                });
+            }
+
+            file.Body.on("error", (error) => {
+                console.error("Preview stream error:", error);
+                if (!res.headersSent) {
+                    res.status(500).end("Failed to stream preview");
+                } else {
+                    res.destroy(error);
+                }
+            });
+
+            file.Body.pipe(res);
+        } catch (error) {
+            console.error("Preview file error:", error);
+
+            if (!res.headersSent) {
+                res.status(500).json({
+                    error: "Failed to preview document"
+                });
+            } else {
+                res.destroy(error);
+            }
         }
-
-        const finalFileName = doc.file_name || extractFileNameFromKey(doc.file_key) || "document";
-        const resolvedMime = doc.mime_type || getMimeTypeByExtension(finalFileName);
-        const safeAsciiName = finalFileName.replace(/[^\x20-\x7E]/g, "_");
-        const encodedName = encodeURIComponent(finalFileName);
-
-        const s3PublicUrl = getPublicUrl(doc.file_key);
-        const s3Response = await fetch(s3PublicUrl);
-
-        if (!s3Response.ok) {
-            return res.status(s3Response.status).send("Failed to retrieve file from storage");
-        }
-
-        res.setHeader("Content-Type", resolvedMime);
-        res.setHeader("Content-Disposition", `attachment; filename="${safeAsciiName}"; filename*=UTF-8''${encodedName}`);
-        if (doc.file_size) {
-            res.setHeader("Content-Length", doc.file_size);
-        }
-
-        const arrayBuffer = await s3Response.arrayBuffer();
-        res.send(Buffer.from(arrayBuffer));
-
-    } catch (error) {
-        console.error("Direct download file error:", error);
-        res.status(500).send("Error downloading file");
     }
-});
+);
 
 // Create S3 download URL พร้อมตรวจสอบสิทธิ์
-app.get("/api/documents/:id/download-url", requireCognitoAuth, async (req, res) => {
-    try {
-        const { id } = req.params;
+app.get(
+    "/api/documents/:id/download-url",
+    requireCognitoAuth,
+    loadUserRole,
+    async (req, res) => {
 
-        // Get document
-        const [rows] = await pool.query(
-            `
+        try {
+            const { id } = req.params;
+
+            // Get document
+            const [rows] = await pool.query(
+                `
             SELECT 
                 d.*,
                 f.file_name,
@@ -1114,56 +1222,55 @@ app.get("/api/documents/:id/download-url", requireCognitoAuth, async (req, res) 
             LEFT JOIN document_files f ON d.id = f.document_id
             WHERE d.id = ?
             `,
-            [id]
-        );
+                [id]
+            );
 
-        if (rows.length === 0) {
-            return res.status(404).json({
-                error: "Document not found"
+            if (rows.length === 0) {
+                return res.status(404).json({
+                    error: "Document not found"
+                });
+            }
+
+            const doc = rows[0];
+            const fileKey = doc.file_key;
+
+            // Check file exists in database
+            if (!fileKey) {
+                return res.status(404).json({
+                    error: "Document file not found"
+                });
+            }
+
+            // ตรวจสอบสิทธิ์การเข้าถึง
+            const access = checkDocumentAccess(req, doc);
+            if (!access.allowed) {
+                return res.status(403).json({
+                    error: access.reason || "ไม่มีสิทธิ์ในการดาวน์โหลดเอกสารนี้ (Permission Denied)"
+                });
+            }
+
+            const finalFileName = doc.file_name || extractFileNameFromKey(fileKey);
+            const resolvedMime = doc.mime_type || getMimeTypeByExtension(finalFileName);
+
+            const downloadUrl = `/api/documents/${id}/download-file`;
+            res.json({
+                document_id: id,
+                file_key: fileKey,
+                file_name: finalFileName,
+                file_size: doc.file_size,
+                mime_type: resolvedMime,
+                download_url: downloadUrl,
+                direct_s3_url: getPublicUrl(fileKey),
+                expires_in: 300
+            });
+
+        } catch (error) {
+            console.error(error);
+            res.status(500).json({
+                error: "Failed to create download URL"
             });
         }
-
-        const doc = rows[0];
-        const fileKey = doc.file_key;
-
-        // Check file exists in database
-        if (!fileKey) {
-            return res.status(404).json({
-                error: "Document file not found"
-            });
-        }
-
-        // ตรวจสอบสิทธิ์การเข้าถึง
-        const access = checkDocumentAccess(req, doc);
-        if (!access.allowed) {
-            return res.status(403).json({
-                error: access.reason || "ไม่มีสิทธิ์ในการดาวน์โหลดเอกสารนี้ (Permission Denied)"
-            });
-        }
-
-        const finalFileName = doc.file_name || extractFileNameFromKey(fileKey);
-        const resolvedMime = doc.mime_type || getMimeTypeByExtension(finalFileName);
-
-        const downloadUrl = `/api/documents/${id}/download-file?role=${encodeURIComponent(access.role || "staff")}`;
-
-        res.json({
-            document_id: id,
-            file_key: fileKey,
-            file_name: finalFileName,
-            file_size: doc.file_size,
-            mime_type: resolvedMime,
-            download_url: downloadUrl,
-            direct_s3_url: getPublicUrl(fileKey),
-            expires_in: 300
-        });
-
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({
-            error: "Failed to create download URL"
-        });
-    }
-});
+    });
 
 // ดักจับกรณีส่ง Request เกิน 1MB
 app.use((err, req, res, next) => {
