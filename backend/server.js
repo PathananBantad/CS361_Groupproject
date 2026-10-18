@@ -26,41 +26,26 @@ const {
 
 
 async function loadUserRole(req, res, next) {
-    // ต้องผ่านการยืนยันตัวตนก่อน
-    if (!req.auth?.sub && !req.session?.user) {
+    if (!req.auth?.sub) {
         return res.status(401).json({
             error: "Authentication required"
         });
     }
 
-    // ใช้ Role จาก session ที่ผ่านการยืนยันแล้ว
-    if (req.session?.user?.roles?.length) {
-        req.userRole = req.session.user.roles[0];
-        return next();
-    }
-
-    // ใช้ Cognito Group หากมี
-    if (req.auth?.groups?.length) {
-        req.userRole = req.auth.groups[0];
-        return next();
-    }
-
-    // ไม่มี Cognito Group ต้องตรวจ Role จากฐานข้อมูล
-    if (!req.auth?.sub) {
-        return res.status(403).json({
-            error: "No authorized role found"
-        });
-    }
-
     try {
         const [rows] = await pool.execute(
-            "SELECT role FROM user_roles WHERE cognito_sub = ? LIMIT 1",
+            `SELECT u.id AS userId, ur.role
+             FROM users u
+             INNER JOIN user_roles ur
+                 ON ur.cognito_sub = u.cognito_sub
+             WHERE u.cognito_sub = ?
+             LIMIT 1`,
             [req.auth.sub]
         );
 
-        if (rows.length === 0 || !rows[0].role) {
+        if (rows.length === 0 || !rows[0].role || !rows[0].userId) {
             return res.status(403).json({
-                error: "No database role assigned to this user"
+                error: "No authorized role found for this user"
             });
         }
 
@@ -80,7 +65,9 @@ async function loadUserRole(req, res, next) {
             });
         }
 
+        req.userId = rows[0].userId;
         req.userRole = role;
+
         return next();
     } catch (error) {
         console.error("Failed to verify user role:", error);
@@ -90,7 +77,6 @@ async function loadUserRole(req, res, next) {
         });
     }
 }
-
 
 const {
     createUploadUrl,
@@ -248,27 +234,36 @@ app.get("/api/health", async (req, res) => {
 });
 
 // ดึงรายการเอกสารพร้อม Metadata ของไฟล์
-app.get("/api/documents", async (req, res) => {
-    try {
-        const userId = req.session?.user?.id || req.auth?.sub || req.query.userId || req.headers["x-user-id"] || null;
-        const groups = req.session?.user?.roles || (req.auth && Array.isArray(req.auth.groups) ? req.auth.groups : []) || [req.query.role || req.headers["x-user-role"] || "staff"];
-        const role = groups.find(group => DOCUMENT_ROLES.includes(String(group).trim().toLowerCase())) || "staff";
+app.get(
+    "/api/documents",
+    requireCognitoAuth,
+    loadUserRole,
+    async (req, res) => {
+        try {
+            const userId = req.userId;
+            const role = String(req.userRole || "").trim().toLowerCase();
 
-        const {
-            reference_no,
-            subject,
-            document_type,
-            sender_name,
-            receiver_name,
-            status,
-            from_date,
-            to_date,
-            search,
-            type,
-            month
-        } = req.query;
+            if (!userId || !DOCUMENT_ROLES.includes(role)) {
+                return res.status(403).json({
+                    error: "Invalid or unauthorized user role"
+                });
+            }
 
-        let sql = `
+            const {
+                reference_no,
+                subject,
+                document_type,
+                sender_name,
+                receiver_name,
+                status,
+                from_date,
+                to_date,
+                search,
+                type,
+                month
+            } = req.query;
+
+            let sql = `
             SELECT 
                 d.*,
                 f.file_name,
@@ -280,67 +275,67 @@ app.get("/api/documents", async (req, res) => {
             WHERE 1 = 1
         `;
 
-        const params = [];
+            const params = [];
 
-        if (role === "case_owner") {
-            sql += " AND d.owner_id = ?";
-            params.push(userId);
-        }
-
-        // Search by reference number
-        if (reference_no) {
-            sql += " AND d.reference_no LIKE ?";
-            params.push(`%${reference_no}%`);
-        }
-
-        // Search by subject
-        if (subject) {
-            sql += " AND d.subject LIKE ?";
-            params.push(`%${subject}%`);
-        }
-
-        // Search by document type
-        if (document_type) {
-            sql += " AND d.document_type = ?";
-            params.push(document_type);
-        }
-
-        // Search by sender
-        if (sender_name) {
-            sql += " AND d.sender_name LIKE ?";
-            params.push(`%${sender_name}%`);
-        }
-
-        // Search by receiver
-        if (receiver_name) {
-            sql += " AND d.receiver_name LIKE ?";
-            params.push(`%${receiver_name}%`);
-        }
-
-        // Search by status
-        if (status) {
-            const statuses = Array.isArray(status) ? status : [status];
-            if (statuses.length > 0) {
-                const placeholders = statuses.map(() => '?').join(',');
-                sql += ` AND d.status IN (${placeholders})`;
-                params.push(...statuses);
+            if (role === "case_owner") {
+                sql += " AND d.owner_id = ?";
+                params.push(userId);
             }
-        }
 
-        // Search from date
-        if (from_date) {
-            sql += " AND d.receive_date >= ?";
-            params.push(from_date);
-        }
+            // Search by reference number
+            if (reference_no) {
+                sql += " AND d.reference_no LIKE ?";
+                params.push(`%${reference_no}%`);
+            }
 
-        // Search to date
-        if (to_date) {
-            sql += " AND d.receive_date <= ?";
-            params.push(to_date);
-        }
+            // Search by subject
+            if (subject) {
+                sql += " AND d.subject LIKE ?";
+                params.push(`%${subject}%`);
+            }
 
-        if (search) {
-            sql += `
+            // Search by document type
+            if (document_type) {
+                sql += " AND d.document_type = ?";
+                params.push(document_type);
+            }
+
+            // Search by sender
+            if (sender_name) {
+                sql += " AND d.sender_name LIKE ?";
+                params.push(`%${sender_name}%`);
+            }
+
+            // Search by receiver
+            if (receiver_name) {
+                sql += " AND d.receiver_name LIKE ?";
+                params.push(`%${receiver_name}%`);
+            }
+
+            // Search by status
+            if (status) {
+                const statuses = Array.isArray(status) ? status : [status];
+                if (statuses.length > 0) {
+                    const placeholders = statuses.map(() => '?').join(',');
+                    sql += ` AND d.status IN (${placeholders})`;
+                    params.push(...statuses);
+                }
+            }
+
+            // Search from date
+            if (from_date) {
+                sql += " AND d.receive_date >= ?";
+                params.push(from_date);
+            }
+
+            // Search to date
+            if (to_date) {
+                sql += " AND d.receive_date <= ?";
+                params.push(to_date);
+            }
+
+            if (search) {
+                sql += `
                 AND (
                     d.sender_name LIKE ?
                     OR d.receiver_name LIKE ?
@@ -349,51 +344,51 @@ app.get("/api/documents", async (req, res) => {
                     OR d.subject LIKE ?
                 )
             `;
-            const keyword = `%${search}%`;
-            params.push(keyword, keyword, keyword, keyword, keyword);
+                const keyword = `%${search}%`;
+                params.push(keyword, keyword, keyword, keyword, keyword);
+            }
+
+            if (type) {
+                sql += " AND d.document_type = ?";
+                params.push(type);
+            }
+
+            if (month) {
+                sql += " AND MONTH(d.receive_date) = ?";
+                params.push(month);
+            }
+
+            sql += " ORDER BY d.created_at DESC";
+
+            const [rows] = await pool.query(sql, params);
+
+            // Enrich ข้อมูลไฟล์สำหรับ frontend
+            const enrichedRows = rows.map(doc => {
+                const finalFileName = doc.file_name || extractFileNameFromKey(doc.file_key);
+                const ext = finalFileName ? path.extname(finalFileName).toLowerCase() : "";
+                const canPreview = isPreviewable(finalFileName || doc.file_key);
+
+                return {
+                    ...doc,
+                    display_file_name: finalFileName,
+                    file_extension: ext,
+                    can_preview: canPreview,
+                    mime_type: doc.mime_type || getMimeTypeByExtension(finalFileName || doc.file_key)
+                };
+            });
+
+            res.json({
+                data: enrichedRows,
+                total: enrichedRows.length
+            });
+
+        } catch (error) {
+            console.error(error);
+            res.status(500).json({
+                error: "Failed to search documents"
+            });
         }
-
-        if (type) {
-            sql += " AND d.document_type = ?";
-            params.push(type);
-        }
-
-        if (month) {
-            sql += " AND MONTH(d.receive_date) = ?";
-            params.push(month);
-        }
-
-        sql += " ORDER BY d.created_at DESC";
-
-        const [rows] = await pool.query(sql, params);
-
-        // Enrich ข้อมูลไฟล์สำหรับ frontend
-        const enrichedRows = rows.map(doc => {
-            const finalFileName = doc.file_name || extractFileNameFromKey(doc.file_key);
-            const ext = finalFileName ? path.extname(finalFileName).toLowerCase() : "";
-            const canPreview = isPreviewable(finalFileName || doc.file_key);
-
-            return {
-                ...doc,
-                display_file_name: finalFileName,
-                file_extension: ext,
-                can_preview: canPreview,
-                mime_type: doc.mime_type || getMimeTypeByExtension(finalFileName || doc.file_key)
-            };
-        });
-
-        res.json({
-            data: enrichedRows,
-            total: enrichedRows.length
-        });
-
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({
-            error: "Failed to search documents"
-        });
-    }
-});
+    });
 
 // Get document by ID พร้อม Metadata ของไฟล์
 app.get("/api/documents/:id", requireCognitoAuth, async (req, res) => {
