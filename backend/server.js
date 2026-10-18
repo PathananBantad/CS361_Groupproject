@@ -1888,4 +1888,141 @@ if (require.main === module) {
     });
 }
 
+// มอบหมายเอกสารให้ผู้รับผิดชอบ
+app.post("/api/documents/:id/assign", requireCognitoAuth, loadUserRole, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { assignee_id, assignee_name, remarks } = req.body || {};
+
+        const actor = extractServerActor(req);
+        const role = actor.actorRole;
+
+        // ตรวจสอบสิทธิ์ผู้มีอำนาจมอบหมาย
+        if (!role || !["document_officer", "case_owner", "admin", "staff", "faculty_staff"].includes(role)) {
+            return res.status(403).json({
+                error: "คุณไม่มีสิทธิ์ในการมอบหมายเอกสาร (ต้องการสิทธิ์ Staff หรือ Admin)"
+            });
+        }
+
+        if (!assignee_id) {
+            return res.status(400).json({
+                error: "กรุณาระบุผู้รับมอบหมาย (assignee_id is required)"
+            });
+        }
+
+        const sanitizedAssigneeId = String(assignee_id).trim();
+        const sanitizedAssigneeName = sanitizeInput(assignee_name || "");
+        const sanitizedRemarks = sanitizeInput(remarks || "");
+
+        const connection = await pool.getConnection();
+        let auditRecord = null;
+        let updatedDoc = null;
+
+        try {
+            await connection.beginTransaction();
+
+            const [docRows] = await connection.query("SELECT * FROM documents WHERE id = ? FOR UPDATE", [id]);
+            if (docRows.length === 0) {
+                await connection.rollback();
+                return res.status(404).json({ error: "ไม่พบเอกสารที่ระบุในระบบ" });
+            }
+
+            const doc = docRows[0];
+            const oldStatus = doc.status || "Received";
+            const newStatus = oldStatus === "Received" ? "Assigned" : oldStatus;
+
+            // ตรวจสอบว่า assignee_id มีอยู่ใน users หรือไม่
+            const numericAssigneeId = parseInt(sanitizedAssigneeId, 10);
+            let validUserId = null;
+            if (!isNaN(numericAssigneeId)) {
+                const [uRows] = await connection.query("SELECT id FROM users WHERE id = ?", [numericAssigneeId]);
+                if (uRows.length > 0) {
+                    validUserId = uRows[0].id;
+                }
+            }
+
+            // อัปเดตข้อมูลผู้รับมอบหมายและสถานะในตาราง documents
+            await connection.query(
+                `UPDATE documents 
+                 SET assignee_id = ?, owner_id = COALESCE(owner_id, ?), status = ? 
+                 WHERE id = ?`,
+                [validUserId, validUserId, newStatus, id]
+            );
+
+            // บันทึกประวัติลงใน document_assignments
+            await connection.query(
+                `INSERT INTO document_assignments 
+                    (document_id, assigned_by_user_id, assigned_by_username, previous_assignee_id, new_assignee_id, action_type, remarks)
+                 VALUES (?, ?, ?, ?, ?, 'ASSIGN', ?)`,
+                [
+                    id,
+                    actor.actorUserId,
+                    actor.actorUsername,
+                    doc.assignee_id ? String(doc.assignee_id) : null,
+                    sanitizedAssigneeId,
+                    sanitizedRemarks || null
+                ]
+            );
+
+            // บันทึกใน document_status_logs หากมีการเปลี่ยนสถานะ
+            if (newStatus !== oldStatus) {
+                await connection.query(
+                    `INSERT INTO document_status_logs (document_id, old_status, new_status, changed_by, changed_by_user_id, remarks, changed_at)
+                     VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+                    [id, oldStatus, newStatus, actor.actorUsername, actor.actorUserId, sanitizedRemarks || "มอบหมายเอกสาร"]
+                );
+            }
+
+            // บันทึก Audit Trail กลาง
+            auditRecord = await recordAuditEvent({
+                documentId: id,
+                actorUserId: actor.actorUserId,
+                actorUsername: actor.actorUsername,
+                actorRole: actor.actorRole,
+                eventType: AUDIT_EVENTS.ASSIGN,
+                beforeState: {
+                    owner_id: doc.owner_id,
+                    assignee_id: doc.assignee_id,
+                    status: oldStatus
+                },
+                afterState: {
+                    owner_id: doc.owner_id || sanitizedAssigneeId,
+                    assignee_id: sanitizedAssigneeId,
+                    status: newStatus
+                },
+                details: {
+                    assignee_name: sanitizedAssigneeName || null,
+                    previous_assignee_id: doc.assignee_id || null,
+                    new_assignee_id: sanitizedAssigneeId,
+                    remarks: sanitizedRemarks || null
+                },
+                ipAddress: actor.ipAddress,
+                connection
+            });
+
+            await connection.commit();
+
+            const [rows] = await pool.query("SELECT * FROM documents WHERE id = ?", [id]);
+            updatedDoc = rows[0];
+
+        } catch (txErr) {
+            await connection.rollback();
+            throw txErr;
+        } finally {
+            connection.release();
+        }
+
+        res.json({
+            ok: true,
+            message: `มอบหมายเอกสารเรียบร้อยแล้ว`,
+            data: updatedDoc,
+            audit: auditRecord
+        });
+
+    } catch (error) {
+        console.error("Assign document error:", error);
+        res.status(500).json({ error: "เกิดข้อผิดพลาดในการมอบหมายเอกสาร: " + error.message });
+    }
+});
+
 module.exports = app;
