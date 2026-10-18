@@ -1,29 +1,27 @@
 /* =====================================================
    START BUTTON
+   คลิกปุ่ม START แล้วเล่น Animation กระดาษปลิว
+   จากนั้นนำทางไปยังหน้า login.html ก่อนเข้าใช้งาน
 ===================================================== */
 
-startBtn.addEventListener("click", () => {
+document.addEventListener("DOMContentLoaded", () => {
+    const startBtn = document.getElementById("startBtn");
+    const welcomePage = document.getElementById("welcomePage");
 
-    /*
-     * ป้องกันการกดซ้ำ
-     */
-    startBtn.disabled = true;
+    if (!startBtn) return;
 
+    startBtn.addEventListener("click", () => {
+        // ป้องกันการกดซ้ำ
+        startBtn.disabled = true;
 
-    /*
-     * เริ่ม animation
-     * กระดาษจะปลิวออก
-     */
-    welcomePage.classList.add("fly");
+        // เริ่ม animation กระดาษปลิวออก
+        if (welcomePage) {
+            welcomePage.classList.add("fly");
+        }
 
-
-    /*
-     * รอ animation แล้วไปหน้า Dashboard
-     */
-    setTimeout(() => {
-
-        window.location.href = "login.html";
-
-    }, 950);
-
+        // รอ animation สิ้นสุด แล้วนำทางไปยังหน้า login.html
+        setTimeout(() => {
+            window.location.href = "login.html";
+        }, 900);
+    });
 });
