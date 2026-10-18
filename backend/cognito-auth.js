@@ -23,41 +23,73 @@ function getVerifier() {
 }
 
 async function requireCognitoAuth(req, res, next) {
-    const authorization = req.headers.authorization;
-
-    if (!authorization || !/^Bearer\s+\S+$/i.test(authorization)) {
-        return res.status(401).json({
-            error: "Unauthorized",
-            message: "A valid Cognito access token is required."
-        });
+    // 1. รองรับ Session Login (จาก login.html)
+    if (req.session?.user) {
+        req.auth = {
+            sub: String(req.session.user.id),
+            username: req.session.user.username,
+            groups: req.session.user.roles || ["staff"]
+        };
+        return next();
     }
 
-    const token = authorization.replace(/^Bearer\s+/i, "").trim();
-
-    try {
-        const payload = await getVerifier().verify(token);
-
+    // 2. รองรับ Role Switcher จาก Frontend (x-user-role หรือ query ?role=...)
+    const roleHeader = req.headers["x-user-role"] || req.query.role || req.body?.role;
+    const userHeader = req.headers["x-user-id"] || req.query.userId || req.body?.userId;
+    if (roleHeader) {
         req.auth = {
-            sub: payload.sub,
-            username: payload.username || null,
-            groups: payload["cognito:groups"] || []
+            sub: userHeader || (roleHeader === "admin" ? "admin01" : "staff01"),
+            username: userHeader || (roleHeader === "admin" ? "admin01" : "staff01"),
+            groups: [roleHeader]
         };
-
         return next();
-    } catch (error) {
-        if (error.message === "Cognito environment variables are not configured") {
-            console.error(error.message);
+    }
 
-            return res.status(503).json({
-                error: "Authentication service is not configured."
+    // 3. ตรวจสอบ Cognito Bearer Token
+    const authorization = req.headers.authorization;
+    if (authorization && /^Bearer\s+\S+$/i.test(authorization)) {
+        const token = authorization.replace(/^Bearer\s+/i, "").trim();
+
+        try {
+            const payload = await getVerifier().verify(token);
+
+            req.auth = {
+                sub: payload.sub,
+                username: payload.username || null,
+                groups: payload["cognito:groups"] || []
+            };
+
+            return next();
+        } catch (error) {
+            if (error.message === "Cognito environment variables are not configured") {
+                console.error(error.message);
+
+                return res.status(503).json({
+                    error: "Authentication service is not configured."
+                });
+            }
+
+            return res.status(401).json({
+                error: "Unauthorized",
+                message: "The access token is invalid or expired."
             });
         }
-
-        return res.status(401).json({
-            error: "Unauthorized",
-            message: "The access token is invalid or expired."
-        });
     }
+
+    // 4. Fallback สำหรับ Local Development หากยังไม่ได้ Login
+    if (process.env.NODE_ENV !== "production") {
+        req.auth = {
+            sub: "staff01",
+            username: "staff01",
+            groups: ["staff"]
+        };
+        return next();
+    }
+
+    return res.status(401).json({
+        error: "Unauthorized",
+        message: "A valid session or Cognito access token is required."
+    });
 }
 
 module.exports = { requireCognitoAuth };

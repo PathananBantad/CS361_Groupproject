@@ -219,24 +219,13 @@ registerForm.addEventListener("submit", async (event) => {
             headers: {
                 "Content-Type": "application/json"
             },
+            credentials: "include",
             body: JSON.stringify(payload)
         });
 
-        // หากเรียก local แล้วไม่ตอบสนอง ให้ลอง fallback ไปยัง AWS API Gateway
-        if (!response.ok && apiBase.includes("localhost")) {
-            console.warn("Local API failed, falling back to AWS API Gateway...");
-            response = await fetch(`https://utvhg6d6o3.execute-api.us-east-1.amazonaws.com/api/documents`, {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json"
-                },
-                body: JSON.stringify(payload)
-            });
-        }
-
         if (!response.ok) {
             const errData = await response.json().catch(() => ({}));
-            throw new Error(errData.error || "ไม่สามารถลงทะเบียนเอกสารได้");
+            throw new Error(errData.error || "ไม่สามารถลงทะเบียนเอกสารได้ (สถานะ: " + response.status + ")");
         }
 
         const docData = await response.json();
@@ -248,46 +237,71 @@ registerForm.addEventListener("submit", async (event) => {
             const contentType = fileValidation.resolvedMime;
             const uploadUrlEndpoint = `${apiBase}/documents/${docData.id}/upload-url?fileName=${encodeURIComponent(file.name)}&contentType=${encodeURIComponent(contentType)}&fileSize=${file.size}`;
 
-            let s3UrlRes = await fetch(uploadUrlEndpoint);
+            let uploadSuccess = false;
+            let s3Data = null;
 
-            if (!s3UrlRes.ok && apiBase.includes("localhost")) {
-                s3UrlRes = await fetch(`https://utvhg6d6o3.execute-api.us-east-1.amazonaws.com/api/documents/${docData.id}/upload-url?fileName=${encodeURIComponent(file.name)}&contentType=${encodeURIComponent(contentType)}&fileSize=${file.size}`);
-            }
-
-            if (!s3UrlRes.ok) {
-                const errData = await s3UrlRes.json().catch(() => ({}));
-                throw new Error(errData.error || "ไม่สามารถสร้างลิงก์สำหรับอัปโหลดไฟล์ได้");
-            }
-
-            const s3Data = await s3UrlRes.json();
-
-            // PUT ไฟล์ไปยัง S3 Presigned URL
-            const uploadRes = await fetch(s3Data.upload_url, {
-                method: "PUT",
-                headers: {
-                    "Content-Type": contentType
-                },
-                body: file
-            });
-
-            if (!uploadRes.ok) {
-                throw new Error("เกิดข้อผิดพลาดในการอัปโหลดไฟล์ไปยัง S3 Storage");
-            }
-
-            // 3. บันทึก Metadata ไฟล์ลงฐานข้อมูล (document_files)
             try {
-                await fetch(`${apiBase}/documents/${docData.id}/file-metadata`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        fileName: file.name,
-                        fileSize: file.size,
-                        mimeType: contentType,
-                        fileKey: s3Data.file_key
-                    })
+                const s3UrlRes = await fetch(uploadUrlEndpoint, {
+                    credentials: "include"
                 });
-            } catch (metaErr) {
-                console.warn("Metadata confirmation notice:", metaErr);
+
+                if (s3UrlRes.ok) {
+                    s3Data = await s3UrlRes.json();
+
+                    // ทดลอง PUT ไฟล์ไปยัง S3 Presigned URL โดยตรง
+                    const uploadRes = await fetch(s3Data.upload_url, {
+                        method: "PUT",
+                        headers: {
+                            "Content-Type": contentType
+                        },
+                        body: file
+                    });
+
+                    if (uploadRes.ok) {
+                        uploadSuccess = true;
+                    }
+                }
+            } catch (presignedErr) {
+                console.warn("Presigned S3 PUT failed, falling back to direct backend upload:", presignedErr);
+            }
+
+            // หาก S3 Presigned URL ไม่สำเร็จ (เช่น browser CORS บล็อก) ให้อัปโหลดผ่าน backend upload-direct
+            if (!uploadSuccess) {
+                submitText.textContent = "กำลังอัปโหลดไฟล์ผ่านช่องทางสำรอง...";
+                const directUploadUrl = `${apiBase}/documents/${docData.id}/upload-direct?fileName=${encodeURIComponent(file.name)}&contentType=${encodeURIComponent(contentType)}`;
+                const directRes = await fetch(directUploadUrl, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": contentType
+                    },
+                    credentials: "include",
+                    body: file
+                });
+
+                if (!directRes.ok) {
+                    const directErr = await directRes.json().catch(() => ({}));
+                    throw new Error(directErr.error || "เกิดข้อผิดพลาดในการอัปโหลดไฟล์ไปยังระบบจัดเก็บ S3");
+                }
+                uploadSuccess = true;
+            }
+
+            // 3. บันทึก/ยืนยัน Metadata ไฟล์ลงฐานข้อมูล (document_files)
+            if (uploadSuccess && s3Data?.file_key) {
+                try {
+                    await fetch(`${apiBase}/documents/${docData.id}/file-metadata`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        credentials: "include",
+                        body: JSON.stringify({
+                            fileName: file.name,
+                            fileSize: file.size,
+                            mimeType: contentType,
+                            fileKey: s3Data.file_key
+                        })
+                    });
+                } catch (metaErr) {
+                    console.warn("Metadata confirmation notice:", metaErr);
+                }
             }
         }
 
