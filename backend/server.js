@@ -24,38 +24,73 @@ const {
     verifyAuditTrailAccess
 } = require("./auditTrail");
 
+
 async function loadUserRole(req, res, next) {
+    // ต้องผ่านการยืนยันตัวตนก่อน
+    if (!req.auth?.sub && !req.session?.user) {
+        return res.status(401).json({
+            error: "Authentication required"
+        });
+    }
+
+    // ใช้ Role จาก session ที่ผ่านการยืนยันแล้ว
     if (req.session?.user?.roles?.length) {
         req.userRole = req.session.user.roles[0];
         return next();
     }
+
+    // ใช้ Cognito Group หากมี
     if (req.auth?.groups?.length) {
         req.userRole = req.auth.groups[0];
         return next();
     }
+
+    // ไม่มี Cognito Group ต้องตรวจ Role จากฐานข้อมูล
+    if (!req.auth?.sub) {
+        return res.status(403).json({
+            error: "No authorized role found"
+        });
+    }
+
     try {
-        if (!req.auth?.sub) {
-            req.userRole = "staff";
-            return next();
-        }
         const [rows] = await pool.execute(
             "SELECT role FROM user_roles WHERE cognito_sub = ? LIMIT 1",
             [req.auth.sub]
         );
 
-        if (rows.length > 0) {
-            req.userRole = rows[0].role;
-            return next();
+        if (rows.length === 0 || !rows[0].role) {
+            return res.status(403).json({
+                error: "No database role assigned to this user"
+            });
         }
 
-        req.userRole = "staff";
+        const role = String(rows[0].role).trim().toLowerCase();
+
+        const allowedRoles = [
+            "document_officer",
+            "faculty_staff",
+            "case_owner",
+            "admin",
+            "executive"
+        ];
+
+        if (!allowedRoles.includes(role)) {
+            return res.status(403).json({
+                error: "Invalid or unauthorized role"
+            });
+        }
+
+        req.userRole = role;
         return next();
     } catch (error) {
-        console.error("Failed to load user role:", error);
-        req.userRole = "staff";
-        return next();
+        console.error("Failed to verify user role:", error);
+
+        return res.status(500).json({
+            error: "Unable to verify user authorization"
+        });
     }
 }
+
 
 const {
     createUploadUrl,
@@ -218,7 +253,7 @@ app.get("/api/documents", async (req, res) => {
         const userId = req.session?.user?.id || req.auth?.sub || req.query.userId || req.headers["x-user-id"] || null;
         const groups = req.session?.user?.roles || (req.auth && Array.isArray(req.auth.groups) ? req.auth.groups : []) || [req.query.role || req.headers["x-user-role"] || "staff"];
         const role = groups.find(group => DOCUMENT_ROLES.includes(String(group).trim().toLowerCase())) || "staff";
-        
+
         const {
             reference_no,
             subject,
@@ -1673,7 +1708,7 @@ app.get(
         }
     });
 
-    app.get(
+app.get(
     "/api/documents/:id/preview-file",
     requireCognitoAuth,
     loadUserRole,
@@ -1822,12 +1857,10 @@ app.get(
             const downloadUrl = `/api/documents/${id}/download-file`;
             res.json({
                 document_id: id,
-                file_key: fileKey,
                 file_name: finalFileName,
                 file_size: doc.file_size,
                 mime_type: resolvedMime,
                 download_url: downloadUrl,
-                direct_s3_url: getPublicUrl(fileKey),
                 expires_in: 300
             });
 
