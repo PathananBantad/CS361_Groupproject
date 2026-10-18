@@ -143,15 +143,24 @@ async function fetchDocuments() {
     const apiBase = getApiBaseUrl();
 
     try {
-        let response = await fetch(`${apiBase}/documents?${params.toString()}`);
-
-        // Fallback ไปยัง AWS API Gateway หาก local server ไม่ตอบสนอง
-        if (!response.ok && apiBase.includes("localhost")) {
-            response = await fetch(`https://utvhg6d6o3.execute-api.us-east-1.amazonaws.com/api/documents?${params.toString()}`);
+        let response;
+        try {
+            response = await fetch(`${apiBase}/documents?${params.toString()}`);
+            if (!response.ok && apiBase.includes("localhost")) {
+                throw new Error(`Local server returned ${response.status}`);
+            }
+        } catch (fetchErr) {
+            // หากต่อ local server ไม่ได้ (เช่น ยังไม่ได้รัน node server.js) ให้ลองสลับไปใช้ AWS API Gateway
+            if (apiBase.includes("localhost")) {
+                console.warn("Local server not available, attempting AWS API Gateway fallback...", fetchErr);
+                response = await fetch(`https://utvhg6d6o3.execute-api.us-east-1.amazonaws.com/api/documents?${params.toString()}`);
+            } else {
+                throw fetchErr;
+            }
         }
 
         if (!response.ok) {
-            throw new Error("ไม่สามารถโหลดข้อมูลเอกสารได้");
+            throw new Error(`เซิร์ฟเวอร์ตอบกลับรหัสข้อผิดพลาด: ${response.status}`);
         }
 
         const data = await response.json();
