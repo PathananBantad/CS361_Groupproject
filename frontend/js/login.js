@@ -6,7 +6,6 @@ const loginButtonText = document.getElementById("loginButtonText");
 const loginMessage = document.getElementById("loginMessage");
 const togglePassword = document.getElementById("togglePassword");
 const guestLoginBtn = document.getElementById("guestLoginBtn");
-const presetButtons = document.querySelectorAll(".preset-btn");
 
 function getApiBaseUrl() {
     if (
@@ -31,20 +30,6 @@ togglePassword.addEventListener("click", () => {
     );
 });
 
-// จัดการปุ่มเลือกบัญชีด่วน (Preset Demo Users)
-presetButtons.forEach(btn => {
-    btn.addEventListener("click", () => {
-        presetButtons.forEach(b => b.classList.remove("active"));
-        btn.classList.add("active");
-
-        usernameInput.value = btn.dataset.username || "";
-        passwordInput.value = btn.dataset.password || "";
-        loginMessage.textContent = "";
-
-        // ใส่เอฟเฟกต์กระพริบที่ปุ่ม SIGN IN เพื่อบอกให้ผู้ใช้ทราบ
-        loginButton.focus();
-    });
-});
 
 // เข้าสู่ระบบด้วย Username / Password
 loginForm.addEventListener("submit", async (event) => {
