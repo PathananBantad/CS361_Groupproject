@@ -1226,3 +1226,70 @@
     window.downloadDocumentFile = downloadDocumentFile;
 
 })(window);
+
+// 1. ฟังก์ชันสร้างกล่องฟอร์ม UI สำหรับการส่งต่อเอกสาร (Issue #32)
+function renderForwardSection(documentId) {
+    return `
+        <div class="forward-container" style="margin-top: 15px; padding: 15px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px;">
+            <h4 style="margin-bottom: 10px; font-size: 15px; color: #166534;">ส่งต่อเอกสาร (Issue #32)</h4>
+            
+            <div style="margin-bottom: 10px;">
+                <label style="display: block; font-size: 13px; margin-bottom: 4px; color: #374151;">รหัสผู้รับส่งต่อ (New Assignee ID):</label>
+                <input type="text" id="modalForwardAssigneeId" placeholder="ระบุ User ID ปลายทาง เช่น 1, 2..." style="width: 100%; padding: 8px; border: 1px solid #d1d5db; border-radius: 4px;">
+            </div>
+
+            <div style="margin-bottom: 10px;">
+                <label style="display: block; font-size: 13px; margin-bottom: 4px; color: #374151;">ชื่อผู้รับ / หน่วยงานปลายทาง (Receiver Name):</label>
+                <input type="text" id="modalForwardReceiverName" placeholder="ระบุชื่อหน่วยงานหรือผู้รับ..." style="width: 100%; padding: 8px; border: 1px solid #d1d5db; border-radius: 4px;">
+            </div>
+
+            <div style="margin-bottom: 10px;">
+                <label style="display: block; font-size: 13px; margin-bottom: 4px; color: #374151;">เหตุผลในการส่งต่อ (Reason):</label>
+                <input type="text" id="modalForwardReason" placeholder="ระบุเหตุผลในการส่งต่อเอกสาร..." style="width: 100%; padding: 8px; border: 1px solid #d1d5db; border-radius: 4px;">
+            </div>
+
+            <button type="button" onclick="submitDocumentForward('${documentId}')" style="background: #16a34a; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-weight: 500;">
+                ยืนยันการส่งต่อเอกสาร
+            </button>
+        </div>
+    `;
+}
+
+// 2. ฟังก์ชันยิง API ไปที่ Backend เพื่อบันทึกการส่งต่อเอกสาร
+async function submitDocumentForward(documentId) {
+    const newAssigneeId = document.getElementById("modalForwardAssigneeId").value.trim();
+    const receiverName = document.getElementById("modalForwardReceiverName").value.trim();
+    const reason = document.getElementById("modalForwardReason").value.trim();
+
+    if (!newAssigneeId && !receiverName) {
+        alert("กรุณาระบุรหัสผู้รับ (New Assignee ID) หรือชื่อผู้รับปลายทางอย่างน้อยหนึ่งอย่าง");
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/documents/${documentId}/forward`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${localStorage.getItem("id_token") || ""}`
+            },
+            body: JSON.stringify({
+                new_assignee_id: newAssigneeId || null,
+                receiver_name: receiverName || null,
+                reason: reason
+            })
+        });
+
+        const result = await response.json();
+
+        if (!response.ok) {
+            throw new Error(result.error || "ไม่สามารถส่งต่อเอกสารได้");
+        }
+
+        alert("ส่งต่อเอกสารสำเร็จเรียบร้อย!");
+        location.reload(); // รีเฟรชหน้าจอเพื่ออัปเดตข้อมูลล่าสุด
+    } catch (error) {
+        console.error("Forward error:", error);
+        alert("เกิดข้อผิดพลาด: " + error.message);
+    }
+}
