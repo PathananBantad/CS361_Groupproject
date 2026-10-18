@@ -15,27 +15,35 @@ const authRouter = require("./auth");
 const { requireCognitoAuth } = require("./cognito-auth");
 
 async function loadUserRole(req, res, next) {
+    if (req.session?.user?.roles?.length) {
+        req.userRole = req.session.user.roles[0];
+        return next();
+    }
+    if (req.auth?.groups?.length) {
+        req.userRole = req.auth.groups[0];
+        return next();
+    }
     try {
+        if (!req.auth?.sub) {
+            req.userRole = "staff";
+            return next();
+        }
         const [rows] = await pool.execute(
             "SELECT role FROM user_roles WHERE cognito_sub = ? LIMIT 1",
             [req.auth.sub]
         );
 
-        if (rows.length === 0) {
-            return res.status(403).json({
-                error: "Forbidden",
-                message: "No role assigned to this user."
-            });
+        if (rows.length > 0) {
+            req.userRole = rows[0].role;
+            return next();
         }
 
-        req.userRole = rows[0].role;
+        req.userRole = "staff";
         return next();
     } catch (error) {
         console.error("Failed to load user role:", error);
-
-        return res.status(500).json({
-            error: "Failed to verify user permissions."
-        });
+        req.userRole = "staff";
+        return next();
     }
 }
 
@@ -142,12 +150,7 @@ function checkDocumentAccess(req, document) {
 
     if (
         role === "case_owner" &&
-<<<<<<< HEAD
-        (!document || !document.owner_id || String(document.owner_id) === String(req.auth.sub))
-=======
-        document?.owner_id != null &&
-        String(document.owner_id) === String(userId)
->>>>>>> 539cd0390a8f0578f045bacbde3beacf1c8f353f
+        (!document || !document.owner_id || String(document.owner_id) === String(userId))
     ) {
         return {
             allowed: true,
@@ -1092,61 +1095,8 @@ app.get(
                 error: "Failed to generate preview URL"
             });
         }
-<<<<<<< HEAD
-
-        const doc = rows[0];
-        const fileKey = doc.file_key;
-
-        if (!fileKey) {
-            return res.status(404).json({
-                error: "Document file not found"
-            });
-        }
-
-        // ตรวจสอบสิทธิ์การเข้าถึง
-        const access = checkDocumentAccess(req, doc);
-        if (!access.allowed) {
-            return res.status(403).json({
-                error: access.reason || "ไม่มีสิทธิ์ในการเรียกดูเอกสารนี้ (Permission Denied)"
-            });
-        }
-
-        const finalFileName = doc.file_name || extractFileNameFromKey(fileKey);
-        const ext = finalFileName ? path.extname(finalFileName).toLowerCase() : "";
-        const canPreview = PREVIEWABLE_EXTENSIONS.includes(ext);
-        const resolvedMime = doc.mime_type || getMimeTypeByExtension(finalFileName);
-
-        let previewUrl = null;
-        if (canPreview) {
-            previewUrl = `/api/documents/${id}/view-file?role=${encodeURIComponent(access.role || "staff")}&userId=${encodeURIComponent(access.userId || "staff01")}`;
-        }
-
-        const downloadUrl = `/api/documents/${id}/download-file?role=${encodeURIComponent(access.role || "staff")}&userId=${encodeURIComponent(access.userId || "staff01")}`;
-
-        res.json({
-            document_id: id,
-            file_key: fileKey,
-            file_name: finalFileName,
-            file_size: doc.file_size,
-            mime_type: resolvedMime,
-            file_extension: ext,
-            can_preview: canPreview,
-            preview_url: previewUrl,
-            download_url: downloadUrl,
-            direct_s3_url: getPublicUrl(fileKey),
-            expires_in: 300
-        });
-
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({
-            error: "Failed to generate preview URL"
-        });
     }
-});
-=======
-    });
->>>>>>> 539cd0390a8f0578f045bacbde3beacf1c8f353f
+);
 
 // Helper ฟังก์ชันดึง Buffer ของไฟล์จริงจาก S3 โดยตรง (ลบ Fallback ที่นำภาพหรือไฟล์อื่นมาแสดงแทนออกทั้งหมด)
 async function getDocumentFileBuffer(doc) {
@@ -1368,26 +1318,6 @@ app.get(
                 res.destroy(error);
             }
         }
-<<<<<<< HEAD
-
-        const fileData = await getDocumentFileBuffer(doc);
-        if (!fileData) {
-            return res.status(404).send("File content not found");
-        }
-
-        const safeAsciiName = fileData.fileName.replace(/[^\x20-\x7E]/g, "_");
-        const encodedName = encodeURIComponent(fileData.fileName);
-
-        res.setHeader("Content-Type", fileData.mime);
-        res.setHeader("Content-Disposition", `attachment; filename="${safeAsciiName}"; filename*=UTF-8''${encodedName}`);
-        res.setHeader("Content-Length", fileData.buffer.length);
-        res.send(fileData.buffer);
-
-    } catch (error) {
-        console.error("Direct download file error:", error);
-        res.status(500).send("Error downloading file");
-=======
->>>>>>> 539cd0390a8f0578f045bacbde3beacf1c8f353f
     }
 );
 
