@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS documents (
     status VARCHAR(50) DEFAULT 'Received',
     file_key VARCHAR(255) NULL,
     owner_id INT NULL,
+    assignee_id INT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
@@ -113,17 +114,39 @@ CREATE TABLE IF NOT EXISTS users_roles (
 CREATE TABLE IF NOT EXISTS document_assignments (
     id INT AUTO_INCREMENT PRIMARY KEY,
     document_id INT NOT NULL,
-    assigned_by_user_id INT NOT NULL,
-    previous_assignee_id INT NULL,
-    new_assignee_id INT NOT NULL,
+    assigned_by_user_id VARCHAR(100) NOT NULL,
+    assigned_by_username VARCHAR(100) NULL,
+    previous_assignee_id VARCHAR(100) NULL,
+    new_assignee_id VARCHAR(100) NOT NULL,
     action_type VARCHAR(50) NOT NULL COMMENT 'ASSIGN หรือ FORWARD',
     remarks TEXT NULL,
     assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     INDEX idx_assign_doc (document_id),
+    INDEX idx_assign_new (new_assignee_id),
     CONSTRAINT fk_assign_document FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- 12. เพิ่ม Master Data บทบาททั้ง 5 ตาม Role Matrix ของ V3
+-- 12. ตาราง document_audit_trails (ประวัติการดำเนินการ Audit Trail ส่วนกลาง)
+CREATE TABLE IF NOT EXISTS document_audit_trails (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    document_id INT NOT NULL,
+    actor_user_id VARCHAR(100) NOT NULL,
+    actor_username VARCHAR(100) NULL,
+    actor_role VARCHAR(50) NULL,
+    event_type VARCHAR(50) NOT NULL COMMENT 'ASSIGN, FORWARD, STATUS_CHANGE, DOCUMENT_CREATE',
+    before_state JSON NULL COMMENT 'ข้อมูลก่อนการเปลี่ยนแปลง',
+    after_state JSON NULL COMMENT 'ข้อมูลหลังการเปลี่ยนแปลง',
+    details JSON NULL COMMENT 'รายละเอียดเพิ่มเติม เช่น หมายเหตุ เหตุผล (Sanitized)',
+    ip_address VARCHAR(45) NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_audit_doc (document_id),
+    INDEX idx_audit_event (event_type),
+    INDEX idx_audit_actor (actor_user_id),
+    INDEX idx_audit_time (created_at),
+    CONSTRAINT fk_audit_document FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 13. เพิ่ม Master Data บทบาททั้ง 5 ตาม Role Matrix ของ V3
 INSERT IGNORE INTO roles (name, description) VALUES 
 ('document_officer', 'เจ้าหน้าที่รับเอกสาร'),
 ('faculty_staff', 'อาจารย์ / เจ้าหน้าที่'),
