@@ -96,6 +96,24 @@ V1 มุ่งเน้นการพัฒนา Information Service เพ�
 ## Architecture V3
 <img width="1204" height="727" alt="image" src="https://github.com/user-attachments/assets/e660a57c-ea9a-4bec-867b-546786d2b304" />
 
+## 📜 ระบบ Audit Trail (ประวัติการดำเนินการเอกสาร)
+ระบบ DocuFlow มีระบบ Audit Trail สำหรับบันทึกและตรวจสอบประวัติการดำเนินการที่สำคัญ ได้แก่:
+- **การลงทะเบียนเอกสารใหม่ (`DOCUMENT_CREATE`)**
+- **การมอบหมายเอกสาร (`ASSIGN`)**
+- **การส่งต่อเอกสาร (`FORWARD`)**
+- **การเปลี่ยนสถานะเอกสารตาม Workflow (`STATUS_CHANGE`)**
+
+### คุณสมบัติด้านความปลอดภัยและความน่าเชื่อถือ:
+- บันทึกข้อมูลผู้ดำเนินการ (Actor User ID, Username, Role) และวันเวลา (Timestamp) จากฝั่ง Server เท่านั้น
+- มีการจัดเก็บสถานะก่อนและหลังการเปลี่ยนแปลง (`before_state`, `after_state`) ในรูปแบบ JSON
+- ป้องกันการแก้ไขหรือลบประวัติ (Immutable & Append-Only Record คืนค่า HTTP 405)
+- ระบบกรองและตัดข้อมูลลับอัตโนมัติ (Sanitization: Password, Token, JWT, API Key)
+- จัดการข้อผิดพลาดด้วย Database Transaction ป้องกันข้อมูลไม่สอดคล้องกัน
+- ตรวจสอบสิทธิ์การเรียกดูตาม Role/Permission Matrix (Admin, Executive, Officer, Case Owner, Staff)
+
+📖 ดูรายละเอียดโครงสร้างฐานข้อมูล ข้อกำหนด API และแนวทางการตรวจสอบย้อนหลังฉบับเต็มได้ที่ [docs/AUDIT_TRAIL.md](docs/AUDIT_TRAIL.md)
+
+
 
 
 

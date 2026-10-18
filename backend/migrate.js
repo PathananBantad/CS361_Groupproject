@@ -98,7 +98,85 @@ async function runMigration() {
       ('เอกสารรายงานผล', 'ใช้สำหรับสรุปผลการดำเนินงาน');
     `);
 
-    console.log("✅ ตรวจสอบและสร้างโครงสร้างตารางทุกส่วน (รวม Workflow V3) สำเร็จเรียบร้อย!");
+    // 8. ตรวจสอบและเพิ่ม assignee_id ในตาราง documents
+    try {
+      const [colRows] = await pool.query(`
+        SELECT COUNT(*) as cnt
+        FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME = 'documents'
+          AND COLUMN_NAME = 'assignee_id'
+      `);
+      if (colRows[0].cnt === 0) {
+        await pool.query(`
+          ALTER TABLE documents
+          ADD COLUMN assignee_id INT NULL,
+          ADD INDEX idx_doc_assignee (assignee_id)
+        `);
+        console.log("  + Added assignee_id column to documents table");
+      }
+    } catch (colErr) {
+      console.warn("  ! Note on assignee_id column:", colErr.message);
+    }
+
+    // 9. ตาราง document_assignments (การมอบหมายและการส่งต่อเอกสาร)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS document_assignments (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        document_id INT NOT NULL,
+        assigned_by_user_id VARCHAR(100) NOT NULL,
+        assigned_by_username VARCHAR(100) NULL,
+        previous_assignee_id VARCHAR(100) NULL,
+        new_assignee_id VARCHAR(100) NOT NULL,
+        action_type VARCHAR(50) NOT NULL COMMENT 'ASSIGN หรือ FORWARD',
+        remarks TEXT NULL,
+        assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_assign_doc (document_id),
+        INDEX idx_assign_new (new_assignee_id),
+        CONSTRAINT fk_assign_document FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
+    // 10. ตาราง document_audit_trails (บันทึก Audit Trail ส่วนกลาง - ครบถ้วนตามมาตรฐานความมั่นคงปลอดภัย)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS document_audit_trails (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        document_id INT NOT NULL,
+        actor_user_id VARCHAR(100) NOT NULL,
+        actor_username VARCHAR(100) NULL,
+        actor_role VARCHAR(50) NULL,
+        event_type VARCHAR(50) NOT NULL COMMENT 'ASSIGN, FORWARD, STATUS_CHANGE, DOCUMENT_CREATE',
+        before_state JSON NULL COMMENT 'ข้อมูลก่อนการเปลี่ยนแปลง',
+        after_state JSON NULL COMMENT 'ข้อมูลหลังการเปลี่ยนแปลง',
+        details JSON NULL COMMENT 'รายละเอียดเพิ่มเติม เช่น หมายเหตุ เหตุผล (Sanitized)',
+        ip_address VARCHAR(45) NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_audit_doc (document_id),
+        INDEX idx_audit_event (event_type),
+        INDEX idx_audit_actor (actor_user_id),
+        INDEX idx_audit_time (created_at),
+        CONSTRAINT fk_audit_document FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
+    // 11. Trigger ป้องกันการแก้ไข (UPDATE) บนตาราง document_audit_trails เพื่อความน่าเชื่อถือและป้องกันการแก้ไข (Tamper Protection)
+    try {
+      await pool.query("DROP TRIGGER IF EXISTS prevent_audit_trail_update");
+      await pool.query(`
+        CREATE TRIGGER prevent_audit_trail_update
+        BEFORE UPDATE ON document_audit_trails
+        FOR EACH ROW
+        BEGIN
+            SIGNAL SQLSTATE '45000'
+            SET MESSAGE_TEXT = 'Audit trail records are immutable and cannot be updated.';
+        END;
+      `);
+      console.log("  + Immutability trigger on document_audit_trails active");
+    } catch (trigErr) {
+      console.warn("  ! Note on trigger creation:", trigErr.message);
+    }
+
+    console.log("✅ ตรวจสอบและสร้างโครงสร้างตารางทุกส่วน (รวม Audit Trail & Workflow V3) สำเร็จเรียบร้อย!");
     const [tables] = await pool.query("SHOW TABLES");
     console.log("📋 รายการตารางทั้งหมดในฐานข้อมูล:", tables.map(t => Object.values(t)[0]));
 

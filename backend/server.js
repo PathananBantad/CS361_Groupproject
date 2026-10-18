@@ -13,6 +13,16 @@ const path = require("path");
 const sessionMiddleware = require("./session");
 const authRouter = require("./auth");
 const { requireCognitoAuth } = require("./cognito-auth");
+const {
+    AUDIT_EVENTS,
+    AUDIT_EVENT_METADATA,
+    sanitizeAuditData,
+    extractServerActor,
+    recordAuditEvent,
+    getAuditTrailByDocumentId,
+    queryAuditTrails,
+    verifyAuditTrailAccess
+} = require("./auditTrail");
 
 async function loadUserRole(req, res, next) {
     if (req.session?.user?.roles?.length) {
@@ -489,38 +499,81 @@ app.post("/api/documents", async (req, res) => {
             newRefNo = `${datePrefix}0001`;
         }
 
-        const [result] = await pool.query(
-            `
-            INSERT INTO documents (
-                reference_no, document_number, subject, document_type,
-                sender_name, sender_department, sender_contact, receiver_name,
-                sent_date, receive_date, deadline, remarks,
-                receiving_channel, status, file_key, owner_id
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            `,
-            [
-                reference_no || newRefNo,
-                document_number || null,
-                sanitizedSubject,
-                document_type,
-                sanitizedSenderName,
-                sanitizedSenderDepartment || null,
-                sender_contact || null,
-                sanitizedReceiverName || null,
-                sent_date || null,
-                receive_date || null,
-                deadline || null,
-                sanitizedRemarks || null,
-                receiving_channel,
-                status,
-                file_key,
-                null
-            ]
-        );
+        const actor = extractServerActor(req);
+        const connection = await pool.getConnection();
+        let createdDoc = null;
 
-        const [rows] = await pool.query("SELECT * FROM documents WHERE id = ?", [result.insertId]);
-        res.status(201).json(rows[0]);
+        try {
+            await connection.beginTransaction();
+
+            const [result] = await connection.query(
+                `
+                INSERT INTO documents (
+                    reference_no, document_number, subject, document_type,
+                    sender_name, sender_department, sender_contact, receiver_name,
+                    sent_date, receive_date, deadline, remarks,
+                    receiving_channel, status, file_key, owner_id
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                `,
+                [
+                    reference_no || newRefNo,
+                    document_number || null,
+                    sanitizedSubject,
+                    document_type,
+                    sanitizedSenderName,
+                    sanitizedSenderDepartment || null,
+                    sender_contact || null,
+                    sanitizedReceiverName || null,
+                    sent_date || null,
+                    receive_date || null,
+                    deadline || null,
+                    sanitizedRemarks || null,
+                    receiving_channel,
+                    status,
+                    file_key,
+                    null
+                ]
+            );
+
+            const newDocId = result.insertId;
+
+            // บันทึก Audit Trail สำหรับการสร้างเอกสารใหม่ (Task 4, 5, 6, 7)
+            await recordAuditEvent({
+                documentId: newDocId,
+                actorUserId: actor.actorUserId,
+                actorUsername: actor.actorUsername,
+                actorRole: actor.actorRole,
+                eventType: AUDIT_EVENTS.DOCUMENT_CREATE,
+                beforeState: null,
+                afterState: {
+                    reference_no: reference_no || newRefNo,
+                    document_number: document_number || null,
+                    subject: sanitizedSubject,
+                    document_type: document_type,
+                    sender_name: sanitizedSenderName,
+                    receiving_channel: receiving_channel,
+                    status: status
+                },
+                details: {
+                    remarks: sanitizedRemarks || null
+                },
+                ipAddress: actor.ipAddress,
+                connection
+            });
+
+            await connection.commit();
+
+            const [rows] = await pool.query("SELECT * FROM documents WHERE id = ?", [newDocId]);
+            createdDoc = rows[0];
+        } catch (txError) {
+            await connection.rollback();
+            throw txError;
+        } finally {
+            connection.release();
+        }
+
+        res.status(201).json(createdDoc);
 
     } catch (error) {
         console.error(error);
@@ -607,28 +660,27 @@ app.get("/api/documents/:id/status-history", async (req, res) => {
     }
 });
 
-// PUT /api/documents/:id/status - เปลี่ยนสถานะเอกสารตาม Workflow V3 พร้อมตรวจสอบสิทธิ์และเงื่อนไข
-
+// PUT /api/documents/:id/status - เปลี่ยนสถานะเอกสารตาม Workflow V3 พร้อมตรวจสอบสิทธิ์และเงื่อนไข (เชื่อมต่อ Audit Trail)
 app.put("/api/documents/:id/status", requireCognitoAuth, loadUserRole, async (req, res) => {
-
     try {
         const { id } = req.params;
         const { status: newStatus, remarks } = req.body;
 
-        // 1. ดึงข้อมูลตัวตนและสิทธิ์จาก Request Headers หรือ Body / Query
-        const userId = req.auth.sub;
-        const username = req.auth.username || req.auth.sub;
-        const role = req.userRole;
+        // 1. ดึงข้อมูลตัวตนและสิทธิ์จาก Server Authentication เท่านั้น (Task 5)
+        const actor = extractServerActor(req);
+        const userId = actor.actorUserId;
+        const username = actor.actorUsername;
+        const role = actor.actorRole;
         const sanitizedRemarks = sanitizeInput(remarks || "");
 
-        // 2. ตรวจสอบสิทธิ์ผู้ใช้ (Task 3 & 5): เฉพาะ staff และ admin ที่มีสิทธิ์เปลี่ยนสถานะ
-        if (!role || !["document_officer", "case_owner", "admin"].includes(role)) {
+        // 2. ตรวจสอบสิทธิ์ผู้ใช้: เฉพาะ staff, faculty_staff, document_officer, case_owner และ admin
+        if (!role || !["document_officer", "case_owner", "admin", "staff", "faculty_staff"].includes(role)) {
             return res.status(403).json({
                 error: "คุณไม่มีสิทธิ์ในการเปลี่ยนสถานะเอกสาร (ต้องการสิทธิ์ Staff หรือ Admin เท่านั้น)"
             });
         }
 
-        // 3. ตรวจสอบค่าสถานะใหม่ที่ส่งมา (Task 1 & 9)
+        // 3. ตรวจสอบค่าสถานะใหม่ที่ส่งมา
         if (!newStatus) {
             return res.status(400).json({
                 error: "กรุณาระบุสถานะใหม่ที่ต้องการเปลี่ยน (status is required)"
@@ -652,7 +704,7 @@ app.put("/api/documents/:id/status", requireCognitoAuth, loadUserRole, async (re
         const doc = docRows[0];
         const oldStatus = doc.status || "Received";
 
-        // 5. ป้องกันการเปลี่ยนเป็นสถานะเดิม (Task 9)
+        // 5. ป้องกันการเปลี่ยนเป็นสถานะเดิม
         if (oldStatus === newStatus) {
             const label = V3_STATUS_LABELS[oldStatus] || oldStatus;
             return res.status(400).json({
@@ -660,46 +712,74 @@ app.put("/api/documents/:id/status", requireCognitoAuth, loadUserRole, async (re
             });
         }
 
-        // 6. ตรวจสอบเงื่อนไขการเปลี่ยนสถานะตาม Workflow (Task 2, 5 & 9)
+        // 6. ตรวจสอบเงื่อนไขการเปลี่ยนสถานะตาม Workflow
         const isAdmin = role === "admin";
         const allowedNextStatuses = V3_WORKFLOW_TRANSITIONS[oldStatus] || [];
         const isStandardWorkflowStep = allowedNextStatuses.includes(newStatus);
 
         if (!isAdmin && !isStandardWorkflowStep) {
-            // กรณีเอกสารเสร็จสิ้นแล้ว
             if (oldStatus === "Completed") {
                 return res.status(400).json({
                     error: `เอกสารนี้อยู่ในสถานะ "ดำเนินการเสร็จสิ้นแล้ว" (Completed) ซึ่งเป็นสถานะสิ้นสุดของ Workflow ไม่สามารถเปลี่ยนสถานะต่อไปได้อีก`
                 });
             }
 
-            // กรณีข้ามขั้นตอนหรือไม่ตรงตาม Workflow
             const allowedLabels = allowedNextStatuses.map(s => `"${V3_STATUS_LABELS[s] || s}" (${s})`).join(", ") || "ไม่มี";
             return res.status(400).json({
                 error: `ไม่สามารถเปลี่ยนสถานะจาก "${V3_STATUS_LABELS[oldStatus] || oldStatus}" ไปเป็น "${V3_STATUS_LABELS[newStatus] || newStatus}" ได้ ตามเงื่อนไข Workflow V3 (สถานะถัดไปที่อนุญาตคือ: ${allowedLabels})`
             });
         }
 
-        // 7. อัปเดตสถานะในตาราง documents
-        const [updateResult] = await pool.query(
-            `UPDATE documents SET status = ? WHERE id = ?`,
-            [newStatus, id]
-        );
+        // 7. ใช้ Database Transaction เพื่อป้องกันข้อมูลเอกสารและประวัติไม่สอดคล้องกัน (Task 7)
+        const connection = await pool.getConnection();
+        let auditRecord = null;
+        try {
+            await connection.beginTransaction();
 
-        if (updateResult.affectedRows === 0) {
-            return res.status(500).json({
-                error: "เกิดข้อผิดพลาดในการอัปเดตสถานะเอกสารในฐานข้อมูล"
+            const [updateResult] = await connection.query(
+                `UPDATE documents SET status = ? WHERE id = ?`,
+                [newStatus, id]
+            );
+
+            if (updateResult.affectedRows === 0) {
+                throw new Error("เกิดข้อผิดพลาดในการอัปเดตสถานะเอกสารในฐานข้อมูล");
+            }
+
+            // บันทึก document_status_logs สำหรับความเข้ากันได้ย้อนหลังกับ V3
+            await connection.query(
+                `INSERT INTO document_status_logs (document_id, old_status, new_status, changed_by, changed_by_user_id, remarks, changed_at)
+                 VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+                [id, oldStatus, newStatus, username, userId, sanitizedRemarks || null]
+            );
+
+            // บันทึก Audit Trail ส่วนกลาง (Task 3, 4, 6)
+            auditRecord = await recordAuditEvent({
+                documentId: id,
+                actorUserId: actor.actorUserId,
+                actorUsername: actor.actorUsername,
+                actorRole: actor.actorRole,
+                eventType: AUDIT_EVENTS.STATUS_CHANGE,
+                beforeState: { status: oldStatus },
+                afterState: { status: newStatus },
+                details: {
+                    remarks: sanitizedRemarks || null,
+                    old_status_label: V3_STATUS_LABELS[oldStatus] || oldStatus,
+                    new_status_label: V3_STATUS_LABELS[newStatus] || newStatus,
+                    is_admin_override: isAdmin && !isStandardWorkflowStep
+                },
+                ipAddress: actor.ipAddress,
+                connection
             });
+
+            await connection.commit();
+        } catch (txError) {
+            await connection.rollback();
+            throw txError;
+        } finally {
+            connection.release();
         }
 
-        // 8. บันทึกประวัติการเปลี่ยนสถานะ (Task 6): สถานะเดิม, สถานะใหม่, ผู้ดำเนินการ, วันเวลา
-        await pool.query(
-            `INSERT INTO document_status_logs (document_id, old_status, new_status, changed_by, changed_by_user_id, remarks, changed_at)
-             VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
-            [id, oldStatus, newStatus, username, userId, sanitizedRemarks || null]
-        );
-
-        // 9. ดึงข้อมูลเอกสารและประวัติล่าสุดส่งกลับไปให้ Frontend
+        // 8. ดึงข้อมูลเอกสารและประวัติล่าสุดส่งกลับไปให้ Frontend
         const [updatedRows] = await pool.query("SELECT * FROM documents WHERE id = ?", [id]);
         const [historyRows] = await pool.query(
             `SELECT id, old_status, new_status, changed_by, remarks, changed_at
@@ -713,7 +793,8 @@ app.put("/api/documents/:id/status", requireCognitoAuth, loadUserRole, async (re
             ok: true,
             message: `เปลี่ยนสถานะเอกสารเป็น "${V3_STATUS_LABELS[newStatus] || newStatus}" สำเร็จเรียบร้อย`,
             data: updatedRows[0],
-            status_log: historyRows[0] || null
+            status_log: historyRows[0] || null,
+            audit: auditRecord
         });
 
     } catch (error) {
@@ -722,6 +803,358 @@ app.put("/api/documents/:id/status", requireCognitoAuth, loadUserRole, async (re
             error: "เกิดข้อผิดพลาดของเซิร์ฟเวอร์ในการเปลี่ยนสถานะเอกสาร: " + error.message
         });
     }
+});
+
+// POST /api/documents/:id/assign - มอบหมายเอกสารให้ผู้รับผิดชอบ (Task 1, 4, 5, 6, 7)
+app.post("/api/documents/:id/assign", requireCognitoAuth, loadUserRole, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { assignee_id, assignee_name, remarks } = req.body || {};
+
+        const actor = extractServerActor(req);
+        const role = actor.actorRole;
+
+        // ตรวจสอบสิทธิ์ผู้มีอำนาจมอบหมาย
+        if (!role || !["document_officer", "case_owner", "admin", "staff", "faculty_staff"].includes(role)) {
+            return res.status(403).json({
+                error: "คุณไม่มีสิทธิ์ในการมอบหมายเอกสาร (ต้องการสิทธิ์ Staff หรือ Admin)"
+            });
+        }
+
+        if (!assignee_id) {
+            return res.status(400).json({
+                error: "กรุณาระบุผู้รับมอบหมาย (assignee_id is required)"
+            });
+        }
+
+        const sanitizedAssigneeId = String(assignee_id).trim();
+        const sanitizedAssigneeName = sanitizeInput(assignee_name || "");
+        const sanitizedRemarks = sanitizeInput(remarks || "");
+
+        const connection = await pool.getConnection();
+        let auditRecord = null;
+        let updatedDoc = null;
+
+        try {
+            await connection.beginTransaction();
+
+            const [docRows] = await connection.query("SELECT * FROM documents WHERE id = ? FOR UPDATE", [id]);
+            if (docRows.length === 0) {
+                await connection.rollback();
+                return res.status(404).json({ error: "ไม่พบเอกสารที่ระบุในระบบ" });
+            }
+
+            const doc = docRows[0];
+            const oldStatus = doc.status || "Received";
+            // หากเอกสารยังอยู่ในสถานะ Received การมอบหมายจะปรับสถานะเป็น Assigned โดยอัตโนมัติ
+            const newStatus = oldStatus === "Received" ? "Assigned" : oldStatus;
+
+            // ตรวจสอบว่า assignee_id มีอยู่ใน users หรือไม่ เพื่ออัปเดต owner_id / assignee_id โดยไม่ผิด FK constraint
+            const numericAssigneeId = parseInt(sanitizedAssigneeId, 10);
+            let validUserId = null;
+            if (!isNaN(numericAssigneeId)) {
+                const [uRows] = await connection.query("SELECT id FROM users WHERE id = ?", [numericAssigneeId]);
+                if (uRows.length > 0) {
+                    validUserId = uRows[0].id;
+                }
+            }
+
+            // อัปเดตข้อมูลผู้รับมอบหมายและสถานะในตาราง documents
+            await connection.query(
+                `UPDATE documents 
+                 SET assignee_id = ?, owner_id = COALESCE(owner_id, ?), status = ? 
+                 WHERE id = ?`,
+                [validUserId, validUserId, newStatus, id]
+            );
+
+            // บันทึกประวัติลงใน document_assignments
+            await connection.query(
+                `INSERT INTO document_assignments 
+                    (document_id, assigned_by_user_id, assigned_by_username, previous_assignee_id, new_assignee_id, action_type, remarks)
+                 VALUES (?, ?, ?, ?, ?, 'ASSIGN', ?)`,
+                [
+                    id,
+                    actor.actorUserId,
+                    actor.actorUsername,
+                    doc.assignee_id ? String(doc.assignee_id) : null,
+                    sanitizedAssigneeId,
+                    sanitizedRemarks || null
+                ]
+            );
+
+            // หากมีการเปลี่ยนสถานะ บันทึกใน document_status_logs ด้วย
+            if (newStatus !== oldStatus) {
+                await connection.query(
+                    `INSERT INTO document_status_logs (document_id, old_status, new_status, changed_by, changed_by_user_id, remarks, changed_at)
+                     VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+                    [id, oldStatus, newStatus, actor.actorUsername, actor.actorUserId, sanitizedRemarks || "มอบหมายเอกสาร"]
+                );
+            }
+
+            // บันทึก Audit Trail กลาง (Task 2, 3, 4, 6)
+            auditRecord = await recordAuditEvent({
+                documentId: id,
+                actorUserId: actor.actorUserId,
+                actorUsername: actor.actorUsername,
+                actorRole: actor.actorRole,
+                eventType: AUDIT_EVENTS.ASSIGN,
+                beforeState: {
+                    owner_id: doc.owner_id,
+                    assignee_id: doc.assignee_id,
+                    status: oldStatus
+                },
+                afterState: {
+                    owner_id: doc.owner_id || sanitizedAssigneeId,
+                    assignee_id: sanitizedAssigneeId,
+                    status: newStatus
+                },
+                details: {
+                    assignee_name: sanitizedAssigneeName || null,
+                    previous_assignee_id: doc.assignee_id || null,
+                    new_assignee_id: sanitizedAssigneeId,
+                    remarks: sanitizedRemarks || null
+                },
+                ipAddress: actor.ipAddress,
+                connection
+            });
+
+            await connection.commit();
+
+            const [rows] = await pool.query("SELECT * FROM documents WHERE id = ?", [id]);
+            updatedDoc = rows[0];
+
+        } catch (txErr) {
+            await connection.rollback();
+            throw txErr;
+        } finally {
+            connection.release();
+        }
+
+        res.json({
+            ok: true,
+            message: `มอบหมายเอกสารเรียบร้อยแล้ว`,
+            data: updatedDoc,
+            audit: auditRecord
+        });
+
+    } catch (error) {
+        console.error("Assign document error:", error);
+        res.status(500).json({ error: "เกิดข้อผิดพลาดในการมอบหมายเอกสาร: " + error.message });
+    }
+});
+
+// POST /api/documents/:id/forward - ส่งต่อเอกสาร (Task 1, 4, 5, 6, 7)
+app.post("/api/documents/:id/forward", requireCognitoAuth, loadUserRole, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { new_assignee_id, new_assignee_name, receiver_name, remarks, reason } = req.body || {};
+
+        const actor = extractServerActor(req);
+        const role = actor.actorRole;
+
+        // ตรวจสอบสิทธิ์ผู้มีอำนาจส่งต่อ
+        if (!role || !["document_officer", "case_owner", "admin", "staff", "faculty_staff"].includes(role)) {
+            return res.status(403).json({
+                error: "คุณไม่มีสิทธิ์ในการส่งต่อเอกสาร (ต้องการสิทธิ์ Staff หรือ Admin)"
+            });
+        }
+
+        if (!new_assignee_id && !receiver_name) {
+            return res.status(400).json({
+                error: "กรุณาระบุผู้รับส่งต่อ (new_assignee_id หรือ receiver_name is required)"
+            });
+        }
+
+        const sanitizedNewAssigneeId = new_assignee_id ? String(new_assignee_id).trim() : null;
+        const sanitizedAssigneeName = sanitizeInput(new_assignee_name || "");
+        const sanitizedReceiverName = sanitizeInput(receiver_name || "");
+        const sanitizedRemarks = sanitizeInput(remarks || "");
+        const sanitizedReason = sanitizeInput(reason || "");
+
+        const connection = await pool.getConnection();
+        let auditRecord = null;
+        let updatedDoc = null;
+
+        try {
+            await connection.beginTransaction();
+
+            const [docRows] = await connection.query("SELECT * FROM documents WHERE id = ? FOR UPDATE", [id]);
+            if (docRows.length === 0) {
+                await connection.rollback();
+                return res.status(404).json({ error: "ไม่พบเอกสารที่ระบุในระบบ" });
+            }
+
+            const doc = docRows[0];
+
+            // อัปเดตเอกสาร
+            await connection.query(
+                `UPDATE documents 
+                 SET assignee_id = COALESCE(?, assignee_id),
+                     receiver_name = COALESCE(?, receiver_name)
+                 WHERE id = ?`,
+                [sanitizedNewAssigneeId, sanitizedReceiverName || null, id]
+            );
+
+            // บันทึกลงตาราง document_assignments
+            await connection.query(
+                `INSERT INTO document_assignments 
+                    (document_id, assigned_by_user_id, assigned_by_username, previous_assignee_id, new_assignee_id, action_type, remarks)
+                 VALUES (?, ?, ?, ?, ?, 'FORWARD', ?)`,
+                [
+                    id,
+                    actor.actorUserId,
+                    actor.actorUsername,
+                    doc.assignee_id ? String(doc.assignee_id) : null,
+                    sanitizedNewAssigneeId || sanitizedReceiverName,
+                    sanitizedRemarks || sanitizedReason || null
+                ]
+            );
+
+            // บันทึก Audit Trail ส่วนกลาง (Task 2, 3, 4, 6)
+            auditRecord = await recordAuditEvent({
+                documentId: id,
+                actorUserId: actor.actorUserId,
+                actorUsername: actor.actorUsername,
+                actorRole: actor.actorRole,
+                eventType: AUDIT_EVENTS.FORWARD,
+                beforeState: {
+                    owner_id: doc.owner_id,
+                    assignee_id: doc.assignee_id,
+                    receiver_name: doc.receiver_name,
+                    status: doc.status
+                },
+                afterState: {
+                    owner_id: doc.owner_id,
+                    assignee_id: sanitizedNewAssigneeId || doc.assignee_id,
+                    receiver_name: sanitizedReceiverName || doc.receiver_name,
+                    status: doc.status
+                },
+                details: {
+                    new_assignee_name: sanitizedAssigneeName || null,
+                    previous_assignee_id: doc.assignee_id || null,
+                    new_assignee_id: sanitizedNewAssigneeId || null,
+                    receiver_name: sanitizedReceiverName || null,
+                    reason: sanitizedReason || null,
+                    remarks: sanitizedRemarks || null
+                },
+                ipAddress: actor.ipAddress,
+                connection
+            });
+
+            await connection.commit();
+
+            const [rows] = await pool.query("SELECT * FROM documents WHERE id = ?", [id]);
+            updatedDoc = rows[0];
+
+        } catch (txErr) {
+            await connection.rollback();
+            throw txErr;
+        } finally {
+            connection.release();
+        }
+
+        res.json({
+            ok: true,
+            message: `ส่งต่อเอกสารเรียบร้อยแล้ว`,
+            data: updatedDoc,
+            audit: auditRecord
+        });
+
+    } catch (error) {
+        console.error("Forward document error:", error);
+        res.status(500).json({ error: "เกิดข้อผิดพลาดในการส่งต่อเอกสาร: " + error.message });
+    }
+});
+
+// GET /api/documents/:id/audit-trail - ตรวจสอบประวัติ Audit Trail ของเอกสารตาม Role/Permission Matrix (Task 8)
+app.get("/api/documents/:id/audit-trail", requireCognitoAuth, loadUserRole, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const actor = extractServerActor(req);
+
+        const [docRows] = await pool.query("SELECT * FROM documents WHERE id = ?", [id]);
+        if (docRows.length === 0) {
+            return res.status(404).json({ error: "ไม่พบเอกสารที่ระบุในระบบ" });
+        }
+
+        const doc = docRows[0];
+
+        // ตรวจสอบสิทธิ์การเข้าถึงประวัติตาม Role/Permission Matrix (Task 8)
+        const access = verifyAuditTrailAccess(
+            { userId: actor.actorUserId, role: actor.actorRole },
+            doc
+        );
+
+        if (!access.allowed) {
+            return res.status(403).json({
+                error: access.reason || "คุณไม่มีสิทธิ์เข้าถึงประวัติ Audit Trail ของเอกสารนี้"
+            });
+        }
+
+        const auditList = await getAuditTrailByDocumentId(id, {
+            eventType: req.query.event_type,
+            startDate: req.query.from_date,
+            endDate: req.query.to_date
+        });
+
+        res.json({
+            ok: true,
+            document_id: id,
+            reference_no: doc.reference_no,
+            subject: doc.subject,
+            current_status: doc.status,
+            total: auditList.length,
+            history: auditList
+        });
+
+    } catch (error) {
+        console.error("Fetch audit trail error:", error);
+        res.status(500).json({ error: "ไม่สามารถดึงข้อมูล Audit Trail ได้: " + error.message });
+    }
+});
+
+// GET /api/audit-trails - เรียกดู Audit Trail รวมทั้งระบบ สำหรับผู้ดูแลระบบ (Admin) หรือ ผู้บริหาร (Executive) (Task 8)
+app.get("/api/audit-trails", requireCognitoAuth, loadUserRole, async (req, res) => {
+    try {
+        const actor = extractServerActor(req);
+        const role = String(actor.actorRole || "").toLowerCase();
+
+        // จำกัดเฉพาะ Admin และ Executive
+        if (!["admin", "executive"].includes(role)) {
+            return res.status(403).json({
+                error: "คุณไม่มีสิทธิ์เข้าถึงประวัติการตรวจสอบทั้งระบบ (ต้องการสิทธิ์ Admin หรือ Executive เท่านั้น)"
+            });
+        }
+
+        const result = await queryAuditTrails({
+            page: req.query.page,
+            limit: req.query.limit,
+            documentId: req.query.document_id,
+            eventType: req.query.event_type,
+            actorUserId: req.query.actor_id,
+            startDate: req.query.from_date,
+            endDate: req.query.to_date
+        });
+
+        res.json({
+            ok: true,
+            ...result
+        });
+
+    } catch (error) {
+        console.error("Query audit trails error:", error);
+        res.status(500).json({ error: "ไม่สามารถดึงข้อมูลประวัติการตรวจสอบระบบได้: " + error.message });
+    }
+});
+
+// ป้องกันผู้ใช้ทั่วไปแก้ไขหรือลบประวัติ Audit Trail (Task 9 - Immutability & Tamper Protection)
+app.all(["/api/documents/:id/audit-trail", "/api/audit-trails"], (req, res, next) => {
+    if (["PUT", "PATCH", "DELETE", "POST"].includes(req.method)) {
+        return res.status(405).json({
+            error: "Method Not Allowed: ประวัติ Audit Trail ได้รับการคุ้มครองความถูกต้องและไม่สามารถแก้ไขหรือลบได้ (Immutable & Append-Only Record)"
+        });
+    }
+    next();
 });
 
 // Get document types

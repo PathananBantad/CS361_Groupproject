@@ -375,10 +375,10 @@
 
     // Helper หา API Base URL
     function getApiBaseUrl() {
-        if (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") {
-            return `${window.location.protocol}//${window.location.hostname}:3000/api`;
+        if (window.location.port === "3000") {
+            return "/api";
         }
-        return "https://utvhg6d6o3.execute-api.us-east-1.amazonaws.com/api";
+        return "http://localhost:3000/api";
     }
 
     // Helper ดึงสิทธิ์ปัจจุบัน
@@ -688,20 +688,27 @@
         }
     }
 
-    // Load and render document status change history / audit trail (Task 6 & 7)
+    // Load and render document status change history & Audit Trail (Task 6, 7 & 8)
     async function loadStatusHistory(docId) {
         if (!statusHistoryTimeline) return;
-        statusHistoryTimeline.innerHTML = `<div class="history-loading">กำลังโหลดประวัติการเปลี่ยนสถานะ...</div>`;
+        statusHistoryTimeline.innerHTML = `<div class="history-loading">กำลังโหลดประวัติการดำเนินการ (Audit Trail)...</div>`;
 
         const apiBase = getApiBaseUrl();
+        const role = localStorage.getItem("docflow_mock_role") || "staff";
+
         try {
-            let res = await fetch(`${apiBase}/documents/${docId}/status-history`);
-            if (!res.ok && apiBase.includes("localhost")) {
-                res = await fetch(`https://utvhg6d6o3.execute-api.us-east-1.amazonaws.com/api/documents/${docId}/status-history`);
+            // ลองดึงจาก Audit Trail API ส่วนกลางก่อน (Task 8)
+            let res = await fetch(`${apiBase}/documents/${docId}/audit-trail`, {
+                headers: { "x-user-role": role }
+            });
+
+            // Fallback ไปที่ status-history หาก audit-trail ไม่พร้อม
+            if (!res.ok) {
+                res = await fetch(`${apiBase}/documents/${docId}/status-history`);
             }
 
             if (!res.ok) {
-                statusHistoryTimeline.innerHTML = `<div class="history-empty">ไม่มีประวัติการเปลี่ยนสถานะก่อนหน้านี้</div>`;
+                statusHistoryTimeline.innerHTML = `<div class="history-empty">ไม่มีประวัติการดำเนินการก่อนหน้านี้</div>`;
                 return;
             }
 
@@ -712,33 +719,87 @@
                 statusHistoryTimeline.innerHTML = `
                     <div class="history-empty">
                         <span style="font-size: 20px;">📜</span>
-                        <p>เอกสารนี้ยังไม่มีประวัติการเปลี่ยนสถานะ (สถานะเริ่มต้น: ได้รับเอกสารแล้ว)</p>
+                        <p>เอกสารนี้ยังไม่มีประวัติการดำเนินการ</p>
                     </div>
                 `;
                 return;
             }
 
             statusHistoryTimeline.innerHTML = logs.map((log) => {
-                const timeStr = log.changed_at ? new Date(log.changed_at).toLocaleString("th-TH") : "-";
-                const oldLabel = V3_STATUS_DETAILS[log.old_status] ? V3_STATUS_DETAILS[log.old_status].label : log.old_status;
-                const newLabel = V3_STATUS_DETAILS[log.new_status] ? V3_STATUS_DETAILS[log.new_status].label : log.new_status;
-                const badgeClass = V3_STATUS_DETAILS[log.new_status] ? V3_STATUS_DETAILS[log.new_status].badgeClass : "status-received";
+                const timeStr = (log.timestamp || log.changed_at) 
+                    ? new Date(log.timestamp || log.changed_at).toLocaleString("th-TH") 
+                    : "-";
+                const actorName = log.actor_username || log.changed_by || log.actor_user_id || "ระบบ";
+                const eventType = log.event_type || (log.old_status && log.new_status ? "STATUS_CHANGE" : "EVENT");
+                const details = log.details || {};
+                const remarks = details.remarks || log.remarks || "";
+
+                // จัดรูปแบบ Header ตามประเภท Event
+                let headerHtml = "";
+                if (eventType === "STATUS_CHANGE" || (log.old_status && log.new_status)) {
+                    const oldStatus = log.before_state?.status || log.old_status;
+                    const newStatus = log.after_state?.status || log.new_status;
+                    const oldLabel = V3_STATUS_DETAILS[oldStatus] ? V3_STATUS_DETAILS[oldStatus].label : oldStatus;
+                    const newLabel = V3_STATUS_DETAILS[newStatus] ? V3_STATUS_DETAILS[newStatus].label : newStatus;
+                    const badgeClass = V3_STATUS_DETAILS[newStatus] ? V3_STATUS_DETAILS[newStatus].badgeClass : "status-received";
+
+                    headerHtml = `
+                        <span class="history-step-change">
+                            <span class="old-status">${escapeHtml(oldLabel)}</span>
+                            <span class="arrow">➔</span>
+                            <span class="status-badge ${badgeClass} inline">${escapeHtml(newLabel)}</span>
+                        </span>
+                    `;
+                } else if (eventType === "ASSIGN") {
+                    const assignee = details.assignee_name || details.new_assignee_id || "ผู้รับมอบหมาย";
+                    headerHtml = `
+                        <span class="history-step-change">
+                            <span class="status-badge status-assigned inline">👤 มอบหมายเอกสาร</span>
+                            <span class="arrow">➔</span>
+                            <strong>${escapeHtml(assignee)}</strong>
+                        </span>
+                    `;
+                } else if (eventType === "FORWARD") {
+                    const receiver = details.receiver_name || details.new_assignee_name || "หน่วยงานปลายทาง";
+                    headerHtml = `
+                        <span class="history-step-change">
+                            <span class="status-badge inline" style="background:#f3e8ff; color:#7e22ce;">⏩ ส่งต่อเอกสาร</span>
+                            <span class="arrow">➔</span>
+                            <strong>${escapeHtml(receiver)}</strong>
+                        </span>
+                    `;
+                } else if (eventType === "DOCUMENT_CREATE") {
+                    headerHtml = `
+                        <span class="history-step-change">
+                            <span class="status-badge status-received inline">📄 ลงทะเบียนเอกสารใหม่</span>
+                        </span>
+                    `;
+                } else {
+                    headerHtml = `
+                        <span class="history-step-change">
+                            <span class="status-badge inline">${escapeHtml(eventType)}</span>
+                        </span>
+                    `;
+                }
+
+                // ข้อมูลเพิ่มเติม เช่น เหตุผลการส่งต่อ
+                let extraHtml = "";
+                if (details.reason) {
+                    extraHtml += `<div class="history-reason" style="font-size:11.5px; color:#4338ca; margin-top:2px;">📌 เหตุผล: ${escapeHtml(details.reason)}</div>`;
+                }
 
                 return `
                     <div class="history-item">
                         <div class="history-marker"></div>
                         <div class="history-content">
                             <div class="history-header">
-                                <span class="history-step-change">
-                                    <span class="old-status">${escapeHtml(oldLabel)}</span>
-                                    <span class="arrow">➔</span>
-                                    <span class="status-badge ${badgeClass} inline">${escapeHtml(newLabel)}</span>
-                                </span>
+                                ${headerHtml}
                                 <span class="history-time">${escapeHtml(timeStr)}</span>
                             </div>
                             <div class="history-meta">
-                                <span class="history-actor">👤 ดำเนินการโดย: <strong>${escapeHtml(log.changed_by || "ระบบ")}</strong></span>
-                                ${log.remarks ? `<div class="history-remarks">💬 หมายเหตุ: ${escapeHtml(log.remarks)}</div>` : ""}
+                                <span class="history-actor">👤 ดำเนินการโดย: <strong>${escapeHtml(actorName)}</strong> ${log.actor_role ? `<small>(${escapeHtml(log.actor_role)})</small>` : ""}</span>
+                                ${extraHtml}
+                                ${remarks ? `<div class="history-remarks">💬 หมายเหตุ: ${escapeHtml(remarks)}</div>` : ""}
                             </div>
                         </div>
                     </div>
@@ -747,7 +808,7 @@
 
         } catch (err) {
             console.error("Load status history error:", err);
-            statusHistoryTimeline.innerHTML = `<div class="history-error">ไม่สามารถดึงประวัติการเปลี่ยนสถานะได้</div>`;
+            statusHistoryTimeline.innerHTML = `<div class="history-error">ไม่สามารถดึงประวัติการดำเนินการได้</div>`;
         }
     }
 

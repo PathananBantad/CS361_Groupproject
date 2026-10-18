@@ -36,10 +36,10 @@ const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 
 // Helper เพื่อหา API URL ที่เหมาะสม
 function getApiBaseUrl() {
-    if (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") {
-        return `${window.location.protocol}//${window.location.hostname}:3000/api`;
+    if (window.location.port === "3000") {
+        return "/api";
     }
-    return "https://utvhg6d6o3.execute-api.us-east-1.amazonaws.com/api";
+    return "http://localhost:3000/api";
 }
 
 /* =====================================================
