@@ -11,8 +11,6 @@ const {
 const path = require("path");
 
 require("dotenv").config();
-require("dotenv").config({ path: path.resolve(__dirname, ".env") });
-require("dotenv").config({ path: path.resolve(__dirname, "../.env") });
 
 const bucketName = process.env.S3_BUCKET || process.env.AWS_S3_BUCKET || "cs361-v2-documents-documentflow";
 
@@ -20,23 +18,9 @@ const bucketName = process.env.S3_BUCKET || process.env.AWS_S3_BUCKET || "cs361-
 // cs361-v2-documents-documentflow อยู่ที่ us-east-1
 const s3Region = process.env.AWS_S3_REGION || process.env.AWS_REGION || "us-east-1";
 
-const accessKeyId = (process.env.AWS_ACCESS_KEY_ID || process.env.aws_access_key_id || "").trim();
-const secretAccessKey = (process.env.AWS_SECRET_ACCESS_KEY || process.env.aws_secret_access_key || "").trim();
-const sessionToken = (process.env.AWS_SESSION_TOKEN || process.env.aws_session_token || "").trim();
-
-const s3Config = {
+const s3 = new S3Client({
     region: s3Region
-};
-
-if (accessKeyId && secretAccessKey) {
-    s3Config.credentials = {
-        accessKeyId,
-        secretAccessKey,
-        ...(sessionToken ? { sessionToken } : {})
-    };
-}
-
-const s3 = new S3Client(s3Config);
+});
 
 // Helper function to resolve MIME type by extension
 function getMimeTypeByExtension(fileNameOrKey) {
@@ -145,22 +129,38 @@ async function createDownloadUrl(fileKey, options = {}) {
     }
 }
 
-// ดึง Buffer ของไฟล์จริงจาก S3 โดยตรง
+module.exports = {
+    createUploadUrl,
+    createDownloadUrl,
+    getS3Object,
+    getPublicUrl,
+    getMimeTypeByExtension,
+    getObjectBuffer,
+    uploadObjectBuffer,
+    bucketName,
+    s3Region
+};
+
+
+// ดึง Buffer ของไฟล์จาก S3
 async function getObjectBuffer(fileKey) {
     const command = new GetObjectCommand({
         Bucket: bucketName,
         Key: fileKey
     });
+
     const response = await s3.send(command);
     const byteArray = await response.Body.transformToByteArray();
+
     return {
         buffer: Buffer.from(byteArray),
-        contentType: response.ContentType || getMimeTypeByExtension(fileKey),
+        contentType:
+            response.ContentType || getMimeTypeByExtension(fileKey),
         contentLength: response.ContentLength
     };
 }
 
-// อัปโหลด Buffer ของไฟล์ขึ้น S3 โดยตรงจาก Backend (ป้องกันปัญหา Browser CORS)
+// อัปโหลด Buffer ไปยัง S3
 async function uploadObjectBuffer(fileKey, buffer, contentType) {
     const command = new PutObjectCommand({
         Bucket: bucketName,
@@ -168,18 +168,6 @@ async function uploadObjectBuffer(fileKey, buffer, contentType) {
         Body: buffer,
         ContentType: contentType || getMimeTypeByExtension(fileKey)
     });
+
     return await s3.send(command);
 }
-
-module.exports = {
-    s3,
-    getObjectBuffer,
-    uploadObjectBuffer,
-    createUploadUrl,
-    createDownloadUrl,
-    getS3Object,
-    getPublicUrl,
-    getMimeTypeByExtension,
-    bucketName,
-    s3Region
-};
