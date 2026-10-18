@@ -399,4 +399,143 @@ input {
         flex-direction: column;
     }
 }
+
+/* Quick Select Preset Accounts & Guest Login */
+.preset-users-wrap {
+    margin-bottom: 22px;
+    padding: 14px 16px;
+    border: 1px dashed var(--border);
+    border-radius: 6px;
+    background: #fffcf8;
+}
+
+.preset-title {
+    margin-bottom: 10px;
+    color: var(--muted);
+    font-family: "Bai Jamjuree", sans-serif;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+}
+
+.preset-buttons {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+}
+
+.preset-btn {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    border: 1px solid #e7d8cd;
+    border-radius: 4px;
+    background: white;
+    cursor: pointer;
+    text-align: left;
+    transition: all 0.2s ease;
+}
+
+.preset-btn:hover {
+    border-color: var(--wine);
+    background: #fdfaf7;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 10px rgba(118, 47, 61, 0.08);
+}
+
+.preset-btn.active {
+    border-color: var(--wine);
+    background: #fcf4f2;
+}
+
+.preset-badge {
+    padding: 3px 6px;
+    border-radius: 3px;
+    font-family: "Bai Jamjuree", sans-serif;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.8px;
+}
+
+.preset-badge.admin {
+    background: #f8e6e8;
+    color: var(--wine);
+}
+
+.preset-badge.staff {
+    background: #e3f2fd;
+    color: #1976d2;
+}
+
+.preset-info {
+    display: flex;
+    flex-direction: column;
+}
+
+.preset-name {
+    font-family: "Bai Jamjuree", sans-serif;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text);
+}
+
+.preset-desc {
+    font-size: 10px;
+    color: var(--muted);
+}
+
+.login-divider {
+    display: flex;
+    align-items: center;
+    margin: 18px 0;
+    text-align: center;
+}
+
+.login-divider::before,
+.login-divider::after {
+    content: "";
+    flex: 1;
+    border-bottom: 1px solid #ebdcd0;
+}
+
+.login-divider span {
+    padding: 0 12px;
+    color: var(--muted);
+    font-family: "Bai Jamjuree", sans-serif;
+    font-size: 11px;
+    letter-spacing: 1px;
+}
+
+.guest-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    width: 100%;
+    min-height: 48px;
+    padding: 0 16px;
+    border: 1.5px solid var(--border);
+    border-radius: 3px;
+    background: white;
+    color: var(--text);
+    cursor: pointer;
+    font-family: "Bai Jamjuree", sans-serif;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    transition: all 0.2s ease;
+}
+
+.guest-button:hover {
+    border-color: var(--wine);
+    background: #fdfaf7;
+    color: var(--wine-dark);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+}
+
+.guest-icon {
+    font-size: 16px;
+}
 ```
