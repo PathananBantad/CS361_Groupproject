@@ -906,11 +906,9 @@
         const apiBase = getApiBaseUrl();
 
         try {
-            let previewRes = await fetch(`${apiBase}/documents/${doc.id}/preview-url?role=${auth.role}&userId=${auth.user}`);
-
-            if (!previewRes.ok && apiBase.includes("localhost")) {
-                previewRes = await fetch(`https://utvhg6d6o3.execute-api.us-east-1.amazonaws.com/api/documents/${doc.id}/preview-url?role=${auth.role}&userId=${auth.user}`);
-            }
+            let previewRes = await fetch(`${apiBase}/documents/${doc.id}/preview-url?role=${encodeURIComponent(auth.role)}&userId=${encodeURIComponent(auth.user)}`, {
+                credentials: "include"
+            });
 
             if (previewRes.status === 403) {
                 const errData = await previewRes.json().catch(() => ({}));
@@ -927,10 +925,12 @@
                 return;
             }
 
-            let previewData = null;
-            if (previewRes.ok) {
-                previewData = await previewRes.json();
+            if (!previewRes.ok) {
+                const errData = await previewRes.json().catch(() => ({}));
+                throw new Error(errData.error || `เซิร์ฟเวอร์ส่งสถานะผิดพลาด (${previewRes.status})`);
             }
+
+            let previewData = await previewRes.json();
 
             const fileName = (previewData && previewData.file_name) || doc.file_name || doc.display_file_name || "เอกสารแนบ";
             const fileExt = (previewData && previewData.file_extension) || fileName.substring(fileName.lastIndexOf(".")).toLowerCase();
