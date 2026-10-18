@@ -123,6 +123,48 @@ router.post("/login", async (req, res) => {
     }
 });
 
+// Guest Login (เข้าสู่ระบบในฐานะ Guest)
+router.post("/guest", (req, res) => {
+    if (!req.session) {
+        return res.status(500).json({
+            ok: false,
+            message: "ระบบ Session ยังไม่พร้อมใช้งาน"
+        });
+    }
+
+    req.session.regenerate((error) => {
+        if (error) {
+            console.error("Guest session error:", error.message);
+            return res.status(500).json({
+                ok: false,
+                message: "ไม่สามารถเข้าสู่ระบบในฐานะ Guest ได้"
+            });
+        }
+
+        req.session.user = {
+            id: 0,
+            username: "Guest",
+            roles: ["guest"]
+        };
+
+        req.session.save((saveError) => {
+            if (saveError) {
+                console.error("Guest session save error:", saveError.message);
+                return res.status(500).json({
+                    ok: false,
+                    message: "ไม่สามารถบันทึก Session Guest ได้"
+                });
+            }
+
+            return res.json({
+                ok: true,
+                message: "เข้าสู่ระบบในฐานะ Guest สำเร็จ",
+                user: req.session.user
+            });
+        });
+    });
+});
+
 // Check current user
 router.get("/me", (req, res) => {
     if (!req.session?.user) {

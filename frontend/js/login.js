@@ -5,6 +5,8 @@ const loginButton = document.getElementById("loginButton");
 const loginButtonText = document.getElementById("loginButtonText");
 const loginMessage = document.getElementById("loginMessage");
 const togglePassword = document.getElementById("togglePassword");
+const guestLoginBtn = document.getElementById("guestLoginBtn");
+const presetButtons = document.querySelectorAll(".preset-btn");
 
 function getApiBaseUrl() {
     if (
@@ -17,6 +19,7 @@ function getApiBaseUrl() {
     return "https://utvhg6d6o3.execute-api.us-east-1.amazonaws.com/api";
 }
 
+// แสดง/ซ่อนรหัสผ่าน
 togglePassword.addEventListener("click", () => {
     const isHidden = passwordInput.type === "password";
 
@@ -28,12 +31,31 @@ togglePassword.addEventListener("click", () => {
     );
 });
 
+// จัดการปุ่มเลือกบัญชีด่วน (Preset Demo Users)
+presetButtons.forEach(btn => {
+    btn.addEventListener("click", () => {
+        presetButtons.forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
+
+        usernameInput.value = btn.dataset.username || "";
+        passwordInput.value = btn.dataset.password || "";
+        loginMessage.textContent = "";
+
+        // ใส่เอฟเฟกต์กระพริบที่ปุ่ม SIGN IN เพื่อบอกให้ผู้ใช้ทราบ
+        loginButton.focus();
+    });
+});
+
+// เข้าสู่ระบบด้วย Username / Password
 loginForm.addEventListener("submit", async (event) => {
     event.preventDefault();
 
     loginMessage.textContent = "";
     loginButton.disabled = true;
     loginButtonText.textContent = "SIGNING IN...";
+
+    const enteredUsername = usernameInput.value.trim();
+    const enteredPassword = passwordInput.value;
 
     try {
         const response = await fetch(`${getApiBaseUrl()}/auth/login`, {
@@ -43,8 +65,8 @@ loginForm.addEventListener("submit", async (event) => {
                 "Content-Type": "application/json"
             },
             body: JSON.stringify({
-                username: usernameInput.value.trim(),
-                password: passwordInput.value
+                username: enteredUsername,
+                password: enteredPassword
             })
         });
 
@@ -55,6 +77,13 @@ loginForm.addEventListener("submit", async (event) => {
                 result.message || result.error || "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง"
             );
         }
+
+        // กำหนด Role และ User ใน localStorage ให้ตรงกับที่ Login เข้ามา
+        const userRole = (result.user?.roles && result.user.roles[0]) || (enteredUsername.toLowerCase().includes("admin") ? "admin" : "staff");
+        const username = result.user?.username || enteredUsername;
+
+        localStorage.setItem("docuflow_role", userRole);
+        localStorage.setItem("docuflow_user", username);
 
         window.location.href = "dashboard.html";
 
@@ -70,4 +99,25 @@ loginForm.addEventListener("submit", async (event) => {
         loginButtonText.textContent = "SIGN IN";
     }
 });
+
+// เข้าสู่ระบบในฐานะ Guest
+if (guestLoginBtn) {
+    guestLoginBtn.addEventListener("click", async () => {
+        guestLoginBtn.disabled = true;
+        guestLoginBtn.style.opacity = "0.7";
+        guestLoginBtn.style.cursor = "wait";
+
+        try {
+            await fetch(`${getApiBaseUrl()}/auth/guest`, {
+                method: "POST",
+                credentials: "include"
+            }).catch(() => {});
+        } finally {
+            // บันทึกสถานะ Guest ลงใน localStorage และไปยัง Dashboard ทันที
+            localStorage.setItem("docuflow_role", "guest");
+            localStorage.setItem("docuflow_user", "Guest");
+            window.location.href = "dashboard.html";
+        }
+    });
+}
 ```
