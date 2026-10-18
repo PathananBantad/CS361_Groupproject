@@ -125,8 +125,8 @@ CREATE TABLE IF NOT EXISTS document_assignments (
 
 -- 12. เพิ่ม Master Data บทบาททั้ง 5 ตาม Role Matrix ของ V3
 INSERT IGNORE INTO roles (name, description) VALUES 
-('DOCUMENT_RECEIVER', 'เจ้าหน้าที่รับเอกสาร'),
-('STAFF', 'อาจารย์ / เจ้าหน้าที่'),
-('RESPONSIBLE_PERSON', 'ผู้รับผิดชอบเรื่อง'),
-('ADMIN', 'ผู้ดูแลระบบ'),
-('EXECUTIVE', 'ผู้บริหาร');
+('document_officer', 'เจ้าหน้าที่รับเอกสาร'),
+('faculty_staff', 'อาจารย์ / เจ้าหน้าที่'),
+('case_owner', 'ผู้รับผิดชอบเรื่อง'),
+('admin', 'ผู้ดูแลระบบ'),
+('executive', 'ผู้บริหาร');

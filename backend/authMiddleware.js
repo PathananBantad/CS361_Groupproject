@@ -25,7 +25,7 @@ const verifyDocumentAccess = async (req, res, next) => {
     const userRole = req.user.role;
 
     // ถ้าเป็น Admin หรือ Staff ระดับสูง อาจจะให้ผ่านได้เลย
-    if (userRole === 'ADMIN' || userRole === 'STAFF') {
+    if (userRole === 'admin' || userRole === 'faculty_staff') {
       return next();
     }
 
