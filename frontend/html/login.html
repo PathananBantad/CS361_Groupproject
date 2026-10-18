@@ -14,25 +14,31 @@
         href="https://fonts.googleapis.com/css2?family=Anuphan:wght@300;400;500;600;700&family=Bai+Jamjuree:wght@300;400;500;600;700&family=Playfair+Display:wght@500;600;700&display=swap"
         rel="stylesheet">
 
+    <link rel="stylesheet" href="../css/common.css">
     <link rel="stylesheet" href="../css/login.css">
 </head>
 
 <body>
+    <div class="page-decoration decoration-top" aria-hidden="true"></div>
+    <div class="page-decoration decoration-bottom" aria-hidden="true"></div>
     <main class="login-page">
 
-        <a href="index.html" class="brand">
-            <span class="brand-mark">D</span>
-            <span class="brand-name">DOCU FLOW</span>
-        </a>
+        <header class="login-topbar">
+            <a href="index.html" class="brand" aria-label="DocuFlow หน้าหลัก">
+                <span class="brand-mark" aria-hidden="true"><span></span><span></span></span>
+                <span class="brand-name">DocuFlow</span>
+            </a>
+            <span class="topbar-caption">ระบบจัดการเอกสาร</span>
+        </header>
 
         <section class="login-layout">
 
             <div class="login-intro">
-                <p class="eyebrow">DOCUMENT MANAGEMENT SYSTEM</p>
+                <p class="eyebrow">DOCUFLOW · DOCUMENT MANAGEMENT</p>
 
                 <h1>
-                    Welcome<br>
-                    <span>back.</span>
+                    Welcome to<br>
+                    <span>DocuFlow.</span>
                 </h1>
 
                 <div class="intro-line"></div>
@@ -54,18 +60,18 @@
             </div>
 
             <div class="login-card">
-                <p class="card-label">YOUR WORKSPACE</p>
+                <p class="card-label">เข้าสู่ระบบเพื่อเริ่มใช้งาน</p>
 
                 <h2>Sign in</h2>
                 <p class="card-description">
-                    กรุณากรอกข้อมูลเพื่อเข้าสู่ระบบ (รหัสผ่าน: 1234)
+                    กรุณากรอกชื่อผู้ใช้และรหัสผ่านเพื่อเข้าสู่ระบบ (รหัสผ่าน1234)
                 </p>
 
                 <form id="loginForm">
 
                     <div class="form-group">
                         <label for="username">Username</label>
-                        <input type="text" id="username" name="username" value="admin01" placeholder="admin01 หรือ staff01"
+                        <input type="text" id="username" name="username" placeholder="กรอกชื่อผู้ใช้หรืออีเมล"
                             autocomplete="username" required>
                     </div>
 
@@ -73,7 +79,7 @@
                         <label for="password">Password</label>
 
                         <div class="password-wrapper">
-                            <input type="password" id="password" name="password" placeholder="รหัสผ่าน (1234)"
+                            <input type="password" id="password" name="password" placeholder="กรอกรหัสผ่าน"
                                 autocomplete="current-password" required>
 
                             <button type="button" id="togglePassword" class="toggle-password" aria-label="แสดงรหัสผ่าน">
@@ -101,7 +107,7 @@
 
                 <p class="security-note">
                     <span class="security-dot"></span>
-                    Secure access to your documents
+                    เข้าสู่ระบบเพื่อเข้าถึงเอกสารอย่างปลอดภัย
                 </p>
             </div>
 
@@ -109,7 +115,7 @@
 
         <footer class="page-footer">
             <span>DOCU FLOW</span>
-            <span>DOCUMENTS · ORGANIZED</span>
+            <span>DOCUMENT REGISTRY & FLOW SYSTEM</span>
         </footer>
 
     </main>
