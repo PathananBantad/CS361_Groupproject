@@ -940,9 +940,12 @@
                 ? previewData.can_preview
                 : [".pdf", ".jpg", ".jpeg", ".png"].includes(fileExt);
 
-            // แปลง relative downloadUrl เป็น full URL
+            // แปลง relative downloadUrl และ previewUrl เป็น full URL
             if (downloadUrl && downloadUrl.startsWith("/")) {
                 downloadUrl = apiBase.replace(/\/api$/, "") + downloadUrl;
+            }
+            if (previewUrl && previewUrl.startsWith("/")) {
+                previewUrl = apiBase.replace(/\/api$/, "") + previewUrl;
             }
 
             // Endpoint สตรีมไฟล์ตรงจากเซิร์ฟเวอร์ (รับประกันการดาวน์โหลด 100%)
@@ -981,7 +984,7 @@
                                 src="${escapeHtml(finalPreviewUrl)}" 
                                 alt="${escapeHtml(fileName)}" 
                                 loading="lazy"
-                                onerror="if(!this.dataset.fallbackTried){ this.dataset.fallbackTried='1'; this.src='${escapeHtml(streamUrl)}'; }"
+                                onerror="if(!this.dataset.fallbackTried){ this.dataset.fallbackTried='1'; this.src='${escapeHtml(streamUrl)}'; } else { this.parentElement.innerHTML='<div class=\\'preview-error\\' style=\\'text-align:center;padding:40px 20px;color:#856404;background:#fff3cd;border:1px solid #ffeeba;border-radius:8px;\\'><h4>⚠️ ไม่สามารถแสดงตัวอย่างไฟล์ได้</h4><p style=\\'margin-top:8px;font-size:13px;\\'>ไฟล์นี้ไม่มีอยู่ใน S3 Storage หรือถูกลบออกแล้ว</p></div>'; }"
                             >
                         </div>
                     `;
