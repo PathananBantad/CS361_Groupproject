@@ -34,9 +34,16 @@ const MIME_TYPE_MAP = {
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 
-// Helper เพื่อหา API URL ที่เหมาะสม
 // Helper เพื่อหา API Base URL
 function getApiBaseUrl() {
+    if (typeof window.getApiBaseUrl === "function") {
+        return window.getApiBaseUrl();
+    }
+    if (window.API_BASE_URL) {
+        return window.API_BASE_URL.endsWith("/api")
+            ? window.API_BASE_URL
+            : `${window.API_BASE_URL}/api`;
+    }
     if (window.location.port === "3000") {
         return "/api";
     }
@@ -215,13 +222,18 @@ registerForm.addEventListener("submit", async (event) => {
             receiving_channel: receiveChannel
         };
 
+        const token = localStorage.getItem("docuflow_access_token") || localStorage.getItem("access_token") || localStorage.getItem("docuflow_id_token") || localStorage.getItem("id_token") || "";
+        const docHeaders = {
+            "Content-Type": "application/json"
+        };
+        if (token) {
+            docHeaders["Authorization"] = `Bearer ${token}`;
+        }
+
         // 1. บันทึกเอกสารเข้าฐานข้อมูล
         let response = await fetch(`${apiBase}/documents`, {
             method: "POST",
-            headers: {
-                "Content-Type": "application/json"
-            },
-            credentials: "include",
+            headers: docHeaders,
             body: JSON.stringify(payload)
         });
 
@@ -243,8 +255,10 @@ registerForm.addEventListener("submit", async (event) => {
             let s3Data = null;
 
             try {
+                const s3Headers = {};
+                if (token) s3Headers["Authorization"] = `Bearer ${token}`;
                 const s3UrlRes = await fetch(uploadUrlEndpoint, {
-                    credentials: "include"
+                    headers: s3Headers
                 });
 
                 if (s3UrlRes.ok) {
@@ -271,12 +285,14 @@ registerForm.addEventListener("submit", async (event) => {
             if (!uploadSuccess) {
                 submitText.textContent = "กำลังอัปโหลดไฟล์ผ่านช่องทางสำรอง...";
                 const directUploadUrl = `${apiBase}/documents/${docData.id}/upload-direct?fileName=${encodeURIComponent(file.name)}&contentType=${encodeURIComponent(contentType)}`;
+                const directHeaders = {
+                    "Content-Type": contentType
+                };
+                if (token) directHeaders["Authorization"] = `Bearer ${token}`;
+
                 const directRes = await fetch(directUploadUrl, {
                     method: "POST",
-                    headers: {
-                        "Content-Type": contentType
-                    },
-                    credentials: "include",
+                    headers: directHeaders,
                     body: file
                 });
 
@@ -290,10 +306,12 @@ registerForm.addEventListener("submit", async (event) => {
             // 3. บันทึก/ยืนยัน Metadata ไฟล์ลงฐานข้อมูล (document_files)
             if (uploadSuccess && s3Data?.file_key) {
                 try {
+                    const metaHeaders = { "Content-Type": "application/json" };
+                    if (token) metaHeaders["Authorization"] = `Bearer ${token}`;
+
                     await fetch(`${apiBase}/documents/${docData.id}/file-metadata`, {
                         method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        credentials: "include",
+                        headers: metaHeaders,
                         body: JSON.stringify({
                             fileName: file.name,
                             fileSize: file.size,

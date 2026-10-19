@@ -374,8 +374,15 @@
     }
 
     // Helper หา API Base URL
-    // Helper เพื่อหา API Base URL
     function getApiBaseUrl() {
+        if (typeof window.getApiBaseUrl === "function") {
+            return window.getApiBaseUrl();
+        }
+        if (window.API_BASE_URL) {
+            return window.API_BASE_URL.endsWith("/api")
+                ? window.API_BASE_URL
+                : `${window.API_BASE_URL}/api`;
+        }
         if (window.location.port === "3000") {
             return "/api";
         }
@@ -618,39 +625,27 @@
         if (btnNextStatusSpinner) btnNextStatusSpinner.hidden = false;
         if (btnAdminApplyStatus) btnAdminApplyStatus.disabled = true;
 
+        const token = localStorage.getItem("docuflow_access_token") || localStorage.getItem("access_token") || localStorage.getItem("docuflow_id_token") || localStorage.getItem("id_token") || "";
+        const reqHeaders = {
+            "Content-Type": "application/json",
+            "x-user-role": auth.role,
+            "x-user-id": auth.user,
+            "x-username": auth.user
+        };
+        if (token) {
+            reqHeaders["Authorization"] = `Bearer ${token}`;
+        }
+
         try {
             let response = await fetch(`${apiBase}/documents/${docId}/status`, {
                 method: "PUT",
-                headers: {
-                    "Content-Type": "application/json",
-                    "x-user-role": auth.role,
-                    "x-user-id": auth.user,
-                    "x-username": auth.user
-                },
+                headers: reqHeaders,
                 body: JSON.stringify({
                     status: targetStatus,
                     remarks: remarks || "",
                     changed_by: auth.user
                 })
             });
-
-            // Local fallback to AWS API Gateway if local failed
-            if (!response.ok && apiBase.includes("localhost") && response.status === 404) {
-                response = await fetch(`https://utvhg6d6o3.execute-api.us-east-1.amazonaws.com/api/documents/${docId}/status`, {
-                    method: "PUT",
-                    headers: {
-                        "Content-Type": "application/json",
-                        "x-user-role": auth.role,
-                        "x-user-id": auth.user,
-                        "x-username": auth.user
-                    },
-                    body: JSON.stringify({
-                        status: targetStatus,
-                        remarks: remarks || "",
-                        changed_by: auth.user
-                    })
-                });
-            }
 
             const result = await response.json().catch(() => ({}));
 
@@ -975,8 +970,12 @@
         const apiBase = getApiBaseUrl();
 
         try {
+            const token = localStorage.getItem("docuflow_access_token") || localStorage.getItem("access_token") || localStorage.getItem("docuflow_id_token") || localStorage.getItem("id_token") || "";
+            const previewHeaders = {};
+            if (token) previewHeaders["Authorization"] = `Bearer ${token}`;
+
             let previewRes = await fetch(`${apiBase}/documents/${doc.id}/preview-url?role=${encodeURIComponent(auth.role)}&userId=${encodeURIComponent(auth.user)}`, {
-                credentials: "include"
+                headers: previewHeaders
             });
 
             if (previewRes.status === 403) {
@@ -1275,11 +1274,13 @@ async function submitDocumentForward(documentId) {
     }
 
     try {
-        const response = await fetch(`/api/documents/${documentId}/forward`, {
+        const apiBase = getApiBaseUrl();
+        const authToken = localStorage.getItem("docuflow_access_token") || localStorage.getItem("access_token") || localStorage.getItem("docuflow_id_token") || localStorage.getItem("id_token") || "";
+        const response = await fetch(`${apiBase}/documents/${documentId}/forward`, {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
-                "Authorization": `Bearer ${localStorage.getItem("id_token") || ""}`
+                "Authorization": authToken ? `Bearer ${authToken}` : ""
             },
             body: JSON.stringify({
                 new_assignee_id: newAssigneeId || null,
