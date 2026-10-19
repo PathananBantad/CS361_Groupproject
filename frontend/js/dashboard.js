@@ -25,11 +25,13 @@ let currentRole = localStorage.getItem("docuflow_role") || "staff";
 let currentUsername = localStorage.getItem("docuflow_user") || "staff01";
 
 // Helper เพื่อหา API Base URL
+// Helper เพื่อหา API Base URL
 function getApiBaseUrl() {
     if (window.location.port === "3000") {
         return "/api";
     }
-    return "http://localhost:3000/api";
+
+    return "https://utvhg6d6o3.execute-api.us-east-1.amazonaws.com/api";
 }
 
 /* =====================================================
