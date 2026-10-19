@@ -375,19 +375,12 @@
 
     // Helper หา API Base URL
     function getApiBaseUrl() {
-        if (typeof window.getApiBaseUrl === "function") {
-            return window.getApiBaseUrl();
-        }
-        if (window.API_BASE_URL) {
-            return window.API_BASE_URL.endsWith("/api")
-                ? window.API_BASE_URL
-                : `${window.API_BASE_URL}/api`;
-        }
+        const base = window.API_BASE_URL || "https://utvhg6d6o3.execute-api.us-east-1.amazonaws.com";
         if (window.location.port === "3000") {
             return "/api";
         }
 
-        return "https://utvhg6d6o3.execute-api.us-east-1.amazonaws.com/api";
+        return base.endsWith("/api") ? base : `${base}/api`;
     }
 
     // Helper ดึงสิทธิ์ปัจจุบัน

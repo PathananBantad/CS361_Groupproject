@@ -6,7 +6,3 @@ window.COGNITO_CONFIG = {
 window.API_BASE_URL =
     "https://utvhg6d6o3.execute-api.us-east-1.amazonaws.com";
 
-window.getApiBaseUrl = function () {
-    const base = window.API_BASE_URL || "https://utvhg6d6o3.execute-api.us-east-1.amazonaws.com";
-    return base.endsWith("/api") ? base : `${base}/api`;
-};
