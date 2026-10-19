@@ -21,15 +21,17 @@ let sortKey = null;
 let sortDirection = 1;
 
 // บทบาทผู้ใช้ปัจจุบัน (staff, admin, guest) สำหรับตรวจสอบสิทธิ์
-let currentRole = localStorage.getItem("docuflow_role") || "staff";
-let currentUsername = localStorage.getItem("docuflow_user") || "staff01";
+let currentRole = null;
+let currentUsername = null;
 
+// Helper เพื่อหา API Base URL
 // Helper เพื่อหา API Base URL
 function getApiBaseUrl() {
     if (window.location.port === "3000") {
         return "/api";
     }
-    return "http://localhost:3000/api";
+
+    return "https://utvhg6d6o3.execute-api.us-east-1.amazonaws.com/api";
 }
 
 /* =====================================================
@@ -53,17 +55,12 @@ function initRoleManagement() {
             }
         });
 
+        // ซ่อนตัวเลือกสลับ Role แต่คงปุ่ม Logout ไว้
         roleDropdown.querySelectorAll(".role-option").forEach(btn => {
-            btn.addEventListener("click", () => {
-                if (btn.id === "logoutBtn") return;
-                const role = btn.dataset.role;
-                const user = btn.dataset.user;
-                if (role && user) {
-                    setUserRole(role, user);
-                }
-                roleMenuBtn.setAttribute("aria-expanded", "false");
-                roleDropdown.hidden = true;
-            });
+            if (btn.id !== "logoutBtn") {
+                btn.hidden = true;
+                btn.style.display = "none";
+            }
         });
 
         const logoutBtn = document.getElementById("logoutBtn");
@@ -98,15 +95,10 @@ function initRoleManagement() {
 }
 
 function setUserRole(role, user) {
-    currentRole = role;
-    currentUsername = user;
-    localStorage.setItem("docuflow_role", role);
-    localStorage.setItem("docuflow_user", user);
-    updateRoleUI();
-
-    if (window.DocuFlowModal && typeof window.DocuFlowModal.refreshWorkflowUI === "function") {
-        window.DocuFlowModal.refreshWorkflowUI();
-    }
+    // ไม่อนุญาตให้เปลี่ยน Role จากฝั่ง Frontend
+    console.warn(
+        "Role switching is disabled. User role is managed by the server."
+    );
 }
 
 // Expose ให้โมดูลอื่นเรียกใช้ได้
@@ -115,23 +107,29 @@ window.setUserRole = setUserRole;
 function updateRoleUI() {
     if (!userRoleDisplay || !userRoleDot) return;
 
+    const roleLabels = {
+        staff: "เจ้าหน้าที่",
+        officer: "เจ้าหน้าที่ (Officer)",
+        faculty_staff: "เจ้าหน้าที่คณะ",
+        admin: "ผู้ดูแลระบบ",
+        case_owner: "ผู้รับผิดชอบเอกสาร",
+        guest: "ผู้ใช้ทั่วไป"
+    };
+
+    const roleLabel = roleLabels[currentRole] || currentRole || "ไม่ระบุบทบาท";
+
     userRoleDot.className = "profile-icon";
-    if (currentRole === "staff") {
-        userRoleDot.classList.add("role-staff");
-        userRoleDisplay.textContent = `เจ้าหน้าที่ (${currentUsername})`;
-    } else if (currentRole === "admin") {
+
+    if (currentRole === "admin") {
         userRoleDot.classList.add("role-admin");
-        userRoleDisplay.textContent = `ผู้ดูแลระบบ (${currentUsername})`;
-    } else {
+    } else if (currentRole === "guest") {
         userRoleDot.classList.add("role-guest");
-        userRoleDisplay.textContent = "ผู้ใช้ทั่วไป (Guest - ไม่มีสิทธิ์)";
+    } else {
+        userRoleDot.classList.add("role-staff");
     }
 
-    if (roleDropdown) {
-        roleDropdown.querySelectorAll(".role-option").forEach(btn => {
-            btn.classList.toggle("active", btn.dataset.role === currentRole);
-        });
-    }
+    userRoleDisplay.textContent =
+        `${roleLabel} (${currentUsername || "-"})`;
 }
 
 /* =====================================================
@@ -565,10 +563,41 @@ function escapeHtml(value) {
 /* =====================================================
    INITIALIZE
 ===================================================== */
-initRoleManagement();
-syncFilterButtons();
-setupSorting();
-fetchDocuments();
+async function initializeDashboard() {
+    try {
+        const response = await fetch("/api/auth/me", {
+            credentials: "same-origin",
+            cache: "no-store"
+        });
+
+        if (!response.ok) {
+            window.location.replace("login.html");
+            return;
+        }
+
+        const data = await response.json();
+
+        if (!data.authenticated || !data.user) {
+            window.location.replace("login.html");
+            return;
+        }
+
+        // ใช้ข้อมูลผู้ใช้จาก Session จริง
+        currentRole = data.user.roles?.[0] || null;
+        currentUsername = data.user.username || null;
+
+        initRoleManagement();
+        syncFilterButtons();
+        setupSorting();
+        fetchDocuments();
+
+    } catch (error) {
+        console.error("Session verification failed:", error);
+        window.location.replace("login.html");
+    }
+}
+
+initializeDashboard();
 
 // Expose fetchDocuments for external trigger and listen to status change events
 window.fetchDocuments = fetchDocuments;

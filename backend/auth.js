@@ -40,6 +40,18 @@ router.post("/login", async (req, res) => {
         }
 
         // 1. ให้ Cognito ตรวจสอบ Email และ Password
+
+        // ตรวจสอบว่า Backend โหลดค่า Cognito ครบหรือไม่
+        console.log("Cognito configuration:", {
+            hasClientId: 
+        Boolean(process.env.COGNITO_APP_CLIENT_ID),
+            hasClientSecret: 
+        Boolean(process.env.COGNITO_CLIENT_SECRET),
+            secretHashType: typeof 
+        createSecretHash(username.trim())
+        });
+
+        // 1. ให้ Cognito ตรวจสอบ Email และ Password
         const authResult = await cognito.send(
             new InitiateAuthCommand({
                 AuthFlow: "USER_PASSWORD_AUTH",
