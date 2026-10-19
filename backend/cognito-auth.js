@@ -1,4 +1,3 @@
-
 const { CognitoJwtVerifier } = require("aws-jwt-verify");
 
 let verifier;
