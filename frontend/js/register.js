@@ -324,6 +324,10 @@ registerForm.addEventListener("submit", async (event) => {
         // Reset แบบฟอร์ม
         registerForm.reset();
         fileText.textContent = "เลือกไฟล์ หรือลากไฟล์มาวางที่นี่...";
+        const receiveDateInput = document.getElementById("receiveDate");
+        if (receiveDateInput) {
+            receiveDateInput.value = new Date().toISOString().split("T")[0];
+        }
 
     } catch (error) {
         console.error("Error saving document:", error);
@@ -333,5 +337,13 @@ registerForm.addEventListener("submit", async (event) => {
         submitBtn.style.opacity = "1";
         submitBtn.style.cursor = "pointer";
         submitText.textContent = "ลงทะเบียนเอกสาร";
+    }
+});
+
+// กำหนดวันที่รับเอกสารเริ่มต้นเป็นวันปัจจุบันโดยอัตโนมัติ เพื่อความสะดวกของผู้ใช้งาน
+document.addEventListener("DOMContentLoaded", () => {
+    const receiveDateInput = document.getElementById("receiveDate");
+    if (receiveDateInput && !receiveDateInput.value) {
+        receiveDateInput.value = new Date().toISOString().split("T")[0];
     }
 });

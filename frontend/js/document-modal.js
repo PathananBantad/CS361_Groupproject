@@ -333,9 +333,9 @@
                                 <div class="meta-item"><span class="meta-label">ชื่อผู้ส่ง</span><span class="meta-value" id="modalSenderName">-</span></div>
                                 <div class="meta-item"><span class="meta-label">ช่องทางติดต่อผู้ส่ง</span><span class="meta-value" id="modalSenderContact">-</span></div>
                                 <div class="meta-item"><span class="meta-label">ผู้รับ</span><span class="meta-value" id="modalReceiver">-</span></div>
-                                <div class="meta-item"><span class="meta-label">วันที่ส่ง</span><span class="meta-value" id="modalSendDate">-</span></div>
-                                <div class="meta-item"><span class="meta-label">วันที่รับ</span><span class="meta-value" id="modalReceiveDate">-</span></div>
-                                <div class="meta-item"><span class="meta-label">วันครบกำหนด (DEADLINE)</span><span class="meta-value" id="modalDeadline">-</span></div>
+                                <div class="meta-item"><span class="meta-label">วันที่ส่ง (ในหนังสือ)</span><span class="meta-value" id="modalSendDate">-</span></div>
+                                <div class="meta-item"><span class="meta-label">วันที่รับ (สารบรรณลงรับ)</span><span class="meta-value" id="modalReceiveDate">-</span></div>
+                                <div class="meta-item"><span class="meta-label">วันครบกำหนด (Deadline)</span><span class="meta-value" id="modalDeadline">-</span></div>
                                 <div class="meta-item full-width" id="modalRemarksWrap"><span class="meta-label">หมายเหตุ</span><p class="meta-value remarks-box" id="modalRemarks">-</p></div>
                             </div>
                         </section>

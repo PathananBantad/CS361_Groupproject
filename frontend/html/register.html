@@ -211,21 +211,24 @@
 
                 <!-- วันที่ส่งเอกสาร -->
                 <div class="field">
-                    <label for="sendDate">วันที่ส่งเอกสาร <span style="color: red;">*</span></label>
+                    <label for="sendDate">วันที่ส่งเอกสาร <span style="font-size: 0.88em; font-weight: 400; color: #78716c;">(วันที่ในหนังสือ / วันที่ต้นทางส่ง)</span> <span style="color: red;">*</span></label>
                     <input id="sendDate" name="sendDate" type="date" required>
+                    <small class="field-desc">วันที่ระบุบนเอกสาร หรือวันที่หน่วยงานต้นทางออกหนังสือ</small>
                 </div>
 
                 <!-- วันที่รับเอกสาร -->
                 <div class="field">
-                    <label for="receiveDate">วันที่รับเอกสาร <span style="color: red;">*</span></label>
+                    <label for="receiveDate">วันที่รับเอกสาร <span style="font-size: 0.88em; font-weight: 400; color: #78716c;">(วันที่สารบรรณลงรับเรื่อง)</span> <span style="color: red;">*</span></label>
                     <input id="receiveDate" name="receiveDate" type="date" required>
+                    <small class="field-desc">วันที่งานสารบรรณหรือหน่วยงานได้รับเอกสารเข้าสู่ระบบ</small>
                 </div>
 
                 <!-- Deadline (V2) -->
                 <div class="field">
-                    <label for="deadline">วันครบกำหนด (Deadline) <span
+                    <label for="deadline">วันครบกำหนด (Deadline) <span style="font-size: 0.88em; font-weight: 400; color: #78716c;">(วันสุดท้ายที่ต้องดำเนินการเสร็จสิ้น)</span> <span
                             style="color: gray; font-size: 0.85em;">(ถ้ามี)</span></label>
                     <input id="deadline" name="deadline" type="date">
+                    <small class="field-desc">วันกำหนดส่งงานหรือตอบกลับเอกสารนี้ (เว้นว่างไว้ได้หากไม่มีกำหนด)</small>
                 </div>
 
                 <!-- หมายเหตุ -->
