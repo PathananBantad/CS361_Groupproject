@@ -1,4 +1,80 @@
+const crypto = require("node:crypto");
 const { CognitoJwtVerifier } = require("aws-jwt-verify");
+
+// Static JWKS keys for us-east-1_1duzJEFfU (allows instant verification inside VPC without internet/NAT Gateway)
+const EMBEDDED_JWKS = {
+    keys: [
+        {
+            alg: "RS256",
+            e: "AQAB",
+            kid: "LNiVP8fSfywwi49nP5F7dqNn7ayCVSbR9NNfVKR8+UY=",
+            kty: "RSA",
+            n: "vZSddIDhEvSFi2hTI9MgIEwnS9LL-_GzTZoGbUlWURYKk2dqPvH1C53vTozLD8tkDYUEfRopQwRM-sG0S02OhULzmp1JZG6V8Y9MqfsGzy6mWi7flEkUR0f0cBRIKQxu0EknuWq_16mT_J3X_vbBCVaC4GKb4FJ42Ozx1sciNASsDVzccEyn12aQAoF8Vly0-WG3LOzRbyzZ2UvjTRSa76BIN4C64fTVo7Sg1vu45mteufhaL8FkhLETfQYHBf8uKqQIFGF0kynexau_dT49hc0hwUrUqpoQapE176LcV0thBYKOTGqgI-NbZsIIqcGk76X_K9AXGQQcuhO0m9TtNw",
+            use: "sig"
+        },
+        {
+            alg: "RS256",
+            e: "AQAB",
+            kid: "ZpVieR1rxKMkhZRqF+cJeE+uBD0ZjFNXqKgjwkS/Dnc=",
+            kty: "RSA",
+            n: "9V9FH1vrRBEAEJxHPcpV-dkpS0JPyHTcdc-m06_CIeaROQw4iejnIBnAXD3g0Xyp4bIl1ehF-N3ffD_HFy-9cQqcHznGfYd-xj9ISfH0LXv8eJXk4oqrR0IUD0Hn-Rsr4muJKriPzrgwO-V1Yn6jLAFBnCQ7j2p8CHwD0UcD49lNHIC6ZqT7B_Saj8V8kXJxb9LHzJXzcLTpt6g78MTFgCFgU4wGu4Wm7SrGf-x0Uk4T0aMgfVWdP5mlgUQmKj3fwIGYQsZ0u-82l3fDvini1I0J1OLinuN656dZtIbqi7YSknlNQZjXeDwUQEfJCF5ITJ11pfD3cKvRMYqGhj5cew",
+            use: "sig"
+        }
+    ]
+};
+
+const cachedPublicKeys = new Map();
+
+function verifyWithEmbeddedJwks(token) {
+    const parts = token.split(".");
+    if (parts.length !== 3) throw new Error("Invalid JWT token format");
+
+    const header = JSON.parse(Buffer.from(parts[0], "base64url").toString("utf8"));
+    const payload = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8"));
+
+    const now = Math.floor(Date.now() / 1000);
+    if (payload.exp && payload.exp < now) {
+        throw new Error("Token expired");
+    }
+
+    if (payload.token_use !== "access") {
+        throw new Error("Invalid token_use: expected access token");
+    }
+
+    const allowedClientIds = [
+        process.env.COGNITO_APP_CLIENT_ID,
+        "454o0719rb9d6lkspv4m8tmb6i",
+        "7k0t8e6499bro55f8faso44m2c"
+    ].filter(Boolean);
+
+    if (allowedClientIds.length > 0 && !allowedClientIds.includes(payload.client_id)) {
+        throw new Error(`Client ID not allowed: ${payload.client_id}`);
+    }
+
+    const jwk = EMBEDDED_JWKS.keys.find(k => k.kid === header.kid);
+    if (!jwk) {
+        throw new Error(`Key ID not found: ${header.kid}`);
+    }
+
+    let publicKey = cachedPublicKeys.get(jwk.kid);
+    if (!publicKey) {
+        publicKey = crypto.createPublicKey({ key: jwk, format: "jwk" });
+        cachedPublicKeys.set(jwk.kid, publicKey);
+    }
+
+    const isValid = crypto.verify(
+        "RSA-SHA256",
+        Buffer.from(parts[0] + "." + parts[1]),
+        publicKey,
+        Buffer.from(parts[2], "base64url")
+    );
+
+    if (!isValid) {
+        throw new Error("Invalid token signature");
+    }
+
+    return payload;
+}
 
 let verifier;
 
@@ -45,7 +121,12 @@ async function requireCognitoAuth(req, res, next) {
     const token = authorization.replace(/^Bearer\s+/i, "").trim();
 
     try {
-        const payload = await getVerifier().verify(token);
+        let payload;
+        try {
+            payload = verifyWithEmbeddedJwks(token);
+        } catch (embeddedErr) {
+            payload = await getVerifier().verify(token);
+        }
 
         if (
             typeof payload.sub !== "string" ||
