@@ -190,8 +190,10 @@ function checkDocumentAccess(req, document) {
     }
 
     if (
-        role === "case_owner" &&
-        (!document || !document.owner_id || String(document.owner_id) === String(userId))
+    role === "case_owner" &&
+        (!document || !document.owner_id || String(document.owner_id) === String(userId) ||
+        (document.assignee_id != null && req.userId != null &&
+        String(document.assignee_id) === String(req.userId)))
     ) {
         return {
             allowed: true,
@@ -280,8 +282,8 @@ app.get(
             const params = [];
 
             if (role === "case_owner") {
-                sql += " AND d.owner_id = ?";
-                params.push(userId);
+                sql += " AND (d.owner_id = ? OR d.assignee_id = ?)";
+                params.push(userId, userId);
             }
 
             // Search by reference number
@@ -836,141 +838,234 @@ app.put("/api/documents/:id/status", requireCognitoAuth, loadUserRole, async (re
     }
 });
 
-// POST /api/documents/:id/assign - มอบหมายเอกสารให้ผู้รับผิดชอบ (Task 1, 4, 5, 6, 7)
+// กติกาการมอบหมายเอกสาร (ปรับตาม Role Matrix)
+const ASSIGNER_ROLES = ["document_officer", "admin"];     // มอบหมายได้
+const ASSIGNEE_ROLES = ["case_owner", "faculty_staff"];   // รับมอบหมายได้
+
+class HttpError extends Error {
+    constructor(status, message) {
+        super(message);
+        this.status = status;
+    }
+}
+
+// POST /api/documents/:id/assign - มอบหมายเอกสารให้ผู้รับผิดชอบ
 app.post("/api/documents/:id/assign", requireCognitoAuth, loadUserRole, async (req, res) => {
+    // ตัวตนและ role มาจาก token + ฐานข้อมูล (loadUserRole) เท่านั้น ไม่เชื่อค่าจาก Frontend
+    const actorId = req.userId;
+    const actorRole = req.userRole;
+    const actorUsername = req.auth.username || String(req.auth.sub);
+
+    if (!ASSIGNER_ROLES.includes(actorRole)) {
+        return res.status(403).json({ error: "คุณไม่มีสิทธิ์มอบหมายเอกสาร" });
+    }
+
+    const documentId = Number(req.params.id);
+    const assigneeId = Number(req.body?.assignee_id);
+    if (!Number.isInteger(documentId) || documentId <= 0) {
+        return res.status(400).json({ error: "รหัสเอกสารไม่ถูกต้อง" });
+    }
+    if (!Number.isInteger(assigneeId) || assigneeId <= 0) {
+        return res.status(400).json({ error: "กรุณาเลือกผู้รับมอบหมาย" });
+    }
+    const remarks = sanitizeInput(req.body?.remarks || "");
+
+    const connection = await pool.getConnection();
     try {
-        const { id } = req.params;
-        const { assignee_id, assignee_name, remarks } = req.body || {};
+        await connection.beginTransaction();
 
-        const actor = extractServerActor(req);
-        const role = actor.actorRole;
+        // ล็อกแถวเอกสาร กันสองคนมอบหมายพร้อมกัน
+        const [docRows] = await connection.query(
+            "SELECT * FROM documents WHERE id = ? FOR UPDATE", [documentId]
+        );
+        if (docRows.length === 0) throw new HttpError(404, "ไม่พบเอกสารที่ระบุในระบบ");
 
-        // ตรวจสอบสิทธิ์ผู้มีอำนาจมอบหมาย
-        if (!role || !["document_officer", "case_owner", "admin", "staff", "faculty_staff"].includes(role)) {
-            return res.status(403).json({
-                error: "คุณไม่มีสิทธิ์ในการมอบหมายเอกสาร (ต้องการสิทธิ์ Staff หรือ Admin)"
-            });
+        const doc = docRows[0];
+        const oldStatus = doc.status || "Received";
+        if (oldStatus === "Completed") {
+            throw new HttpError(409, "เอกสารดำเนินการเสร็จสิ้นแล้ว ไม่สามารถมอบหมายได้");
+        }
+        if (doc.assignee_id != null && Number(doc.assignee_id) === assigneeId) {
+            throw new HttpError(409, "เอกสารนี้มอบหมายให้ผู้รับคนนี้อยู่แล้ว");
         }
 
-        if (!assignee_id) {
-            return res.status(400).json({
-                error: "กรุณาระบุผู้รับมอบหมาย (assignee_id is required)"
-            });
+        // ตรวจผู้รับ: มีอยู่จริง + ใช้งานได้ + บทบาทเหมาะสม
+        const [aRows] = await connection.query(
+            `SELECT u.id, u.username, u.is_active, ur.role
+             FROM users u
+             JOIN user_roles ur ON ur.cognito_sub = u.cognito_sub
+             WHERE u.id = ? LIMIT 1`,
+            [assigneeId]
+        );
+        if (aRows.length === 0) {
+            throw new HttpError(404, "ไม่พบผู้รับมอบหมาย หรือผู้รับยังไม่มีบทบาทในระบบ");
+        }
+        const assignee = aRows[0];
+        if (!assignee.is_active) {
+            throw new HttpError(422, "บัญชีผู้รับมอบหมายถูกปิดใช้งาน");
+        }
+        if (!ASSIGNEE_ROLES.includes(String(assignee.role).trim().toLowerCase())) {
+            throw new HttpError(422, "ผู้รับมอบหมายมีบทบาทไม่เหมาะสมกับการรับผิดชอบเอกสาร");
         }
 
-        const sanitizedAssigneeId = String(assignee_id).trim();
-        const sanitizedAssigneeName = sanitizeInput(assignee_name || "");
-        const sanitizedRemarks = sanitizeInput(remarks || "");
+        const newStatus = oldStatus === "Received" ? "Assigned" : oldStatus;
 
-        const connection = await pool.getConnection();
-        let auditRecord = null;
-        let updatedDoc = null;
+        // ไม่แตะ owner_id เพื่อไม่ให้ผู้รับได้สิทธิ์เกินกว่าที่กำหนด
+        await connection.query(
+            "UPDATE documents SET assignee_id = ?, status = ? WHERE id = ?",
+            [assigneeId, newStatus, documentId]
+        );
 
-        try {
-            await connection.beginTransaction();
+        await connection.query(
+            `INSERT INTO document_assignments
+                (document_id, assigned_by_user_id, assigned_by_username, previous_assignee_id, new_assignee_id, action_type, remarks)
+             VALUES (?, ?, ?, ?, ?, 'ASSIGN', ?)`,
+            [
+                documentId,
+                String(actorId),
+                actorUsername,
+                doc.assignee_id != null ? String(doc.assignee_id) : null,
+                String(assigneeId),
+                remarks || null
+            ]
+        );
 
-            const [docRows] = await connection.query("SELECT * FROM documents WHERE id = ? FOR UPDATE", [id]);
-            if (docRows.length === 0) {
-                await connection.rollback();
-                return res.status(404).json({ error: "ไม่พบเอกสารที่ระบุในระบบ" });
-            }
-
-            const doc = docRows[0];
-            const oldStatus = doc.status || "Received";
-            // หากเอกสารยังอยู่ในสถานะ Received การมอบหมายจะปรับสถานะเป็น Assigned โดยอัตโนมัติ
-            const newStatus = oldStatus === "Received" ? "Assigned" : oldStatus;
-
-            // ตรวจสอบว่า assignee_id มีอยู่ใน users หรือไม่ เพื่ออัปเดต owner_id / assignee_id โดยไม่ผิด FK constraint
-            const numericAssigneeId = parseInt(sanitizedAssigneeId, 10);
-            let validUserId = null;
-            if (!isNaN(numericAssigneeId)) {
-                const [uRows] = await connection.query("SELECT id FROM users WHERE id = ?", [numericAssigneeId]);
-                if (uRows.length > 0) {
-                    validUserId = uRows[0].id;
-                }
-            }
-
-            // อัปเดตข้อมูลผู้รับมอบหมายและสถานะในตาราง documents
+        if (newStatus !== oldStatus) {
             await connection.query(
-                `UPDATE documents 
-                 SET assignee_id = ?, owner_id = COALESCE(owner_id, ?), status = ? 
-                 WHERE id = ?`,
-                [validUserId, validUserId, newStatus, id]
+                `INSERT INTO document_status_logs (document_id, old_status, new_status, changed_by, changed_by_user_id, remarks, changed_at)
+                 VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+                [documentId, oldStatus, newStatus, actorUsername, String(actorId), remarks || "มอบหมายเอกสาร"]
             );
-
-            // บันทึกประวัติลงใน document_assignments
-            await connection.query(
-                `INSERT INTO document_assignments 
-                    (document_id, assigned_by_user_id, assigned_by_username, previous_assignee_id, new_assignee_id, action_type, remarks)
-                 VALUES (?, ?, ?, ?, ?, 'ASSIGN', ?)`,
-                [
-                    id,
-                    actor.actorUserId,
-                    actor.actorUsername,
-                    doc.assignee_id ? String(doc.assignee_id) : null,
-                    sanitizedAssigneeId,
-                    sanitizedRemarks || null
-                ]
-            );
-
-            // หากมีการเปลี่ยนสถานะ บันทึกใน document_status_logs ด้วย
-            if (newStatus !== oldStatus) {
-                await connection.query(
-                    `INSERT INTO document_status_logs (document_id, old_status, new_status, changed_by, changed_by_user_id, remarks, changed_at)
-                     VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
-                    [id, oldStatus, newStatus, actor.actorUsername, actor.actorUserId, sanitizedRemarks || "มอบหมายเอกสาร"]
-                );
-            }
-
-            // บันทึก Audit Trail กลาง (Task 2, 3, 4, 6)
-            auditRecord = await recordAuditEvent({
-                documentId: id,
-                actorUserId: actor.actorUserId,
-                actorUsername: actor.actorUsername,
-                actorRole: actor.actorRole,
-                eventType: AUDIT_EVENTS.ASSIGN,
-                beforeState: {
-                    owner_id: doc.owner_id,
-                    assignee_id: doc.assignee_id,
-                    status: oldStatus
-                },
-                afterState: {
-                    owner_id: doc.owner_id || sanitizedAssigneeId,
-                    assignee_id: sanitizedAssigneeId,
-                    status: newStatus
-                },
-                details: {
-                    assignee_name: sanitizedAssigneeName || null,
-                    previous_assignee_id: doc.assignee_id || null,
-                    new_assignee_id: sanitizedAssigneeId,
-                    remarks: sanitizedRemarks || null
-                },
-                ipAddress: actor.ipAddress,
-                connection
-            });
-
-            await connection.commit();
-
-            const [rows] = await pool.query("SELECT * FROM documents WHERE id = ?", [id]);
-            updatedDoc = rows[0];
-
-        } catch (txErr) {
-            await connection.rollback();
-            throw txErr;
-        } finally {
-            connection.release();
         }
+
+        const auditRecord = await recordAuditEvent({
+            documentId,
+            actorUserId: String(req.auth.sub),
+            actorUsername,
+            actorRole,
+            eventType: AUDIT_EVENTS.ASSIGN,
+            beforeState: { assignee_id: doc.assignee_id, status: oldStatus },
+            afterState: { assignee_id: assigneeId, status: newStatus },
+            details: {
+                assignee_name: assignee.username,   // ชื่อจากฐานข้อมูล ไม่ใช่ที่ Frontend ส่งมา
+                previous_assignee_id: doc.assignee_id || null,
+                new_assignee_id: assigneeId,
+                remarks: remarks || null
+            },
+            ipAddress: req.ip,
+            connection
+        });
+
+        await connection.commit();
+
+        const [rows] = await pool.query("SELECT * FROM documents WHERE id = ?", [documentId]);
+        res.json({
+            ok: true,
+            message: `มอบหมายเอกสารให้ ${assignee.username} เรียบร้อยแล้ว`,
+            data: rows[0],
+            audit: auditRecord
+        });
+    } catch (error) {
+        try { await connection.rollback(); } catch (rollbackError) {
+            console.error("Assign rollback failed:", rollbackError);
+        }
+        if (error instanceof HttpError) {
+            return res.status(error.status).json({ error: error.message });
+        }
+        console.error("Assign document error:", error);
+        res.status(500).json({ error: "เกิดข้อผิดพลาดในการมอบหมายเอกสาร" });
+    } finally {
+        connection.release();
+    }
+});
+
+// GET /api/assignees - รายชื่อผู้ที่รับมอบหมายได้ (สำหรับ dropdown) เฉพาะผู้มีสิทธิ์มอบหมาย
+app.get("/api/assignees", requireCognitoAuth, loadUserRole, async (req, res) => {
+    if (!ASSIGNER_ROLES.includes(req.userRole)) {
+        return res.status(403).json({ error: "คุณไม่มีสิทธิ์ดูรายชื่อผู้รับมอบหมาย" });
+    }
+
+    try {
+        const [rows] = await pool.query(
+            `SELECT u.id, u.username, ur.role
+             FROM users u
+             JOIN user_roles ur ON ur.cognito_sub = u.cognito_sub
+             WHERE u.is_active = 1 AND ur.role IN (?)
+             ORDER BY u.username`,
+            [ASSIGNEE_ROLES]
+        );
+        res.json({ data: rows, total: rows.length });
+    } catch (error) {
+        console.error("Fetch assignees error:", error);
+        res.status(500).json({ error: "ไม่สามารถดึงรายชื่อผู้รับมอบหมายได้" });
+    }
+});
+
+// GET /api/my-assignments - เอกสารที่ได้รับมอบหมายให้ "ฉัน" (ดูได้เฉพาะของตัวเอง)
+app.get("/api/my-assignments", requireCognitoAuth, loadUserRole, async (req, res) => {
+    try {
+        const [rows] = await pool.query(
+            `SELECT id, reference_no, subject, document_type, status, deadline, receive_date, created_at
+             FROM documents
+             WHERE assignee_id = ?
+             ORDER BY created_at DESC`,
+            [req.userId]
+        );
+        res.json({ data: rows, total: rows.length });
+    } catch (error) {
+        console.error("Fetch my assignments error:", error);
+        res.status(500).json({ error: "ไม่สามารถดึงรายการเอกสารที่ได้รับมอบหมายได้" });
+    }
+});
+
+// GET /api/documents/:id/assignments - ประวัติการมอบหมายของเอกสาร
+app.get("/api/documents/:id/assignments", requireCognitoAuth, loadUserRole, async (req, res) => {
+    const documentId = Number(req.params.id);
+    if (!Number.isInteger(documentId) || documentId <= 0) {
+        return res.status(400).json({ error: "รหัสเอกสารไม่ถูกต้อง" });
+    }
+
+    try {
+        const [docRows] = await pool.query(
+            "SELECT id, reference_no, assignee_id FROM documents WHERE id = ?",
+            [documentId]
+        );
+        if (docRows.length === 0) {
+            return res.status(404).json({ error: "ไม่พบเอกสารที่ระบุในระบบ" });
+        }
+
+        const doc = docRows[0];
+        const canViewAll = [...ASSIGNER_ROLES, "executive"].includes(req.userRole);
+        const isCurrentAssignee =
+            doc.assignee_id != null && Number(doc.assignee_id) === Number(req.userId);
+
+        if (!canViewAll && !isCurrentAssignee) {
+            return res.status(403).json({ error: "คุณไม่มีสิทธิ์ดูประวัติการมอบหมายของเอกสารนี้" });
+        }
+
+        const [rows] = await pool.query(
+            `SELECT a.id, a.assigned_by_user_id, a.assigned_by_username,
+                    a.previous_assignee_id, a.new_assignee_id, a.action_type, a.remarks, a.assigned_at,
+                    pu.username AS previous_assignee_name,
+                    nu.username AS new_assignee_name
+             FROM document_assignments a
+             LEFT JOIN users pu ON pu.id = CAST(a.previous_assignee_id AS UNSIGNED)
+             LEFT JOIN users nu ON nu.id = CAST(a.new_assignee_id AS UNSIGNED)
+             WHERE a.document_id = ?
+             ORDER BY a.assigned_at ASC, a.id ASC`,
+            [documentId]
+        );
 
         res.json({
             ok: true,
-            message: `มอบหมายเอกสารเรียบร้อยแล้ว`,
-            data: updatedDoc,
-            audit: auditRecord
+            document_id: documentId,
+            reference_no: doc.reference_no,
+            current_assignee_id: doc.assignee_id,
+            history: rows
         });
-
     } catch (error) {
-        console.error("Assign document error:", error);
-        res.status(500).json({ error: "เกิดข้อผิดพลาดในการมอบหมายเอกสาร: " + error.message });
+        console.error("Fetch assignment history error:", error);
+        res.status(500).json({ error: "ไม่สามารถดึงประวัติการมอบหมายได้" });
     }
 });
 
