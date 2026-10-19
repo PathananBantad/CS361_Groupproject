@@ -1,3 +1,4 @@
+
 const loginForm = document.getElementById("loginForm");
 const usernameInput = document.getElementById("username");
 const passwordInput = document.getElementById("password");
@@ -7,17 +8,12 @@ const loginMessage = document.getElementById("loginMessage");
 const togglePassword = document.getElementById("togglePassword");
 const guestLoginBtn = document.getElementById("guestLoginBtn");
 
-function getApiBaseUrl() {
-    return window.API_BASE_URL;
-}
-
-// โหลด Username ล่าสุด หรือค่าเริ่มต้นเป็น admin01
+// โหลด Username ล่าสุด
 document.addEventListener("DOMContentLoaded", () => {
     const savedUser = localStorage.getItem("docuflow_user");
+
     if (savedUser && savedUser !== "Guest") {
         usernameInput.value = savedUser;
-    } else if (!usernameInput.value) {
-        usernameInput.value = "";
     }
 });
 
@@ -35,100 +31,108 @@ if (togglePassword && passwordInput) {
     });
 }
 
-// เข้าสู่ระบบด้วย Username / Password
+// เข้าสู่ระบบด้วย AWS Cognito
 if (loginForm) {
-    loginForm.addEventListener("submit", async (event) => {
+    loginForm.addEventListener("submit", (event) => {
         event.preventDefault();
 
         loginMessage.textContent = "";
 
-        const enteredUsername = usernameInput.value.trim();
-        const enteredPassword = passwordInput.value;
+        const username = usernameInput.value.trim();
+        const password = passwordInput.value;
+        const config = window.COGNITO_CONFIG;
 
-        if (!enteredUsername) {
-            loginMessage.textContent = "กรุณากรอกชื่อผู้ใช้ (เช่น admin01 หรือ staff01)";
+        if (!username) {
+            loginMessage.textContent = "กรุณากรอกชื่อผู้ใช้";
             usernameInput.focus();
             return;
         }
 
-        if (!enteredPassword) {
+        if (!password) {
             loginMessage.textContent = "กรุณากรอกรหัสผ่าน";
             passwordInput.focus();
+            return;
+        }
+
+        if (
+            !window.AmazonCognitoIdentity ||
+            !config ||
+            !config.userPoolId ||
+            !config.clientId
+        ) {
+            loginMessage.textContent =
+                "ระบบ Cognito โหลดไม่สำเร็จ กรุณาตรวจสอบ SDK และ Config";
             return;
         }
 
         loginButton.disabled = true;
         loginButtonText.textContent = "SIGNING IN...";
 
-        try {
-            const fetchOptions = {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json"
-                },
-                body: JSON.stringify({
-                    username: enteredUsername,
-                    password: enteredPassword
-                })
-            };
+        const pool = new AmazonCognitoIdentity.CognitoUserPool({
+            UserPoolId: config.userPoolId,
+            ClientId: config.clientId
+        });
 
-            // เบราว์เซอร์จะไม่ส่ง credentials ถ้าเป็น file:///
-            if (window.location.protocol !== "file:") {
-                fetchOptions.credentials = "include";
-            }
+        const cognitoUser = new AmazonCognitoIdentity.CognitoUser({
+            Username: username,
+            Pool: pool
+        });
 
-            const response = await fetch(`${getApiBaseUrl()}/auth/login`, fetchOptions);
-            const result = await response.json().catch(() => ({}));
+        const authenticationDetails =
+            new AmazonCognitoIdentity.AuthenticationDetails({
+                Username: username,
+                Password: password
+            });
 
-            if (!response.ok) {
-                throw new Error(
-                    result.message || result.error || "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง"
+        cognitoUser.authenticateUser(authenticationDetails, {
+            onSuccess: (session) => {
+                // เก็บ Token จาก Cognito สำหรับใช้เรียก Backend
+                localStorage.setItem(
+                    "docuflow_access_token",
+                    session.getAccessToken().getJwtToken()
                 );
+
+                localStorage.setItem(
+                    "docuflow_id_token",
+                    session.getIdToken().getJwtToken()
+                );
+
+                localStorage.setItem("docuflow_user", username);
+
+                // ไม่กำหนด Role จากชื่อ Username
+                localStorage.removeItem("docuflow_role");
+
+                window.location.href = "dashboard.html";
+            },
+
+            onFailure: (error) => {
+                console.error("Cognito login failed:", error);
+
+                loginMessage.textContent =
+                    error.message ||
+                    "เข้าสู่ระบบไม่สำเร็จ กรุณาตรวจสอบ Username และ Password";
+
+                loginButton.disabled = false;
+                loginButtonText.textContent = "SIGN IN";
+            },
+
+            newPasswordRequired: () => {
+                loginMessage.textContent =
+                    "บัญชีนี้ต้องเปลี่ยนรหัสผ่านก่อน กรุณาตั้งรหัสผ่านใหม่ผ่านขั้นตอนของ Cognito";
+
+                loginButton.disabled = false;
+                loginButtonText.textContent = "SIGN IN";
             }
-
-            // กำหนด Role และ User ใน localStorage ให้ตรงกับที่ Login เข้ามา
-            const userRole = (result.user?.roles && result.user.roles[0]) || 
-                             (enteredUsername.toLowerCase().includes("admin") ? "admin" : "staff");
-            const username = result.user?.username || enteredUsername;
-
-            localStorage.setItem("docuflow_role", userRole);
-            localStorage.setItem("docuflow_user", username);
-
-            // เด้งไปยังหน้า Dashboard ทันที
-            window.location.href = "dashboard.html";
-
-        } catch (error) {
-            console.warn("Login attempt error:", error);
-
-            loginMessage.textContent =
-                error.message === "Failed to fetch"
-                    ? "ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ Backend ได้ (กรุณารัน node server.js)"
-                    : error.message || "เข้าสู่ระบบไม่สำเร็จ กรุณาลองใหม่อีกครั้ง";
-
-            loginButton.disabled = false;
-            loginButtonText.textContent = "SIGN IN";
-        }
+        });
     });
 }
 
-// เข้าสู่ระบบในฐานะ Guest
+// Guest ไม่สามารถข้ามการยืนยันตัวตน
 if (guestLoginBtn) {
-    guestLoginBtn.addEventListener("click", async () => {
-        guestLoginBtn.disabled = true;
-        guestLoginBtn.style.opacity = "0.7";
-        guestLoginBtn.style.cursor = "wait";
+    guestLoginBtn.addEventListener("click", (event) => {
+        event.preventDefault();
 
-        try {
-            const fetchOptions = { method: "POST" };
-            if (window.location.protocol !== "file:") {
-                fetchOptions.credentials = "include";
-            }
-            await fetch(`${getApiBaseUrl()}/auth/guest`, fetchOptions).catch(() => {});
-        } finally {
-            // บันทึกสถานะ Guest ลงใน localStorage และไปยัง Dashboard ทันที
-            localStorage.setItem("docuflow_role", "guest");
-            localStorage.setItem("docuflow_user", "Guest");
-            window.location.href = "dashboard.html";
-        }
+        loginMessage.textContent =
+            "กรุณาเข้าสู่ระบบด้วยบัญชีที่ได้รับอนุญาต";
     });
 }
