@@ -1,7 +1,7 @@
 
 window.COGNITO_CONFIG = {
     userPoolId: "us-east-1_1duzJEFfU",
-    clientId: "7k0t8e6499bro55f8faso44m2c"
+    clientId: "454o0719rb9d6lkspv4m8tmb6i"
 };
 
 window.API_BASE_URL =
