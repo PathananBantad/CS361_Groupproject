@@ -8,13 +8,7 @@ const togglePassword = document.getElementById("togglePassword");
 const guestLoginBtn = document.getElementById("guestLoginBtn");
 
 function getApiBaseUrl() {
-    // หากเปิดผ่าน Backend port 3000
-    if (window.location.port === "3000") {
-        return "/api";
-    }
-
-    // หากเปิดผ่าน localhost, 127.0.0.1, Live Server หรือ file:///
-    return "http://localhost:3000/api";
+    return window.API_BASE_URL;
 }
 
 // โหลด Username ล่าสุด หรือค่าเริ่มต้นเป็น admin01
