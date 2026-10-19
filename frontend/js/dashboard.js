@@ -67,11 +67,31 @@ function initRoleManagement() {
         });
 
         const logoutBtn = document.getElementById("logoutBtn");
+
         if (logoutBtn) {
-            logoutBtn.addEventListener("click", () => {
-                localStorage.removeItem("docuflow_role");
-                localStorage.removeItem("docuflow_user");
-                window.location.href = "login.html";
+            logoutBtn.addEventListener("click", async () => {
+                logoutBtn.disabled = true;
+
+                try {
+                    const response = await fetch("/api/auth/logout", {
+                        method: "POST",
+                        credentials: "same-origin"
+                    });
+
+                    if (!response.ok) {
+                        throw new Error("Logout failed");
+                    }
+
+                    localStorage.removeItem("docuflow_role");
+                    localStorage.removeItem("docuflow_user");
+
+                    window.location.href = "login.html";
+
+                } catch (error) {
+                    console.error("Logout error:", error);
+                    alert("ออกจากระบบไม่สำเร็จ กรุณาลองอีกครั้ง");
+                    logoutBtn.disabled = false;
+                }
             });
         }
     }

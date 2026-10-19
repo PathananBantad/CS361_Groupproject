@@ -13,6 +13,8 @@ const path = require("path");
 const sessionMiddleware = require("./session");
 const authRouter = require("./auth");
 const { requireCognitoAuth } = require("./cognito-auth");
+const { requireSessionAuth } = require("./session-auth");
+
 const {
     AUDIT_EVENTS,
     AUDIT_EVENT_METADATA,
@@ -441,8 +443,7 @@ app.get("/api/documents/:id", requireCognitoAuth, async (req, res) => {
 });
 
 // Create document
-app.post("/api/documents", async (req, res) => {
-    try {
+app.post("/api/documents", requireSessionAuth, async (req, res) => {    try {
         let {
             reference_no,
             document_number,
