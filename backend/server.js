@@ -1052,6 +1052,17 @@ app.post("/api/documents/:id/forward", requireCognitoAuth, loadUserRole, async (
                 await connection.rollback();
                 return res.status(403).json({ error: "Forbidden" });
             }
+
+            const forwardableStatuses = ["Received", "Assigned", "Processing"];
+            const currentStatus = String(doc.status || "Received");
+
+            if (!forwardableStatuses.includes(currentStatus)) {
+                await connection.rollback();
+                    return res.status(409).json({
+                    error: `ไม่สามารถส่งต่อเอกสารในสถานะ ${currentStatus} ได้`
+                });
+            }
+
             if (sanitizedNewAssigneeId) {
                 const [targetRows] = await connection.query(
                     `SELECT u.id FROM users u JOIN users_roles ur ON ur.user_id=u.id JOIN roles r ON r.id=ur.role_id
