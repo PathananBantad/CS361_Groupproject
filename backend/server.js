@@ -354,13 +354,37 @@ app.get(
         const finalFileName = doc.file_name || extractFileNameFromKey(doc.file_key);
         const ext = finalFileName ? path.extname(finalFileName).toLowerCase() : "";
         const canPreview = isPreviewable(finalFileName || doc.file_key);
+        const resolvedMime = doc.mime_type || getMimeTypeByExtension(finalFileName || doc.file_key);
+
+        let previewUrl = null;
+        let downloadUrl = null;
+        if (doc.file_key) {
+            try {
+                if (canPreview) {
+                    previewUrl = await createDownloadUrl(doc.file_key, {
+                        disposition: "inline",
+                        fileName: finalFileName,
+                        contentType: resolvedMime
+                    });
+                }
+                downloadUrl = await createDownloadUrl(doc.file_key, {
+                    disposition: "attachment",
+                    fileName: finalFileName,
+                    contentType: resolvedMime
+                });
+            } catch (err) {
+                console.warn("createDownloadUrl error in GET /api/documents/:id:", err.message);
+            }
+        }
 
         res.json({
             ...doc,
             display_file_name: finalFileName,
             file_extension: ext,
             can_preview: canPreview,
-            mime_type: doc.mime_type || getMimeTypeByExtension(finalFileName || doc.file_key)
+            mime_type: resolvedMime,
+            preview_url: previewUrl,
+            download_url: downloadUrl
         });
 
     } catch (error) {
@@ -1671,10 +1695,25 @@ app.get(
             const resolvedMime = doc.mime_type || getMimeTypeByExtension(finalFileName);
 
             let previewUrl = null;
-            if (canPreview) {
+            let downloadUrl = null;
+            try {
+                if (canPreview) {
+                    previewUrl = await createDownloadUrl(fileKey, {
+                        disposition: "inline",
+                        fileName: finalFileName,
+                        contentType: resolvedMime
+                    });
+                }
+                downloadUrl = await createDownloadUrl(fileKey, {
+                    disposition: "attachment",
+                    fileName: finalFileName,
+                    contentType: resolvedMime
+                });
+            } catch (s3Err) {
+                console.warn("createDownloadUrl in preview-url endpoint fallback:", s3Err.message);
                 previewUrl = `/api/documents/${id}/preview-file`;
+                downloadUrl = `/api/documents/${id}/download-file`;
             }
-
 
             res.json({
                 document_id: id,
@@ -1684,7 +1723,7 @@ app.get(
                 file_extension: ext,
                 can_preview: canPreview,
                 preview_url: previewUrl,
-                download_url: `/api/documents/${id}/download-file`
+                download_url: downloadUrl
             });
 
         } catch (error) {
@@ -1968,9 +2007,18 @@ app.get(
             }
 
             const finalFileName = doc.file_name || extractFileNameFromKey(fileKey);
-            const resolvedMime = doc.mime_type || getMimeTypeByExtension(finalFileName);
+            let downloadUrl = null;
+            try {
+                downloadUrl = await createDownloadUrl(fileKey, {
+                    disposition: "attachment",
+                    fileName: finalFileName,
+                    contentType: resolvedMime
+                });
+            } catch (s3Err) {
+                console.warn("createDownloadUrl in download-url endpoint fallback:", s3Err.message);
+                downloadUrl = `/api/documents/${id}/download-file`;
+            }
 
-            const downloadUrl = `/api/documents/${id}/download-file`;
             res.json({
                 document_id: id,
                 file_name: finalFileName,
