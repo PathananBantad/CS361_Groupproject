@@ -1,11 +1,28 @@
-
 const express = require("express");
-const bcrypt = require("bcrypt");
+const crypto = require("node:crypto");
 const pool = require("./db");
+
+const {
+    CognitoIdentityProviderClient,
+    InitiateAuthCommand,
+    GetUserCommand
+} = require("@aws-sdk/client-cognito-identity-provider");
 
 const router = express.Router();
 
-// Login
+const cognito = new CognitoIdentityProviderClient({
+    region: process.env.COGNITO_REGION
+});
+
+// สร้าง SECRET_HASH สำหรับ Cognito App client ที่มี Client secret
+function createSecretHash(username) {
+    return crypto
+        .createHmac("sha256", process.env.COGNITO_CLIENT_SECRET)
+        .update(username + process.env.COGNITO_APP_CLIENT_ID)
+        .digest("base64");
+}
+
+// Login ผ่าน Amazon Cognito
 router.post("/login", async (req, res) => {
     try {
         const { username, password } = req.body || {};
@@ -18,61 +35,77 @@ router.post("/login", async (req, res) => {
         ) {
             return res.status(400).json({
                 ok: false,
-                message: "กรุณากรอกชื่อผู้ใช้และรหัสผ่าน"
+                message: "กรุณากรอกอีเมลและรหัสผ่าน"
             });
         }
 
+        // 1. ให้ Cognito ตรวจสอบ Email และ Password
+        const authResult = await cognito.send(
+            new InitiateAuthCommand({
+                AuthFlow: "USER_PASSWORD_AUTH",
+                ClientId: process.env.COGNITO_APP_CLIENT_ID,
+                AuthParameters: {
+                    USERNAME: username.trim(),
+                    PASSWORD: password,
+                    SECRET_HASH: createSecretHash(username.trim())
+                }
+            })
+        );
+
+        // 2. ตรวจสอบว่าต้องทำขั้นตอนเพิ่มเติมหรือไม่
+        if (authResult.ChallengeName) {
+            return res.status(403).json({
+                ok: false,
+                message: "บัญชีนี้ต้องเปลี่ยนรหัสผ่านหรือยืนยันตัวตนเพิ่มเติมใน Cognito ก่อน"
+            });
+        }
+
+        const accessToken = authResult.AuthenticationResult?.AccessToken;
+
+        if (!accessToken) {
+            return res.status(401).json({
+                ok: false,
+                message: "ไม่สามารถยืนยันตัวตนผ่าน Cognito ได้"
+            });
+        }
+
+        // 3. อ่านข้อมูลผู้ใช้จาก Cognito ด้วย Access Token
+        const cognitoUser = await cognito.send(
+            new GetUserCommand({
+                AccessToken: accessToken
+            })
+        );
+
+        const cognitoSub = cognitoUser.UserAttributes?.find(
+            (attribute) => attribute.Name === "sub"
+        )?.Value;
+
+        if (!cognitoSub) {
+            return res.status(401).json({
+                ok: false,
+                message: "ไม่พบ User ID จาก Cognito"
+            });
+        }
+
+        // 4. ค้นหาบัญชีที่เชื่อมไว้ใน MySQL
         const [users] = await pool.query(
-            `SELECT id, username, password, role
+            `SELECT id, username, role
              FROM users
-             WHERE username = ?
+             WHERE cognito_sub = ?
              LIMIT 1`,
-            [username.trim()]
+            [cognitoSub]
         );
 
         if (users.length === 0) {
-            return res.status(401).json({
+            return res.status(403).json({
                 ok: false,
-                message: "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง"
+                message: "บัญชี Cognito นี้ยังไม่ได้เชื่อมกับผู้ใช้ในระบบ"
             });
         }
 
         const user = users[0];
-        const storedPassword = user.password;
 
-        let passwordMatches = false;
-
-        // รองรับ bcrypt hash ที่มีอยู่แล้ว
-        if (
-            typeof storedPassword === "string" &&
-            /^\$2[aby]\$/.test(storedPassword)
-        ) {
-            passwordMatches = await bcrypt.compare(
-                password,
-                storedPassword
-            );
-        } else {
-            // รองรับรหัสผ่านเดิมที่ยังไม่ได้ hash
-            passwordMatches = password === storedPassword;
-        }
-
-        if (!passwordMatches) {
-            return res.status(401).json({
-                ok: false,
-                message: "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง"
-            });
-        }
-
-        // เปลี่ยนรหัสผ่านเดิมเป็น bcrypt hash หลังตรวจสอบสำเร็จ
-        if (!/^\$2[aby]\$/.test(storedPassword)) {
-            const passwordHash = await bcrypt.hash(password, 12);
-
-            await pool.query(
-                "UPDATE users SET password = ? WHERE id = ?",
-                [passwordHash, user.id]
-            );
-        }
-
+        // 5. สร้าง Session หลังยืนยันตัวตนสำเร็จ
         if (!req.session) {
             return res.status(500).json({
                 ok: false,
@@ -114,11 +147,21 @@ router.post("/login", async (req, res) => {
             });
         });
     } catch (error) {
-        console.error("Login error:", error.message);
+        console.error("Cognito login error:", {
+            name: error.name,
+            message: error.message
+        });
 
-        return res.status(500).json({
+        const invalidCredentials = [
+            "NotAuthorizedException",
+            "UserNotFoundException"
+        ].includes(error.name);
+
+        return res.status(invalidCredentials ? 401 : 500).json({
             ok: false,
-            message: "เกิดข้อผิดพลาดในการเข้าสู่ระบบ"
+            message: invalidCredentials
+                ? "อีเมลหรือรหัสผ่านไม่ถูกต้อง"
+                : "ไม่สามารถเข้าสู่ระบบผ่าน Cognito ได้ กรุณาตรวจสอบการตั้งค่าหรือสถานะบัญชี"
         });
     }
 });

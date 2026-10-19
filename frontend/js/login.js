@@ -23,7 +23,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (savedUser && savedUser !== "Guest") {
         usernameInput.value = savedUser;
     } else if (!usernameInput.value) {
-        usernameInput.value = "admin01";
+        usernameInput.value = "";
     }
 });
 
@@ -58,7 +58,7 @@ if (loginForm) {
         }
 
         if (!enteredPassword) {
-            loginMessage.textContent = "กรุณากรอกรหัสผ่าน (รหัสผ่านคือ 1234)";
+            loginMessage.textContent = "กรุณากรอกรหัสผ่าน";
             passwordInput.focus();
             return;
         }
@@ -105,23 +105,6 @@ if (loginForm) {
 
         } catch (error) {
             console.warn("Login attempt error:", error);
-
-            // กรณีเปิดผ่าน file:/// หรือเบราว์เซอร์บล็อกการเชื่อมต่อ localhost ชั่วคราว
-            // ให้ตรวจสอบว่ารหัสผ่าน 1234 ถูกต้องหรือไม่ ถ้าถูกต้องให้พาเข้าสู่ระบบได้เลย
-            const lowerUser = enteredUsername.toLowerCase();
-            const isValidLocalDemo = (
-                (lowerUser === "admin01" || lowerUser === "admin" || lowerUser === "staff01" || lowerUser === "staff") &&
-                enteredPassword === "1234"
-            );
-
-            if (isValidLocalDemo && (error.message === "Failed to fetch" || error.name === "TypeError")) {
-                const fallbackRole = lowerUser.includes("admin") ? "admin" : "staff";
-                const fallbackUser = lowerUser.includes("admin") ? "admin01" : "staff01";
-                localStorage.setItem("docuflow_role", fallbackRole);
-                localStorage.setItem("docuflow_user", fallbackUser);
-                window.location.href = "dashboard.html";
-                return;
-            }
 
             loginMessage.textContent =
                 error.message === "Failed to fetch"
