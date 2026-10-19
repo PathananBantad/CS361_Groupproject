@@ -1,6 +1,7 @@
 window.COGNITO_CONFIG = {
     userPoolId: "us-east-1_1duzJEFfU",
-    clientId: "454o0719rb9d6lkspv4m8tmb6i"
+    clientId: "454o0719rb9d6lkspv4m8tmb6i",
+    region: "us-east-1"
 };
 
 window.API_BASE_URL = window.location.port === "3000"
