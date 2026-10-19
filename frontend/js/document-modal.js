@@ -345,6 +345,7 @@
                             <div class="details-section-title"><span aria-hidden="true">⏱️</span> ประวัติการเปลี่ยนสถานะ (Workflow Audit Trail)</div>
                             <div class="history-timeline" id="statusHistoryTimeline"><div class="history-loading">กำลังโหลดประวัติการเปลี่ยนสถานะ...</div></div>
                         </section>
+                        <div id="forwardSectionContainer"></div>
                     </div>
 
                     <!-- คอลัมน์ขวา: Preview & Download -->
@@ -909,6 +910,58 @@
             documentModal.showModal();
         }
 
+        const forwarderRoles = [
+            "document_officer",
+            "case_owner",
+            "admin",
+            "faculty_staff"
+        ];
+
+            const forwardHost = document.getElementById("forwardSectionContainer");
+
+            if (forwardHost) {
+                forwardHost.innerHTML = forwarderRoles.includes(auth.role)
+                    ? renderForwardSection(doc.id)
+                    : "";
+
+                if (forwarderRoles.includes(auth.role)) {
+                    const recipientSelect = document.getElementById("modalForwardAssigneeId");
+
+                    try {
+                        const response = await window.apiFetch(
+                            `${getApiBaseUrl()}/forward-recipients`
+                        );
+                        const result = await response.json();
+
+                        if (!response.ok) {
+                            throw new Error(result.error || "โหลดรายชื่อผู้รับไม่สำเร็จ");
+                        }
+
+                    recipientSelect.replaceChildren(
+                        new Option("เลือกผู้รับผิดชอบ", "")
+                    );
+
+                    for (const user of result.data || []) {
+                        const displayName = user.full_name || user.username;
+                        recipientSelect.add(
+                            new Option(`${displayName} (${user.username})`, String(user.id))
+                        );
+                    }
+
+                    if (!result.data?.length) {
+                        recipientSelect.replaceChildren(
+                            new Option("ไม่พบผู้รับที่ใช้งานได้", "")
+                        );
+                    }
+                } catch (error) {
+                    console.error("Load forwarding recipients error:", error);
+                    recipientSelect.replaceChildren(
+                        new Option("โหลดรายชื่อผู้รับไม่สำเร็จ", "")
+                    );
+                }
+            }
+        }
+
         // 4. กรณีไม่มีไฟล์แนบ
         if (!doc.file_key) {
             if (previewFileName) previewFileName.textContent = "ไม่มีไฟล์แนบในระบบ";
@@ -1247,6 +1300,7 @@
         download: downloadDocumentFile,
         close: () => { if (documentModal && documentModal.open) documentModal.close(); },
         ensureLoaded: ensureModalLoaded,
+        getApiBaseUrl: getApiBaseUrl,
         refreshWorkflowUI: refreshWorkflowUI,
         changeStatus: changeDocumentStatus
     };
@@ -1263,7 +1317,10 @@ function renderForwardSection(documentId) {
             
             <div style="margin-bottom: 10px;">
                 <label style="display: block; font-size: 13px; margin-bottom: 4px; color: #374151;">รหัสผู้รับส่งต่อ (New Assignee ID):</label>
-                <input type="text" id="modalForwardAssigneeId" placeholder="ระบุ User ID ปลายทาง เช่น 1, 2..." style="width: 100%; padding: 8px; border: 1px solid #d1d5db; border-radius: 4px;">
+                <select id="modalForwardAssigneeId"
+                        style="width: 100%; padding: 8px; border: 1px solid #d1d5db; border-radius: 4px;">
+                    <option value="">กำลังโหลดรายชื่อผู้รับ...</option>
+                </select>
             </div>
 
             <div style="margin-bottom: 10px;">
@@ -1295,7 +1352,7 @@ async function submitDocumentForward(documentId) {
     }
 
     try {
-        const apiBase = getApiBaseUrl();
+        const apiBase = window.DocuFlowModal.getApiBaseUrl();
         const authToken = localStorage.getItem("docuflow_access_token") || localStorage.getItem("access_token") || localStorage.getItem("docuflow_id_token") || localStorage.getItem("id_token") || "";
         const response = await window.apiFetch(`${apiBase}/documents/${documentId}/forward`, {
             method: "POST",
