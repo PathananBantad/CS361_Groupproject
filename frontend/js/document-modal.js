@@ -843,6 +843,12 @@
         }
 
         currentActiveDoc = doc;
+        if (window.DocuFlowAssignment) {
+            window.DocuFlowAssignment.mount(doc, {
+                onDone: () => { if (window.fetchDocuments) window.fetchDocuments(); }
+            });
+        }
+
         const auth = getCurrentAuth();
 
         // 1. เติมข้อมูลรายละเอียดเอกสาร (Details)
