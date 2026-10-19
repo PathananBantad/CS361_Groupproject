@@ -33,14 +33,13 @@ if (togglePassword && passwordInput) {
 
 // เข้าสู่ระบบด้วย AWS Cognito
 if (loginForm) {
-    loginForm.addEventListener("submit", (event) => {
+    loginForm.addEventListener("submit", async (event) => {
         event.preventDefault();
 
         loginMessage.textContent = "";
 
         const username = usernameInput.value.trim();
         const password = passwordInput.value;
-        const config = window.COGNITO_CONFIG;
 
         if (!username) {
             loginMessage.textContent = "กรุณากรอกชื่อผู้ใช้";
@@ -54,76 +53,52 @@ if (loginForm) {
             return;
         }
 
-        if (
-            !window.AmazonCognitoIdentity ||
-            !config ||
-            !config.userPoolId ||
-            !config.clientId
-        ) {
-            loginMessage.textContent =
-                "ระบบ Cognito โหลดไม่สำเร็จ กรุณาตรวจสอบ SDK และ Config";
-            return;
-        }
-
         loginButton.disabled = true;
         loginButtonText.textContent = "SIGNING IN...";
 
-        const pool = new AmazonCognitoIdentity.CognitoUserPool({
-            UserPoolId: config.userPoolId,
-            ClientId: config.clientId
-        });
-
-        const cognitoUser = new AmazonCognitoIdentity.CognitoUser({
-            Username: username,
-            Pool: pool
-        });
-
-        const authenticationDetails =
-            new AmazonCognitoIdentity.AuthenticationDetails({
-                Username: username,
-                Password: password
+        try {
+            const response = await fetch("/api/auth/login", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                credentials: "same-origin",
+                body: JSON.stringify({
+                    username,
+                    password
+                })
             });
 
-        cognitoUser.authenticateUser(authenticationDetails, {
-            onSuccess: (session) => {
-                // เก็บ Token จาก Cognito สำหรับใช้เรียก Backend
-                localStorage.setItem(
-                    "docuflow_access_token",
-                    session.getAccessToken().getJwtToken()
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(
+                    data.message ||
+                    "อีเมลหรือรหัสผ่านไม่ถูกต้อง"
                 );
-
-                localStorage.setItem(
-                    "docuflow_id_token",
-                    session.getIdToken().getJwtToken()
-                );
-
-                localStorage.setItem("docuflow_user", username);
-
-                // ไม่กำหนด Role จากชื่อ Username
-                localStorage.removeItem("docuflow_role");
-
-                window.location.href = "dashboard.html";
-            },
-
-            onFailure: (error) => {
-                console.error("Cognito login failed:", error);
-
-                loginMessage.textContent =
-                    error.message ||
-                    "เข้าสู่ระบบไม่สำเร็จ กรุณาตรวจสอบ Username และ Password";
-
-                loginButton.disabled = false;
-                loginButtonText.textContent = "SIGN IN";
-            },
-
-            newPasswordRequired: () => {
-                loginMessage.textContent =
-                    "บัญชีนี้ต้องเปลี่ยนรหัสผ่านก่อน กรุณาตั้งรหัสผ่านใหม่ผ่านขั้นตอนของ Cognito";
-
-                loginButton.disabled = false;
-                loginButtonText.textContent = "SIGN IN";
             }
-        });
+
+            // Backend สร้าง Session Cookie ให้แล้ว
+            // ไม่ต้องเก็บ Cognito Token ใน localStorage
+            localStorage.removeItem("docuflow_access_token");
+            localStorage.removeItem("docuflow_id_token");
+            localStorage.removeItem("docuflow_role");
+
+            localStorage.setItem("docuflow_user", username);
+
+            window.location.href = "dashboard.html";
+
+        } catch (error) {
+            console.error("Login failed:", error);
+
+            loginMessage.textContent =
+                error.message ||
+                "เข้าสู่ระบบไม่สำเร็จ กรุณาลองอีกครั้ง";
+
+        } finally {
+            loginButton.disabled = false;
+            loginButtonText.textContent = "SIGN IN";
+        }
     });
 }
 
