@@ -1352,7 +1352,7 @@ async function submitDocumentForward(documentId) {
     }
 
     try {
-        const apiBase = window.DocuFlowModal.getApiBaseUrl();
+        const apiBase = getApiBaseUrl();
         const authToken = localStorage.getItem("docuflow_access_token") || localStorage.getItem("access_token") || localStorage.getItem("docuflow_id_token") || localStorage.getItem("id_token") || "";
         const response = await window.apiFetch(`${apiBase}/documents/${documentId}/forward`, {
             method: "POST",
