@@ -204,10 +204,10 @@ app.get(
 
             const params = [];
 
-            if (!req.userRoles.some((item) => ["admin", "executive", "document_officer"].includes(item))) {
-                sql += " AND (d.owner_id = ? OR d.assignee_id = ?)";
-                params.push(userId, userId);
-            }
+            // Reading is conditional for every role in the V3 Role Matrix.
+            // Limit rows in SQL before returning document data or file metadata.
+            sql += " AND (d.owner_id = ? OR d.assignee_id = ?)";
+            params.push(userId, userId);
 
             // Search by reference number
             if (reference_no) {
@@ -770,7 +770,7 @@ app.put("/api/documents/:id/status", requireCognitoAuth, loadUserRole, async (re
 });
 
 // กติกาการมอบหมายเอกสาร (ปรับตาม Role Matrix)
-const ASSIGNER_ROLES = ["document_officer", "admin"];     // มอบหมายได้
+const ASSIGNER_ROLES = ["document_officer", "faculty_staff", "case_owner", "admin"]; // ตาม Role Matrix
 const ASSIGNEE_ROLES = ["case_owner", "faculty_staff"];   // รับมอบหมายได้
 
 class HttpError extends Error {
@@ -812,9 +812,8 @@ app.post("/api/documents/:id/assign", requireCognitoAuth, loadUserRole, async (r
         if (docRows.length === 0) throw new HttpError(404, "ไม่พบเอกสารที่ระบุในระบบ");
 
         const doc = docRows[0];
-        const documentAccess = checkDocumentAccess(req, doc);
-        if (!documentAccess.allowed) {
-            throw new HttpError(403, "คุณไม่มีสิทธิ์เข้าถึงเอกสารนี้เพื่อมอบหมาย");
+        if (!checkDocumentAccess(req, doc, "assign").allowed) {
+            throw new HttpError(403, "คุณไม่มีสิทธิ์มอบหมายเอกสารนี้");
         }
         const oldStatus = doc.status || "Received";
         if (oldStatus === "Completed") {
@@ -977,10 +976,7 @@ app.get("/api/documents/:id/assignments", requireCognitoAuth, loadUserRole, asyn
 
         const doc = docRows[0];
         const canViewDocument = checkDocumentAccess(req, doc, "read").allowed;
-        const isCurrentAssignee =
-            doc.assignee_id != null && Number(doc.assignee_id) === Number(req.userId);
-
-        if (!canViewDocument && !isCurrentAssignee) {
+        if (!canViewDocument) {
             return res.status(403).json({ error: "คุณไม่มีสิทธิ์ดูประวัติการมอบหมายของเอกสารนี้" });
         }
 

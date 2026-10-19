@@ -5,18 +5,32 @@ const express = require("express");
 
 const documents = [
     { id: 101, reference_no: "DOC-101", subject: "Owned", status: "Received", owner_id: 7, assignee_id: null, file_key: "documents/101/file.pdf", file_name: "file.pdf", file_size: 4, mime_type: "application/pdf" },
-    { id: 102, reference_no: "DOC-102", subject: "Other", status: "Received", owner_id: 8, assignee_id: 9, file_key: "documents/102/file.pdf", file_name: "file.pdf", file_size: 4, mime_type: "application/pdf" }
+    { id: 102, reference_no: "DOC-102", subject: "Admin owned", status: "Received", owner_id: 8, assignee_id: null, file_key: "documents/102/file.pdf", file_name: "file.pdf", file_size: 4, mime_type: "application/pdf" },
+    { id: 103, reference_no: "DOC-103", subject: "Officer owned", status: "Received", owner_id: 6, assignee_id: null, file_key: "documents/103/file.pdf", file_name: "file.pdf", file_size: 4, mime_type: "application/pdf" },
+    { id: 104, reference_no: "DOC-104", subject: "Executive owned", status: "Received", owner_id: 10, assignee_id: null, file_key: "documents/104/file.pdf", file_name: "file.pdf", file_size: 4, mime_type: "application/pdf" },
+    { id: 105, reference_no: "DOC-105", subject: "Case owner owned", status: "Received", owner_id: 9, assignee_id: null, file_key: "documents/105/file.pdf", file_name: "file.pdf", file_size: 4, mime_type: "application/pdf" }
 ];
 const effects = { updates: 0, s3: 0, historyReads: 0 };
+const identities = {
+    "admin@example.test": { role: "admin", userId: 8 },
+    "officer@example.test": { role: "document_officer", userId: 6 },
+    "faculty@example.test": { role: "faculty_staff", userId: 7 },
+    "case-owner@example.test": { role: "case_owner", userId: 9 },
+    "executive@example.test": { role: "executive", userId: 10 }
+};
 const pool = {
     async execute(_sql, [username]) {
-        const role = username === "admin@example.test" ? "admin" : username === "officer@example.test" ? "document_officer" : "faculty_staff";
-        const userId = role === "admin" ? 8 : role === "document_officer" ? 6 : 7;
+        const { role, userId } = identities[username] || identities["faculty@example.test"];
         return [[{ userId, username, role }]];
     },
     async query(sql, params = []) {
-        if (/FROM documents d/i.test(sql) && /WHERE d\.id = \?/i.test(sql)) return [[documents.filter((doc) => String(doc.id) === String(params[0]))]];
-        if (/SELECT \* FROM documents WHERE id/i.test(sql)) return [[documents.filter((doc) => String(doc.id) === String(params[0]))]];
+        if (/FROM documents d/i.test(sql) && /WHERE 1 = 1/i.test(sql)) {
+            const [ownerId, assigneeId] = params;
+            const scoped = /d\.owner_id\s*=\s*\?/i.test(sql) && /d\.assignee_id\s*=\s*\?/i.test(sql);
+            return [[...documents.filter((doc) => scoped && (String(doc.owner_id) === String(ownerId) || String(doc.assignee_id) === String(assigneeId)))]];
+        }
+        if (/FROM documents d/i.test(sql) && /WHERE d\.id = \?/i.test(sql)) return [documents.filter((doc) => String(doc.id) === String(params[0]))];
+        if (/SELECT \* FROM documents WHERE id/i.test(sql)) return [documents.filter((doc) => String(doc.id) === String(params[0]))];
         if (/document_status_logs/i.test(sql)) { effects.historyReads++; return [[]]; }
         if (/UPDATE documents|INSERT INTO document_files|UPDATE document_files/i.test(sql)) { effects.updates++; return [{ affectedRows: 1 }]; }
         return [[]];
@@ -34,7 +48,7 @@ const cognito = (req, res, next) => {
     if (token === "Bearer invalid") return res.status(401).json({ error: "Unauthorized" });
     if (!token || !token.startsWith("Bearer ")) return res.status(401).json({ error: "Unauthorized" });
     const name = token.slice(7);
-    const username = name === "admin" ? "admin@example.test" : name === "officer" ? "officer@example.test" : "faculty@example.test";
+    const username = ({ admin: "admin@example.test", officer: "officer@example.test", faculty: "faculty@example.test", "case-owner": "case-owner@example.test", executive: "executive@example.test", "group-admin-faculty": "faculty@example.test" })[name] || "faculty@example.test";
     req.auth = { sub: `sub-${name}`, username, groups: name === "group-admin-faculty" ? ["admin"] : [] };
     next();
 };
@@ -102,8 +116,20 @@ test("missing and invalid bearer tokens are rejected", async () => {
     assert.equal((await request("/api/documents/101", "invalid")).status, 401);
 });
 
+test("document lists are scoped to each authenticated role's own related documents", async () => {
+    const expected = { officer: [103], faculty: [101], "case-owner": [105], admin: [102], executive: [104] };
+    const visible = {};
+    for (const [token, ids] of Object.entries(expected)) {
+        const response = await request("/api/documents", token);
+        assert.equal(response.status, 200, `${token}: ${JSON.stringify(response.body)}`);
+        visible[token] = (await response.json()).data.map((doc) => doc.id);
+        assert.deepEqual(visible[token], ids);
+    }
+    assert.equal(new Set(Object.values(visible).map((ids) => ids.join(","))).size, Object.keys(expected).length);
+});
+
 test("authorized related reads succeed while unrelated and conflicting group reads fail", async () => {
-    const own = await request("/api/documents/101", "officer");
+    const own = await request("/api/documents/103", "officer");
     assert.equal(own.status, 200, JSON.stringify(own.body));
     assert.equal((await request("/api/documents/102", "faculty")).status, 403);
     assert.equal((await request("/api/documents/102", "group-admin-faculty")).status, 403);
@@ -132,17 +158,17 @@ test("unauthorized upload, metadata, preview, and download stop before storage",
 });
 
 test("authorized upload URL uses the frontend contract and a backend generated document key", async () => {
-    const response = await request("/api/documents/101/upload-url?fileName=a.pdf&contentType=application%2Fpdf&fileSize=4", "officer");
+    const response = await request("/api/documents/103/upload-url?fileName=a.pdf&contentType=application%2Fpdf&fileSize=4", "officer");
     assert.equal(response.status, 200);
     const payload = await response.json();
     assert.equal(payload.upload_url, "https://example.test/upload");
-    assert.match(payload.file_key, /^documents\/101\//);
+    assert.match(payload.file_key, /^documents\/103\//);
 });
 
 test("tampered metadata keys are rejected before S3 or database writes", async () => {
     const storageBefore = effects.s3;
     const writesBefore = effects.updates;
-    const result = await request("/api/documents/101/file-metadata", "officer", {
+    const result = await request("/api/documents/103/file-metadata", "officer", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ fileName: "file.pdf", fileSize: 4, mimeType: "application/pdf", fileKey: "documents/102/stolen.pdf" })
     });
