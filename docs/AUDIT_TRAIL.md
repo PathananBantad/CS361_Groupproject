@@ -24,7 +24,7 @@
 | Event Type | ชื่อภาษาไทย | คำอธิบาย | API ที่เกี่ยวข้อง | สิทธิ์ที่ดำเนินการได้ |
 | :--- | :--- | :--- | :--- | :--- |
 | `DOCUMENT_CREATE` | การลงทะเบียนเอกสารใหม่ | บันทึกเมื่อมีการสร้างเอกสารเข้าสู่ระบบเป็นครั้งแรก | `POST /api/documents` | เจ้าหน้าที่รับเอกสาร / ผู้ใช้งานที่ได้รับอนุญาต |
-| `ASSIGN` | การมอบหมายเอกสาร | บันทึกเมื่อมีการมอบหมายเอกสารให้ผู้รับผิดชอบดำเนินการ | `POST /api/documents/:id/assign` | `document_officer`, `case_owner`, `admin`, `staff` |
+| `ASSIGN` | การมอบหมายเอกสาร | บันทึกเมื่อมีการมอบหมายเอกสารให้ผู้รับผิดชอบดำเนินการ | `POST /api/documents/:id/assign` | `document_officer`, `admin` |
 | `FORWARD` | การส่งต่อเอกสาร | บันทึกเมื่อมีการส่งต่อเอกสารไปยังบุคคลหรือหน่วยงานอื่น | `POST /api/documents/:id/forward` | `document_officer`, `case_owner`, `admin`, `staff` |
 | `STATUS_CHANGE` | การเปลี่ยนสถานะเอกสาร | บันทึกเมื่อมีการเปลี่ยนสถานะตามขั้นตอน Workflow | `PUT /api/documents/:id/status` | `document_officer`, `case_owner`, `admin`, `staff` |
 
@@ -322,14 +322,17 @@ null
 
 ### 7.3 มอบหมายเอกสาร (`POST /api/documents/:id/assign`)
 - **Method:** `POST`
+- **สิทธิ์:** `document_officer` หรือ `admin`; Server ตรวจ Role และสิทธิ์เข้าถึงเอกสารก่อนบันทึก
+- **ผู้รับ:** ต้องเป็นบัญชีที่ใช้งานได้และมี Role `case_owner` หรือ `faculty_staff`; การมอบหมายไม่เปลี่ยน `owner_id` หรือเพิ่มสิทธิ์เข้าถึงเอกสาร
+- **รายการของผู้ใช้:** `GET /api/my-assignments` คืนเฉพาะเอกสารที่มอบหมายให้ผู้ใช้ที่ยืนยันตัวตนอยู่
 - **Body:**
 ```json
 {
   "assignee_id": "1",
-  "assignee_name": "อาจารย์ สมชาย",
   "remarks": "มอบหมายให้ตรวจสอบเอกสาร"
 }
 ```
+- ผู้มอบหมายและ Role มาจากข้อมูลผู้ใช้ที่ Server ยืนยันแล้ว ไม่รับจาก Request Body
 
 ### 7.4 ส่งต่อเอกสาร (`POST /api/documents/:id/forward`)
 - **Method:** `POST`

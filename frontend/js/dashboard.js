@@ -25,13 +25,13 @@ let currentRole = null;
 let currentUsername = null;
 
 // Helper เพื่อหา API Base URL
-// Helper เพื่อหา API Base URL
 function getApiBaseUrl() {
+    const base = window.API_BASE_URL || "https://utvhg6d6o3.execute-api.us-east-1.amazonaws.com";
     if (window.location.port === "3000") {
         return "/api";
     }
 
-    return "https://utvhg6d6o3.execute-api.us-east-1.amazonaws.com/api";
+    return base.endsWith("/api") ? base : `${base}/api`;
 }
 
 /* =====================================================
@@ -66,29 +66,15 @@ function initRoleManagement() {
         const logoutBtn = document.getElementById("logoutBtn");
 
         if (logoutBtn) {
-            logoutBtn.addEventListener("click", async () => {
-                logoutBtn.disabled = true;
+            logoutBtn.addEventListener("click", () => {
+                localStorage.removeItem("docuflow_role");
+                localStorage.removeItem("docuflow_user");
+                localStorage.removeItem("docuflow_access_token");
+                localStorage.removeItem("docuflow_id_token");
+                localStorage.removeItem("access_token");
+                localStorage.removeItem("id_token");
 
-                try {
-                    const response = await fetch("/api/auth/logout", {
-                        method: "POST",
-                        credentials: "same-origin"
-                    });
-
-                    if (!response.ok) {
-                        throw new Error("Logout failed");
-                    }
-
-                    localStorage.removeItem("docuflow_role");
-                    localStorage.removeItem("docuflow_user");
-
-                    window.location.href = "login.html";
-
-                } catch (error) {
-                    console.error("Logout error:", error);
-                    alert("ออกจากระบบไม่สำเร็จ กรุณาลองอีกครั้ง");
-                    logoutBtn.disabled = false;
-                }
+                window.location.href = "login.html";
             });
         }
     }
@@ -108,11 +94,13 @@ function updateRoleUI() {
     if (!userRoleDisplay || !userRoleDot) return;
 
     const roleLabels = {
-        staff: "เจ้าหน้าที่",
-        officer: "เจ้าหน้าที่ (Officer)",
-        faculty_staff: "เจ้าหน้าที่คณะ",
         admin: "ผู้ดูแลระบบ",
+        document_officer: "เจ้าหน้าที่สารบรรณ",
+        officer: "เจ้าหน้าที่สารบรรณ",
+        faculty_staff: "เจ้าหน้าที่คณะ",
+        staff: "เจ้าหน้าที่คณะ",
         case_owner: "ผู้รับผิดชอบเอกสาร",
+        executive: "ผู้บริหาร",
         guest: "ผู้ใช้ทั่วไป"
     };
 
@@ -122,6 +110,12 @@ function updateRoleUI() {
 
     if (currentRole === "admin") {
         userRoleDot.classList.add("role-admin");
+    } else if (currentRole === "executive") {
+        userRoleDot.classList.add("role-executive");
+    } else if (currentRole === "document_officer" || currentRole === "officer") {
+        userRoleDot.classList.add("role-officer");
+    } else if (currentRole === "case_owner") {
+        userRoleDot.classList.add("role-owner");
     } else if (currentRole === "guest") {
         userRoleDot.classList.add("role-guest");
     } else {
@@ -159,23 +153,15 @@ async function fetchDocuments() {
     }
 
     const apiBase = getApiBaseUrl();
+    const token = localStorage.getItem("docuflow_access_token") || localStorage.getItem("access_token") || localStorage.getItem("docuflow_id_token") || localStorage.getItem("id_token") || "";
 
     try {
-        let response;
-        try {
-            response = await fetch(`${apiBase}/documents?${params.toString()}`);
-            if (!response.ok && apiBase.includes("localhost")) {
-                throw new Error(`Local server returned ${response.status}`);
-            }
-        } catch (fetchErr) {
-            // หากต่อ local server ไม่ได้ (เช่น ยังไม่ได้รัน node server.js) ให้ลองสลับไปใช้ AWS API Gateway
-            if (apiBase.includes("localhost")) {
-                console.warn("Local server not available, attempting AWS API Gateway fallback...", fetchErr);
-                response = await fetch(`https://utvhg6d6o3.execute-api.us-east-1.amazonaws.com/api/documents?${params.toString()}`);
-            } else {
-                throw fetchErr;
-            }
+        const headers = {};
+        if (token) {
+            headers["Authorization"] = `Bearer ${token}`;
         }
+
+        const response = await window.apiFetch(`${apiBase}/documents?${params.toString()}`, { headers });
 
         if (!response.ok) {
             throw new Error(`เซิร์ฟเวอร์ตอบกลับรหัสข้อผิดพลาด: ${response.status}`);
@@ -241,6 +227,9 @@ async function fetchDocuments() {
                 sender_dept: row.sender_department || "-",
                 sender_contact: row.sender_contact || "-",
                 receiver: row.receiver_name || "-",
+                assignee_id: row.assignee_id || null,
+                assignee_username: row.assignee_username || null,
+                assignee_full_name: row.assignee_full_name || null,
                 send_date: safeFormatDate(row.sent_date),
                 receive_date: safeFormatDate(row.receive_date),
                 deadline: safeFormatDate(row.deadline),
@@ -563,38 +552,24 @@ function escapeHtml(value) {
 /* =====================================================
    INITIALIZE
 ===================================================== */
-async function initializeDashboard() {
-    try {
-        const response = await fetch("/api/auth/me", {
-            credentials: "same-origin",
-            cache: "no-store"
-        });
+function initializeDashboard() {
+    const savedUser = localStorage.getItem("docuflow_user");
+    const accessToken = localStorage.getItem("docuflow_access_token") || localStorage.getItem("access_token");
+    const savedRole = localStorage.getItem("docuflow_role");
 
-        if (!response.ok) {
-            window.location.replace("login.html");
-            return;
-        }
-
-        const data = await response.json();
-
-        if (!data.authenticated || !data.user) {
-            window.location.replace("login.html");
-            return;
-        }
-
-        // ใช้ข้อมูลผู้ใช้จาก Session จริง
-        currentRole = data.user.roles?.[0] || null;
-        currentUsername = data.user.username || null;
-
-        initRoleManagement();
-        syncFilterButtons();
-        setupSorting();
-        fetchDocuments();
-
-    } catch (error) {
-        console.error("Session verification failed:", error);
+    // ตรวจสอบสถานะการเข้าสู่ระบบ
+    if (!savedUser && !accessToken) {
         window.location.replace("login.html");
+        return;
     }
+
+    currentRole = savedRole || "staff";
+    currentUsername = savedUser || "staff01";
+
+    initRoleManagement();
+    syncFilterButtons();
+    setupSorting();
+    fetchDocuments();
 }
 
 initializeDashboard();

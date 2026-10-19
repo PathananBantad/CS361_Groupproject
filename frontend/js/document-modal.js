@@ -374,23 +374,39 @@
     }
 
     // Helper หา API Base URL
-    // Helper เพื่อหา API Base URL
     function getApiBaseUrl() {
+        const base = window.API_BASE_URL || "https://utvhg6d6o3.execute-api.us-east-1.amazonaws.com";
         if (window.location.port === "3000") {
             return "/api";
         }
 
-        return "https://utvhg6d6o3.execute-api.us-east-1.amazonaws.com/api";
+        return base.endsWith("/api") ? base : `${base}/api`;
     }
 
     // Helper ดึงสิทธิ์ปัจจุบัน
     function getCurrentAuth() {
-        const role = localStorage.getItem("docuflow_role") || "staff";
-        const user = localStorage.getItem("docuflow_user") || "staff01";
+        const role = (localStorage.getItem("docuflow_role") || "guest").toLowerCase().trim();
+        const user = localStorage.getItem("docuflow_user") || "";
+        const internalRoles = [
+            "admin",
+            "document_officer",
+            "officer",
+            "faculty_staff",
+            "staff",
+            "case_owner",
+            "executive"
+        ];
+        const hasPermission = internalRoles.includes(role);
         return {
             role,
             user,
-            hasPermission: role === "staff" || role === "admin"
+            hasPermission,
+            isAdmin: role === "admin",
+            isOfficer: role === "document_officer" || role === "officer",
+            isStaff: role === "faculty_staff" || role === "staff",
+            isCaseOwner: role === "case_owner",
+            isExecutive: role === "executive",
+            isGuest: !hasPermission
         };
     }
 
@@ -513,10 +529,19 @@
 
         // 2. Update Current Role Display (Task 3)
         if (actionCurrentRoleDisplay) {
-            if (auth.role === "admin") {
-                actionCurrentRoleDisplay.textContent = `ผู้ดูแลระบบ (${auth.user || "admin01"})`;
-            } else if (auth.role === "staff") {
-                actionCurrentRoleDisplay.textContent = `เจ้าหน้าที่ (${auth.user || "staff01"})`;
+            const roleLabels = {
+                admin: "ผู้ดูแลระบบ",
+                document_officer: "เจ้าหน้าที่สารบรรณ",
+                officer: "เจ้าหน้าที่สารบรรณ",
+                faculty_staff: "เจ้าหน้าที่คณะ",
+                staff: "เจ้าหน้าที่คณะ",
+                case_owner: "ผู้รับผิดชอบเอกสาร",
+                executive: "ผู้บริหาร",
+                guest: "ผู้ใช้ทั่วไป"
+            };
+            const roleLabel = roleLabels[auth.role] || auth.role || "ผู้ใช้ทั่วไป";
+            if (auth.hasPermission) {
+                actionCurrentRoleDisplay.textContent = `${roleLabel} (${auth.user || "-"})`;
             } else {
                 actionCurrentRoleDisplay.textContent = `ผู้ใช้ทั่วไป (Guest - ไม่มีสิทธิ์)`;
             }
@@ -552,9 +577,10 @@
         if (statusRemarksInput) statusRemarksInput.value = "";
         if (btnNextStatusSpinner) btnNextStatusSpinner.hidden = true;
 
-        const isGuest = auth.role === "guest" || auth.role === "unauthorized" || !auth.hasPermission;
+        const isGuest = auth.isGuest || !auth.hasPermission;
+        const isExecutive = auth.isExecutive;
         const isCompleted = rawStatus === "Completed";
-        const isAdmin = auth.role === "admin";
+        const isAdmin = auth.isAdmin;
 
         if (isGuest) {
             // Guest role cannot change status
@@ -562,7 +588,15 @@
             if (statusDisabledMessage) {
                 statusDisabledMessage.hidden = false;
                 if (statusDisabledIcon) statusDisabledIcon.textContent = "🔒";
-                if (statusDisabledText) statusDisabledText.textContent = "คุณอยู่ในบทบาท Guest ไม่มีสิทธิ์เปลี่ยนสถานะเอกสาร กรุณาสลับเป็น Staff หรือ Admin เพื่อดำเนินการ";
+                if (statusDisabledText) statusDisabledText.textContent = "คุณอยู่ในบทบาท Guest ไม่มีสิทธิ์เปลี่ยนสถานะเอกสาร กรุณาเข้าสู่ระบบด้วยบัญชีเจ้าหน้าที่เพื่อดำเนินการ";
+            }
+        } else if (isExecutive) {
+            // Executive role is monitoring / view-only
+            if (statusNextActionWrap) statusNextActionWrap.hidden = true;
+            if (statusDisabledMessage) {
+                statusDisabledMessage.hidden = false;
+                if (statusDisabledIcon) statusDisabledIcon.textContent = "👁️";
+                if (statusDisabledText) statusDisabledText.textContent = "บทบาทผู้บริหาร (Executive): สำหรับติดตามและตรวจสอบการดำเนินงานของเอกสาร (View / Audit Only)";
             }
         } else if (isCompleted && !isAdmin) {
             // Completed is terminal state for staff
@@ -573,7 +607,7 @@
                 if (statusDisabledText) statusDisabledText.textContent = "เอกสารนี้ดำเนินการเสร็จสิ้นสมบูรณ์แล้ว (Workflow Completed)";
             }
         } else {
-            // Staff or Admin can proceed with workflow
+            // Staff, Officer, Case Owner, Admin can proceed with workflow
             if (statusNextActionWrap) statusNextActionWrap.hidden = false;
             if (statusDisabledMessage) statusDisabledMessage.hidden = true;
 
@@ -609,8 +643,8 @@
         const apiBase = getApiBaseUrl();
 
         // Check permission client-side
-        if (auth.role === "guest" || !auth.hasPermission) {
-            showAlert("คุณไม่มีสิทธิ์ในการเปลี่ยนสถานะเอกสาร (ต้องการสิทธิ์ Staff หรือ Admin เท่านั้น)", "error", "ไม่อนุญาต (Permission Denied)");
+        if (auth.isGuest || auth.isExecutive || !auth.hasPermission) {
+            showAlert("คุณไม่มีสิทธิ์ในการเปลี่ยนสถานะเอกสาร", "error", "ไม่อนุญาต (Permission Denied)");
             return;
         }
 
@@ -618,39 +652,22 @@
         if (btnNextStatusSpinner) btnNextStatusSpinner.hidden = false;
         if (btnAdminApplyStatus) btnAdminApplyStatus.disabled = true;
 
+        const token = localStorage.getItem("docuflow_access_token") || localStorage.getItem("access_token") || localStorage.getItem("docuflow_id_token") || localStorage.getItem("id_token") || "";
+        const reqHeaders = { "Content-Type": "application/json" };
+        if (token) {
+            reqHeaders["Authorization"] = `Bearer ${token}`;
+        }
+
         try {
-            let response = await fetch(`${apiBase}/documents/${docId}/status`, {
+            let response = await window.apiFetch(`${apiBase}/documents/${docId}/status`, {
                 method: "PUT",
-                headers: {
-                    "Content-Type": "application/json",
-                    "x-user-role": auth.role,
-                    "x-user-id": auth.user,
-                    "x-username": auth.user
-                },
+                headers: reqHeaders,
                 body: JSON.stringify({
                     status: targetStatus,
                     remarks: remarks || "",
                     changed_by: auth.user
                 })
             });
-
-            // Local fallback to AWS API Gateway if local failed
-            if (!response.ok && apiBase.includes("localhost") && response.status === 404) {
-                response = await fetch(`https://utvhg6d6o3.execute-api.us-east-1.amazonaws.com/api/documents/${docId}/status`, {
-                    method: "PUT",
-                    headers: {
-                        "Content-Type": "application/json",
-                        "x-user-role": auth.role,
-                        "x-user-id": auth.user,
-                        "x-username": auth.user
-                    },
-                    body: JSON.stringify({
-                        status: targetStatus,
-                        remarks: remarks || "",
-                        changed_by: auth.user
-                    })
-                });
-            }
 
             const result = await response.json().catch(() => ({}));
 
@@ -700,13 +717,11 @@
 
         try {
             // ลองดึงจาก Audit Trail API ส่วนกลางก่อน (Task 8)
-            let res = await fetch(`${apiBase}/documents/${docId}/audit-trail`, {
-                headers: { "x-user-role": role }
-            });
+            let res = await window.apiFetch(`${apiBase}/documents/${docId}/audit-trail`);
 
             // Fallback ไปที่ status-history หาก audit-trail ไม่พร้อม
             if (!res.ok) {
-                res = await fetch(`${apiBase}/documents/${docId}/status-history`);
+                res = await window.apiFetch(`${apiBase}/documents/${docId}/status-history`);
             }
 
             if (!res.ok) {
@@ -829,7 +844,7 @@
             if (!doc) {
                 try {
                     const apiBase = getApiBaseUrl();
-                    const res = await fetch(`${apiBase}/documents/${docOrId}`);
+                    const res = await window.apiFetch(`${apiBase}/documents/${docOrId}`);
                     if (res.ok) {
                         doc = await res.json();
                     }
@@ -935,24 +950,9 @@
                         <div class="permission-icon">🔒</div>
                         <h4>ไม่อนุญาตให้เข้าถึง (Permission Denied)</h4>
                         <p>คุณไม่มีสิทธิ์ในการเรียกดูเนื้อหาหรือดาวน์โหลดไฟล์เอกสารนี้ เนื่องจากบทบาทปัจจุบันของคุณคือ <strong>ผู้ใช้ทั่วไป (Guest)</strong></p>
-                        <button type="button" class="btn-switch-role" id="btnSwitchToStaffModal">
-                            สลับเป็นบทบาท "เจ้าหน้าที่ (Staff)" เพื่อเปิดไฟล์
-                        </button>
+                        <p style="margin-top:10px; font-size:13px; color:#64748b;">กรุณาเข้าสู่ระบบด้วยบัญชีผู้ใช้ที่มีสิทธิ์เพื่อเปิดอ่านเอกสาร</p>
                     </div>
                 `;
-
-                const switchBtn = document.getElementById("btnSwitchToStaffModal");
-                if (switchBtn) {
-                    switchBtn.addEventListener("click", () => {
-                        if (typeof window.setUserRole === "function") {
-                            window.setUserRole("staff", "staff01");
-                        } else {
-                            localStorage.setItem("docuflow_role", "staff");
-                            localStorage.setItem("docuflow_user", "staff01");
-                        }
-                        openDocumentModal(doc);
-                    });
-                }
             }
             return;
         }
@@ -975,8 +975,12 @@
         const apiBase = getApiBaseUrl();
 
         try {
-            let previewRes = await fetch(`${apiBase}/documents/${doc.id}/preview-url?role=${encodeURIComponent(auth.role)}&userId=${encodeURIComponent(auth.user)}`, {
-                credentials: "include"
+            const token = localStorage.getItem("docuflow_access_token") || localStorage.getItem("access_token") || localStorage.getItem("docuflow_id_token") || localStorage.getItem("id_token") || "";
+            const previewHeaders = {};
+            if (token) previewHeaders["Authorization"] = `Bearer ${token}`;
+
+            let previewRes = await window.apiFetch(`${apiBase}/documents/${doc.id}/preview-url`, {
+                headers: previewHeaders
             });
 
             if (previewRes.status === 403) {
@@ -1018,7 +1022,7 @@
             }
 
             // Endpoint สตรีมไฟล์ตรงจากเซิร์ฟเวอร์ (รับประกันการดาวน์โหลด 100%)
-            const streamUrl = `${apiBase}/documents/${doc.id}/download-file?role=${encodeURIComponent(auth.role)}&userId=${encodeURIComponent(auth.user)}`;
+            const streamUrl = `${apiBase}/documents/${doc.id}/preview-file`;
             const effectiveDownloadUrl = downloadUrl || streamUrl;
 
             if (previewFileName) previewFileName.textContent = fileName;
@@ -1032,7 +1036,11 @@
 
             // เงื่อนไขที่ 1: PDF, JPG/JPEG, PNG (เปิดดูเนื้อหา + ดาวน์โหลดจากหน้าตัวอย่าง)
             if (canPreview) {
-                const finalPreviewUrl = previewUrl || streamUrl;
+                const protectedPreview = await window.apiFetch(streamUrl);
+                if (!protectedPreview.ok) {
+                    throw new Error("ไม่สามารถเปิดไฟล์ได้ (" + protectedPreview.status + ")");
+                }
+                const finalPreviewUrl = URL.createObjectURL(await protectedPreview.blob());
                 if (modalOpenTabBtn) {
                     modalOpenTabBtn.hidden = false;
                     modalOpenTabBtn.onclick = () => window.open(finalPreviewUrl, "_blank");
@@ -1152,14 +1160,14 @@
     async function downloadDocumentFile(documentId, preferredFileName = "") {
         const auth = getCurrentAuth();
         if (!auth.hasPermission) {
-            alert("⛔ ไม่อนุญาตให้เข้าถึง (Permission Denied)\n\nคุณไม่มีสิทธิ์ในการดาวน์โหลดเอกสารนี้ กรุณาสลับเป็นบทบาท 'เจ้าหน้าที่' หรือ 'ผู้ดูแลระบบ'");
+            alert("⛔ ไม่อนุญาตให้เข้าถึง (Permission Denied)\n\nคุณไม่มีสิทธิ์ในการดาวน์โหลดเอกสารนี้ เนื่องจากบทบาทปัจจุบันของคุณไม่มีสิทธิ์เข้าถึง");
             return;
         }
 
         const apiBase = getApiBaseUrl();
 
         try {
-            let response = await fetch(`${apiBase}/documents/${documentId}/download-url?role=${auth.role}&userId=${auth.user}`);
+            let response = await window.apiFetch(`${apiBase}/documents/${documentId}/download-url`);
 
             if (response.status === 403) {
                 const errData = await response.json().catch(() => ({}));
@@ -1184,25 +1192,37 @@
         }
 
         // Direct stream download fallback
-        const fallbackUrl = `${apiBase}/documents/${documentId}/download-file?role=${encodeURIComponent(auth.role)}&userId=${encodeURIComponent(auth.user)}`;
-        triggerBrowserDownload(fallbackUrl, preferredFileName);
+        const fallbackUrl = `${apiBase}/documents/${documentId}/download-file`;
+        await triggerBrowserDownload(fallbackUrl, preferredFileName);
     }
 
-    function triggerBrowserDownload(url, fileName) {
+    async function triggerBrowserDownload(url, fileName) {
         if (!url) return;
         let finalUrl = url;
         if (finalUrl.startsWith("/")) {
             const apiBase = getApiBaseUrl();
             finalUrl = apiBase.replace(/\/api$/, "") + finalUrl;
         }
+        let downloadUrl = finalUrl;
+        let objectUrl = null;
+        if (new URL(finalUrl, window.location.href).origin === new URL(window.API_BASE_URL).origin &&
+            new URL(finalUrl, window.location.href).pathname.includes("/api/")) {
+            const response = await window.apiFetch(finalUrl);
+            if (!response.ok) throw new Error("ดาวน์โหลดไฟล์ไม่สำเร็จ (" + response.status + ")");
+            objectUrl = URL.createObjectURL(await response.blob());
+            downloadUrl = objectUrl;
+        }
         const link = document.createElement("a");
-        link.href = finalUrl;
+        link.href = downloadUrl;
         link.download = fileName || "document";
         link.target = "_blank";
         link.rel = "noopener noreferrer";
         document.body.appendChild(link);
         link.click();
-        setTimeout(() => link.remove(), 200);
+        setTimeout(() => {
+            link.remove();
+            if (objectUrl) URL.revokeObjectURL(objectUrl);
+        }, 1000);
     }
 
     // Auto-load template upon DOM readiness
@@ -1275,11 +1295,13 @@ async function submitDocumentForward(documentId) {
     }
 
     try {
-        const response = await fetch(`/api/documents/${documentId}/forward`, {
+        const apiBase = getApiBaseUrl();
+        const authToken = localStorage.getItem("docuflow_access_token") || localStorage.getItem("access_token") || localStorage.getItem("docuflow_id_token") || localStorage.getItem("id_token") || "";
+        const response = await window.apiFetch(`${apiBase}/documents/${documentId}/forward`, {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
-                "Authorization": `Bearer ${localStorage.getItem("id_token") || ""}`
+                "Authorization": authToken ? `Bearer ${authToken}` : ""
             },
             body: JSON.stringify({
                 new_assignee_id: newAssigneeId || null,
