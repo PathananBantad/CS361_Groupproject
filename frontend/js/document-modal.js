@@ -619,18 +619,13 @@
         if (btnAdminApplyStatus) btnAdminApplyStatus.disabled = true;
 
         const token = localStorage.getItem("docuflow_access_token") || localStorage.getItem("access_token") || localStorage.getItem("docuflow_id_token") || localStorage.getItem("id_token") || "";
-        const reqHeaders = {
-            "Content-Type": "application/json",
-            "x-user-role": auth.role,
-            "x-user-id": auth.user,
-            "x-username": auth.user
-        };
+        const reqHeaders = { "Content-Type": "application/json" };
         if (token) {
             reqHeaders["Authorization"] = `Bearer ${token}`;
         }
 
         try {
-            let response = await fetch(`${apiBase}/documents/${docId}/status`, {
+            let response = await window.apiFetch(`${apiBase}/documents/${docId}/status`, {
                 method: "PUT",
                 headers: reqHeaders,
                 body: JSON.stringify({
@@ -688,13 +683,11 @@
 
         try {
             // ลองดึงจาก Audit Trail API ส่วนกลางก่อน (Task 8)
-            let res = await fetch(`${apiBase}/documents/${docId}/audit-trail`, {
-                headers: { "x-user-role": role }
-            });
+            let res = await window.apiFetch(`${apiBase}/documents/${docId}/audit-trail`);
 
             // Fallback ไปที่ status-history หาก audit-trail ไม่พร้อม
             if (!res.ok) {
-                res = await fetch(`${apiBase}/documents/${docId}/status-history`);
+                res = await window.apiFetch(`${apiBase}/documents/${docId}/status-history`);
             }
 
             if (!res.ok) {
@@ -817,7 +810,7 @@
             if (!doc) {
                 try {
                     const apiBase = getApiBaseUrl();
-                    const res = await fetch(`${apiBase}/documents/${docOrId}`);
+                    const res = await window.apiFetch(`${apiBase}/documents/${docOrId}`);
                     if (res.ok) {
                         doc = await res.json();
                     }
@@ -967,7 +960,7 @@
             const previewHeaders = {};
             if (token) previewHeaders["Authorization"] = `Bearer ${token}`;
 
-            let previewRes = await fetch(`${apiBase}/documents/${doc.id}/preview-url?role=${encodeURIComponent(auth.role)}&userId=${encodeURIComponent(auth.user)}`, {
+            let previewRes = await window.apiFetch(`${apiBase}/documents/${doc.id}/preview-url`, {
                 headers: previewHeaders
             });
 
@@ -1010,7 +1003,7 @@
             }
 
             // Endpoint สตรีมไฟล์ตรงจากเซิร์ฟเวอร์ (รับประกันการดาวน์โหลด 100%)
-            const streamUrl = `${apiBase}/documents/${doc.id}/download-file?role=${encodeURIComponent(auth.role)}&userId=${encodeURIComponent(auth.user)}`;
+            const streamUrl = `${apiBase}/documents/${doc.id}/preview-file`;
             const effectiveDownloadUrl = downloadUrl || streamUrl;
 
             if (previewFileName) previewFileName.textContent = fileName;
@@ -1024,7 +1017,11 @@
 
             // เงื่อนไขที่ 1: PDF, JPG/JPEG, PNG (เปิดดูเนื้อหา + ดาวน์โหลดจากหน้าตัวอย่าง)
             if (canPreview) {
-                const finalPreviewUrl = previewUrl || streamUrl;
+                const protectedPreview = await window.apiFetch(streamUrl);
+                if (!protectedPreview.ok) {
+                    throw new Error("ไม่สามารถเปิดไฟล์ได้ (" + protectedPreview.status + ")");
+                }
+                const finalPreviewUrl = URL.createObjectURL(await protectedPreview.blob());
                 if (modalOpenTabBtn) {
                     modalOpenTabBtn.hidden = false;
                     modalOpenTabBtn.onclick = () => window.open(finalPreviewUrl, "_blank");
@@ -1151,7 +1148,7 @@
         const apiBase = getApiBaseUrl();
 
         try {
-            let response = await fetch(`${apiBase}/documents/${documentId}/download-url?role=${auth.role}&userId=${auth.user}`);
+            let response = await window.apiFetch(`${apiBase}/documents/${documentId}/download-url`);
 
             if (response.status === 403) {
                 const errData = await response.json().catch(() => ({}));
@@ -1176,25 +1173,37 @@
         }
 
         // Direct stream download fallback
-        const fallbackUrl = `${apiBase}/documents/${documentId}/download-file?role=${encodeURIComponent(auth.role)}&userId=${encodeURIComponent(auth.user)}`;
-        triggerBrowserDownload(fallbackUrl, preferredFileName);
+        const fallbackUrl = `${apiBase}/documents/${documentId}/download-file`;
+        await triggerBrowserDownload(fallbackUrl, preferredFileName);
     }
 
-    function triggerBrowserDownload(url, fileName) {
+    async function triggerBrowserDownload(url, fileName) {
         if (!url) return;
         let finalUrl = url;
         if (finalUrl.startsWith("/")) {
             const apiBase = getApiBaseUrl();
             finalUrl = apiBase.replace(/\/api$/, "") + finalUrl;
         }
+        let downloadUrl = finalUrl;
+        let objectUrl = null;
+        if (new URL(finalUrl, window.location.href).origin === new URL(window.API_BASE_URL).origin &&
+            new URL(finalUrl, window.location.href).pathname.includes("/api/")) {
+            const response = await window.apiFetch(finalUrl);
+            if (!response.ok) throw new Error("ดาวน์โหลดไฟล์ไม่สำเร็จ (" + response.status + ")");
+            objectUrl = URL.createObjectURL(await response.blob());
+            downloadUrl = objectUrl;
+        }
         const link = document.createElement("a");
-        link.href = finalUrl;
+        link.href = downloadUrl;
         link.download = fileName || "document";
         link.target = "_blank";
         link.rel = "noopener noreferrer";
         document.body.appendChild(link);
         link.click();
-        setTimeout(() => link.remove(), 200);
+        setTimeout(() => {
+            link.remove();
+            if (objectUrl) URL.revokeObjectURL(objectUrl);
+        }, 1000);
     }
 
     // Auto-load template upon DOM readiness
@@ -1269,7 +1278,7 @@ async function submitDocumentForward(documentId) {
     try {
         const apiBase = getApiBaseUrl();
         const authToken = localStorage.getItem("docuflow_access_token") || localStorage.getItem("access_token") || localStorage.getItem("docuflow_id_token") || localStorage.getItem("id_token") || "";
-        const response = await fetch(`${apiBase}/documents/${documentId}/forward`, {
+        const response = await window.apiFetch(`${apiBase}/documents/${documentId}/forward`, {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",

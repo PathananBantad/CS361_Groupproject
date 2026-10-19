@@ -225,7 +225,7 @@ registerForm.addEventListener("submit", async (event) => {
         }
 
         // 1. บันทึกเอกสารเข้าฐานข้อมูล
-        let response = await fetch(`${apiBase}/documents`, {
+        let response = await window.apiFetch(`${apiBase}/documents`, {
             method: "POST",
             headers: docHeaders,
             body: JSON.stringify(payload)
@@ -251,7 +251,7 @@ registerForm.addEventListener("submit", async (event) => {
             try {
                 const s3Headers = {};
                 if (token) s3Headers["Authorization"] = `Bearer ${token}`;
-                const s3UrlRes = await fetch(uploadUrlEndpoint, {
+                const s3UrlRes = await window.apiFetch(uploadUrlEndpoint, {
                     headers: s3Headers
                 });
 
@@ -284,7 +284,7 @@ registerForm.addEventListener("submit", async (event) => {
                 };
                 if (token) directHeaders["Authorization"] = `Bearer ${token}`;
 
-                const directRes = await fetch(directUploadUrl, {
+                const directRes = await window.apiFetch(directUploadUrl, {
                     method: "POST",
                     headers: directHeaders,
                     body: file
@@ -303,7 +303,7 @@ registerForm.addEventListener("submit", async (event) => {
                     const metaHeaders = { "Content-Type": "application/json" };
                     if (token) metaHeaders["Authorization"] = `Bearer ${token}`;
 
-                    await fetch(`${apiBase}/documents/${docData.id}/file-metadata`, {
+                    await window.apiFetch(`${apiBase}/documents/${docData.id}/file-metadata`, {
                         method: "POST",
                         headers: metaHeaders,
                         body: JSON.stringify({

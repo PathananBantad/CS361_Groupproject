@@ -2,7 +2,7 @@
 (function () {
     "use strict";
 
-    const ASSIGNER_ROLES = ["document_officer", "admin", "officer", "staff"];
+    const ASSIGNER_ROLES = ["document_officer", "admin"];
 
     function apiBase() {
         const base = window.API_BASE_URL || "https://utvhg6d6o3.execute-api.us-east-1.amazonaws.com";
@@ -39,11 +39,11 @@
     }
 
     async function api(path, options) {
-        const res = await fetch(apiBase() + path, {
+        const res = await window.apiFetch(apiBase() + path, {
             ...options,
             headers: {
                 "Content-Type": "application/json",
-                Authorization: "Bearer " + getAuthToken(),
+                ...(options && options.headers ? options.headers : {}),
             },
         });
         const data = await res.json().catch(() => ({}));
