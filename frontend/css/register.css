@@ -59,6 +59,7 @@
 }
 
 .field input[type="text"],
+.field input[type="date"],
 .field select,
 .field textarea {
     width: 100%;
@@ -78,9 +79,18 @@
 }
 
 .field input[type="text"],
+.field input[type="date"],
 .field select {
     height: 46px;
     padding: 0 13px;
+}
+
+.field-desc {
+    display: block;
+    margin-top: 5px;
+    font-size: 12.5px;
+    color: #78716c;
+    line-height: 1.4;
 }
 
 .field textarea {
