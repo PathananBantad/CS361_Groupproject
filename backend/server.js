@@ -954,7 +954,7 @@ app.get("/api/assignees", requireCognitoAuth, loadUserRole, async (req, res) => 
             `SELECT u.id, u.username, u.full_name, r.name AS role
              FROM users u
              JOIN users_roles ur ON ur.user_id = u.id JOIN roles r ON r.id = ur.role_id
-             WHERE u.is_active = 1 AND r.name IN (?)
+             WHERE u.is_active = 1 AND r.name COLLATE utf8mb4_general_ci IN (?)
              ORDER BY u.username`,
             [ASSIGNEE_ROLES]
         );
@@ -991,7 +991,7 @@ app.get(
                  JOIN users_roles ur ON ur.user_id = u.id
                  JOIN roles r ON r.id = ur.role_id
                  WHERE u.is_active = 1
-                   AND r.name IN (?)
+                   AND r.name COLLATE utf8mb4_general_ci IN (?)
                  ORDER BY u.username`,
                 [ASSIGNEE_ROLES]
             );
@@ -1150,7 +1150,7 @@ app.post("/api/documents/:id/forward", requireCognitoAuth, loadUserRole, async (
             if (sanitizedNewAssigneeId) {
                 const [targetRows] = await connection.query(
                     `SELECT u.id FROM users u JOIN users_roles ur ON ur.user_id=u.id JOIN roles r ON r.id=ur.role_id
-                     WHERE u.id=? AND u.is_active=1 AND r.name IN (?)`, [sanitizedNewAssigneeId, ASSIGNEE_ROLES]
+                     WHERE u.id=? AND u.is_active=1 AND r.name COLLATE utf8mb4_general_ci IN (?)`, [sanitizedNewAssigneeId, ASSIGNEE_ROLES]
                 );
                 if (!targetRows.length) { await connection.rollback(); return res.status(400).json({ error: "Invalid assignee" }); }
             }
