@@ -374,11 +374,13 @@
     }
 
     // Helper หา API Base URL
+    // Helper เพื่อหา API Base URL
     function getApiBaseUrl() {
         if (window.location.port === "3000") {
             return "/api";
         }
-        return "http://localhost:3000/api";
+
+        return "https://utvhg6d6o3.execute-api.us-east-1.amazonaws.com/api";
     }
 
     // Helper ดึงสิทธิ์ปัจจุบัน
@@ -726,8 +728,8 @@
             }
 
             statusHistoryTimeline.innerHTML = logs.map((log) => {
-                const timeStr = (log.timestamp || log.changed_at) 
-                    ? new Date(log.timestamp || log.changed_at).toLocaleString("th-TH") 
+                const timeStr = (log.timestamp || log.changed_at)
+                    ? new Date(log.timestamp || log.changed_at).toLocaleString("th-TH")
                     : "-";
                 const actorName = log.actor_username || log.changed_by || log.actor_user_id || "ระบบ";
                 const eventType = log.event_type || (log.old_status && log.new_status ? "STATUS_CHANGE" : "EVENT");
