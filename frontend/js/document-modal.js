@@ -1333,7 +1333,7 @@ function renderForwardSection(documentId) {
                 <input type="text" id="modalForwardReason" placeholder="ระบุเหตุผลในการส่งต่อเอกสาร..." style="width: 100%; padding: 8px; border: 1px solid #d1d5db; border-radius: 4px;">
             </div>
 
-            <button type="button" onclick="submitDocumentForward('${documentId}')" style="background: #16a34a; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-weight: 500;">
+            <button id="btnSubmitForward" type="button" onclick="submitDocumentForward('${documentId}')" style="background: #16a34a; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-weight: 500;">
                 ยืนยันการส่งต่อเอกสาร
             </button>
         </div>
@@ -1345,14 +1345,22 @@ async function submitDocumentForward(documentId) {
     const newAssigneeId = document.getElementById("modalForwardAssigneeId").value.trim();
     const receiverName = document.getElementById("modalForwardReceiverName").value.trim();
     const reason = document.getElementById("modalForwardReason").value.trim();
+    const submitButton = document.getElementById("btnSubmitForward");
+    const originalButtonText = submitButton?.textContent;
 
     if (!newAssigneeId && !receiverName) {
         alert("กรุณาระบุรหัสผู้รับ (New Assignee ID) หรือชื่อผู้รับปลายทางอย่างน้อยหนึ่งอย่าง");
         return;
     }
+    if (submitButton?.disabled) return;
+
+    if (submitButton) {
+        submitButton.disabled = true;
+        submitButton.textContent = "กำลังส่งต่อ...";
+    }
 
     try {
-        const apiBase = getApiBaseUrl();
+        const apiBase = window.DocuFlowModal.getApiBaseUrl();
         const authToken = localStorage.getItem("docuflow_access_token") || localStorage.getItem("access_token") || localStorage.getItem("docuflow_id_token") || localStorage.getItem("id_token") || "";
         const response = await window.apiFetch(`${apiBase}/documents/${documentId}/forward`, {
             method: "POST",
@@ -1379,4 +1387,10 @@ async function submitDocumentForward(documentId) {
         console.error("Forward error:", error);
         alert("เกิดข้อผิดพลาด: " + error.message);
     }
+    finally {
+        if (submitButton) {
+            submitButton.disabled = false;
+            submitButton.textContent = originalButtonText;
+        }
+}
 }
