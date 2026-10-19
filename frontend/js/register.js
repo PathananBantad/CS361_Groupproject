@@ -35,11 +35,13 @@ const MIME_TYPE_MAP = {
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 
 // Helper เพื่อหา API URL ที่เหมาะสม
+// Helper เพื่อหา API Base URL
 function getApiBaseUrl() {
     if (window.location.port === "3000") {
         return "/api";
     }
-    return "http://localhost:3000/api";
+
+    return "https://utvhg6d6o3.execute-api.us-east-1.amazonaws.com/api";
 }
 
 /* =====================================================
