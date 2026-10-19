@@ -3,18 +3,25 @@ const { CognitoJwtVerifier } = require("aws-jwt-verify");
 let verifier;
 
 function getVerifier() {
-    const userPoolId = process.env.COGNITO_USER_POOL_ID;
+    const userPoolId = process.env.COGNITO_USER_POOL_ID || "us-east-1_1duzJEFfU";
     const clientId = process.env.COGNITO_APP_CLIENT_ID;
 
-    if (!userPoolId || !clientId) {
+    if (!userPoolId) {
         throw new Error("Cognito environment variables are not configured");
     }
 
     if (!verifier) {
+        // รองรับทั้ง App Client ของ Frontend (454o0719rb9d6lkspv4m8tmb6i) และค่าจาก Environment
+        const allowedClientIds = [
+            clientId,
+            "454o0719rb9d6lkspv4m8tmb6i",
+            "7k0t8e6499bro55f8faso44m2c"
+        ].filter(Boolean);
+
         verifier = CognitoJwtVerifier.create({
             userPoolId,
             tokenUse: "access",
-            clientId
+            clientId: allowedClientIds.length > 0 ? [...new Set(allowedClientIds)] : null
         });
     }
 
