@@ -91,7 +91,7 @@ V1 มุ่งเน้นการพัฒนา Information Service เพ�
 - จำเป็นต้องแสดงสถานะหรือความคืบหน้าของเอกสารในระบบหรือไม่?
 
 ## Deploy link
-[http://my-project-v1-2026.s3-website-ap-southeast-2.amazonaws.com](http://cs361-v2-frontend-documentflow.s3-website-us-east-1.amazonaws.com)
+https://main.ds9q6gagifqjo.amplifyapp.com/html/index.html
 
 ## Architecture V3
 <img width="1204" height="727" alt="image" src="https://github.com/user-attachments/assets/e660a57c-ea9a-4bec-867b-546786d2b304" />
