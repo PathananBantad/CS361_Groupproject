@@ -42,15 +42,6 @@ router.post("/login", async (req, res) => {
         // 1. ให้ Cognito ตรวจสอบ Email และ Password
 
         // ตรวจสอบว่า Backend โหลดค่า Cognito ครบหรือไม่
-        console.log("Cognito configuration:", {
-            hasClientId: 
-        Boolean(process.env.COGNITO_APP_CLIENT_ID),
-            hasClientSecret: 
-        Boolean(process.env.COGNITO_CLIENT_SECRET),
-            secretHashType: typeof 
-        createSecretHash(username.trim())
-        });
-
         // 1. ให้ Cognito ตรวจสอบ Email และ Password
         const authResult = await cognito.send(
             new InitiateAuthCommand({
@@ -88,11 +79,8 @@ router.post("/login", async (req, res) => {
             })
         );
 
-        const cognitoSub = cognitoUser.UserAttributes?.find(
-            (attribute) => attribute.Name === "sub"
-        )?.Value;
-
-        if (!cognitoSub) {
+        const cognitoUsername = cognitoUser.Username || cognitoUser.UserAttributes?.find((attribute) => attribute.Name === "preferred_username")?.Value || username.trim();
+        if (!cognitoUsername) {
             return res.status(401).json({
                 ok: false,
                 message: "ไม่พบ User ID จาก Cognito"
@@ -101,11 +89,12 @@ router.post("/login", async (req, res) => {
 
         // 4. ค้นหาบัญชีที่เชื่อมไว้ใน MySQL
         const [users] = await pool.query(
-            `SELECT id, username, role
-             FROM users
-             WHERE cognito_sub = ?
-             LIMIT 1`,
-            [cognitoSub]
+            `SELECT u.id, u.username, GROUP_CONCAT(DISTINCT r.name) AS roles
+             FROM users u JOIN users_roles ur ON ur.user_id = u.id
+             JOIN roles r ON r.id = ur.role_id
+             WHERE u.username = ? AND u.is_active = TRUE
+             GROUP BY u.id, u.username`,
+            [cognitoUsername]
         );
 
         if (users.length === 0) {
@@ -116,6 +105,8 @@ router.post("/login", async (req, res) => {
         }
 
         const user = users[0];
+        const roles = (user.roles || "").split(",").map((role) => role.trim()).filter((role) => ["document_officer", "faculty_staff", "case_owner", "admin", "executive"].includes(role));
+        if (!roles.length) return res.status(403).json({ ok: false, message: "บัญชีนี้ยังไม่มีบทบาทที่ได้รับอนุญาต" });
 
         // 5. สร้าง Session หลังยืนยันตัวตนสำเร็จ
         if (!req.session) {
@@ -138,7 +129,7 @@ router.post("/login", async (req, res) => {
             req.session.user = {
                 id: user.id,
                 username: user.username,
-                roles: [user.role]
+                roles
             };
 
             req.session.save((saveError) => {
@@ -154,7 +145,8 @@ router.post("/login", async (req, res) => {
                 return res.json({
                     ok: true,
                     message: "เข้าสู่ระบบสำเร็จ",
-                    user: req.session.user
+                    user: req.session.user,
+                    access_token: accessToken
                 });
             });
         });

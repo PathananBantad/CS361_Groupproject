@@ -153,7 +153,7 @@ async function fetchDocuments() {
             headers["Authorization"] = `Bearer ${token}`;
         }
 
-        const response = await fetch(`${apiBase}/documents?${params.toString()}`, { headers });
+        const response = await window.apiFetch(`${apiBase}/documents?${params.toString()}`, { headers });
 
         if (!response.ok) {
             throw new Error(`เซิร์ฟเวอร์ตอบกลับรหัสข้อผิดพลาด: ${response.status}`);

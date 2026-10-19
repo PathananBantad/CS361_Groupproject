@@ -1,7 +1,8 @@
 const {
     S3Client,
     GetObjectCommand,
-    PutObjectCommand
+    PutObjectCommand,
+    HeadObjectCommand
 } = require("@aws-sdk/client-s3");
 
 const {
@@ -77,6 +78,11 @@ async function getS3Object(fileKey) {
     return await s3.send(command);
 }
 
+async function getObjectMetadata(fileKey) {
+    if (!fileKey) throw new Error("File key is required.");
+    return s3.send(new HeadObjectCommand({ Bucket: bucketName, Key: fileKey }));
+}
+
 // Create download or preview URL with proper ContentType and Disposition
 async function createDownloadUrl(fileKey, options = {}) {
     const {
@@ -133,6 +139,7 @@ module.exports = {
     createUploadUrl,
     createDownloadUrl,
     getS3Object,
+    getObjectMetadata,
     getPublicUrl,
     getMimeTypeByExtension,
     getObjectBuffer,

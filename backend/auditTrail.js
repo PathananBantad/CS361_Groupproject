@@ -108,32 +108,9 @@ function sanitizeAuditData(data, depth = 0) {
  * @returns {{ actorUserId: string, actorUsername: string, actorRole: string, ipAddress: string }}
  */
 function extractServerActor(req) {
-    let actorUserId = "system";
-    let actorUsername = "system";
-    let actorRole = "staff";
-
-    // 1. ตรวจสอบจาก Session (Cookie HttpOnly)
-    if (req.session?.user) {
-        actorUserId = String(req.session.user.id || req.session.user.username);
-        actorUsername = req.session.user.username || actorUserId;
-        actorRole = (req.session.user.roles && req.session.user.roles[0]) || "staff";
-    }
-    // 2. ตรวจสอบจาก Cognito Token (req.auth)
-    else if (req.auth?.sub) {
-        actorUserId = String(req.auth.sub);
-        actorUsername = req.auth.username || actorUserId;
-        actorRole = req.userRole || (req.auth.groups && req.auth.groups[0]) || "staff";
-    }
-    // 3. Fallback สำหรับ Role Header / Query ในโหมด Dev
-    else if (req.headers && req.headers["x-user-role"]) {
-        actorRole = req.headers["x-user-role"];
-        actorUserId = req.headers["x-user-id"] || (actorRole === "admin" ? "admin01" : "staff01");
-        actorUsername = req.headers["x-username"] || actorUserId;
-    } else if (req.userRole) {
-        actorRole = req.userRole;
-        actorUserId = req.auth?.sub || "staff01";
-        actorUsername = req.auth?.username || actorUserId;
-    }
+    const actorUserId = req.userId == null ? "system" : String(req.userId);
+    const actorUsername = req.dbUsername || "system";
+    const actorRole = req.userRole || "unknown";
 
     // IP Address จาก Request ของ Server
     const ipAddress =
@@ -456,12 +433,6 @@ function verifyAuditTrailAccess(actor, document) {
             return { allowed: true };
         }
 
-        // อนุญาต staff ทั่วไปหากยังไม่ได้กำหนด owner ชัดเจน (เอกสารสาธารณะของระบบ)
-        if (role === "staff" || role === "faculty_staff") {
-            if (!docOwnerId && !docAssigneeId) {
-                return { allowed: true };
-            }
-        }
     }
 
     return {
