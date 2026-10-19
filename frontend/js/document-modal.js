@@ -837,22 +837,23 @@
         await ensureModalLoaded();
         let doc = docOrId;
 
-        // หากส่งมาเป็น ID ให้ค้นหาจาก documents list หรือดึงจาก API
-        if (typeof docOrId === "string" || typeof docOrId === "number") {
-            if (Array.isArray(window.docuflowDocuments)) {
-                doc = window.docuflowDocuments.find(item => String(item.id) === String(docOrId));
-            }
-            if (!doc) {
-                try {
-                    const apiBase = getApiBaseUrl();
-                    const res = await window.apiFetch(`${apiBase}/documents/${docOrId}`);
-                    if (res.ok) {
-                        doc = await res.json();
-                    }
-                } catch (e) {
-                    console.error("Fetch document by id error:", e);
+        // ดึงข้อมูลเอกสารฉบับเต็มพร้อม Presigned S3 URLs จาก API (/api/documents/:id)
+        const docId = (docOrId && typeof docOrId === "object") ? docOrId.id : docOrId;
+        if (docId) {
+            try {
+                const apiBase = getApiBaseUrl();
+                const res = await window.apiFetch(`${apiBase}/documents/${docId}`);
+                if (res.ok) {
+                    const freshDoc = await res.json();
+                    doc = { ...(doc || {}), ...freshDoc };
                 }
+            } catch (e) {
+                console.warn("Fetch document details by id error:", e);
             }
+        }
+
+        if (!doc && Array.isArray(window.docuflowDocuments)) {
+            doc = window.docuflowDocuments.find(item => String(item.id) === String(docId));
         }
 
         if (!doc) {
@@ -1028,43 +1029,29 @@
         const apiBase = getApiBaseUrl();
 
         try {
-            const token = localStorage.getItem("docuflow_access_token") || localStorage.getItem("access_token") || localStorage.getItem("docuflow_id_token") || localStorage.getItem("id_token") || "";
-            const previewHeaders = {};
-            if (token) previewHeaders["Authorization"] = `Bearer ${token}`;
-
-            let previewRes = await window.apiFetch(`${apiBase}/documents/${doc.id}/preview-url`, {
-                headers: previewHeaders
-            });
-
-            if (previewRes.status === 403) {
-                const errData = await previewRes.json().catch(() => ({}));
-                if (previewViewport) {
-                    previewViewport.innerHTML = `
-                        <div class="permission-denied-box">
-                            <div class="permission-icon">⛔</div>
-                            <h4>การเข้าถึงถูกปฏิเสธ</h4>
-                            <p>${escapeHtml(errData.error || "คุณไม่มีสิทธิ์ในการเรียกดูหรือดาวน์โหลดเอกสารนี้")}</p>
-                        </div>
-                    `;
-                }
-                if (modalDownloadBtn) modalDownloadBtn.disabled = true;
-                return;
-            }
-
-            if (!previewRes.ok) {
-                const errData = await previewRes.json().catch(() => ({}));
-                throw new Error(errData.error || `เซิร์ฟเวอร์ส่งสถานะผิดพลาด (${previewRes.status})`);
-            }
-
-            let previewData = await previewRes.json();
-
-            const fileName = (previewData && previewData.file_name) || doc.file_name || doc.display_file_name || "เอกสารแนบ";
-            const fileExt = (previewData && previewData.file_extension) || fileName.substring(fileName.lastIndexOf(".")).toLowerCase();
-            let downloadUrl = (previewData && previewData.download_url) || null;
-            let previewUrl = (previewData && previewData.preview_url) || null;
-            const canPreview = (previewData && previewData.can_preview) !== undefined
-                ? previewData.can_preview
+            const fileName = doc.display_file_name || doc.file_name || "เอกสารแนบ";
+            const fileExt = doc.file_extension || (fileName ? fileName.substring(fileName.lastIndexOf(".")).toLowerCase() : "");
+            let downloadUrl = doc.download_url || null;
+            let previewUrl = doc.preview_url || downloadUrl || null;
+            const canPreview = doc.can_preview !== undefined
+                ? doc.can_preview
                 : [".pdf", ".jpg", ".jpeg", ".png"].includes(fileExt);
+
+            // หากยังไม่มี previewUrl หรือ downloadUrl ให้ลองดึงจาก download-url API (มี route บน API Gateway)
+            if (!downloadUrl && !previewUrl && doc.id) {
+                try {
+                    const token = localStorage.getItem("docuflow_access_token") || localStorage.getItem("access_token") || "";
+                    const previewHeaders = token ? { "Authorization": `Bearer ${token}` } : {};
+                    const dlRes = await window.apiFetch(`${apiBase}/documents/${doc.id}/download-url`, { headers: previewHeaders });
+                    if (dlRes.ok) {
+                        const dlData = await dlRes.json();
+                        downloadUrl = dlData.download_url || null;
+                        previewUrl = dlData.preview_url || downloadUrl;
+                    }
+                } catch (e) {
+                    console.warn("Fetch download-url error:", e);
+                }
+            }
 
             // แปลง relative downloadUrl และ previewUrl เป็น full URL
             if (downloadUrl && downloadUrl.startsWith("/")) {
@@ -1074,26 +1061,22 @@
                 previewUrl = apiBase.replace(/\/api$/, "") + previewUrl;
             }
 
-            // Endpoint สตรีมไฟล์ตรงจากเซิร์ฟเวอร์ (รับประกันการดาวน์โหลด 100%)
-            const streamUrl = `${apiBase}/documents/${doc.id}/preview-file`;
-            const effectiveDownloadUrl = downloadUrl || streamUrl;
+            const effectiveDownloadUrl = downloadUrl || previewUrl;
 
             if (previewFileName) previewFileName.textContent = fileName;
-            if (previewFileSize) previewFileSize.textContent = formatBytes(previewData ? previewData.file_size : doc.file_size);
+            if (previewFileSize) previewFileSize.textContent = formatBytes(doc.file_size);
 
             configureFileTypeUI(fileExt);
 
             if (modalDownloadBtn) {
+                modalDownloadBtn.disabled = !effectiveDownloadUrl;
                 modalDownloadBtn.onclick = () => triggerBrowserDownload(effectiveDownloadUrl, fileName);
             }
 
             // เงื่อนไขที่ 1: PDF, JPG/JPEG, PNG (เปิดดูเนื้อหา + ดาวน์โหลดจากหน้าตัวอย่าง)
-            if (canPreview) {
-                const protectedPreview = await window.apiFetch(streamUrl);
-                if (!protectedPreview.ok) {
-                    throw new Error("ไม่สามารถเปิดไฟล์ได้ (" + protectedPreview.status + ")");
-                }
-                const finalPreviewUrl = URL.createObjectURL(await protectedPreview.blob());
+            if (canPreview && previewUrl) {
+                const finalPreviewUrl = previewUrl;
+
                 if (modalOpenTabBtn) {
                     modalOpenTabBtn.hidden = false;
                     modalOpenTabBtn.onclick = () => window.open(finalPreviewUrl, "_blank");
@@ -1105,16 +1088,18 @@
                             src="${escapeHtml(finalPreviewUrl)}#toolbar=1&navpanes=0" 
                             title="${escapeHtml(fileName)}"
                             loading="lazy"
+                            style="width: 100%; height: 100%; border: none; min-height: 500px;"
                         ></iframe>
                     `;
                 } else if ([".jpg", ".jpeg", ".png"].includes(fileExt)) {
                     previewViewport.innerHTML = `
-                        <div class="preview-image-wrap">
+                        <div class="preview-image-wrap" style="display: flex; justify-content: center; align-items: center; width: 100%; height: 100%; min-height: 400px; background: #f8fafc; padding: 20px;">
                             <img 
                                 src="${escapeHtml(finalPreviewUrl)}" 
                                 alt="${escapeHtml(fileName)}" 
                                 loading="lazy"
-                                onerror="if(!this.dataset.fallbackTried){ this.dataset.fallbackTried='1'; this.src='${escapeHtml(streamUrl)}'; } else { this.parentElement.innerHTML='<div class=\\'preview-error\\' style=\\'text-align:center;padding:40px 20px;color:#856404;background:#fff3cd;border:1px solid #ffeeba;border-radius:8px;\\'><h4>⚠️ ไม่สามารถแสดงตัวอย่างไฟล์ได้</h4><p style=\\'margin-top:8px;font-size:13px;\\'>ไฟล์นี้ไม่มีอยู่ใน S3 Storage หรือถูกลบออกแล้ว</p></div>'; }"
+                                style="max-width: 100%; max-height: 520px; object-fit: contain; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.08);"
+                                onerror="this.parentElement.innerHTML='<div class=\\'preview-error\\' style=\\'text-align:center;padding:40px 20px;color:#856404;background:#fff3cd;border:1px solid #ffeeba;border-radius:8px;\\'><h4>⚠️ ไม่สามารถแสดงตัวอย่างไฟล์ได้</h4><p style=\\'margin-top:8px;font-size:13px;\\'>สามารถคลิกปุ่มดาวน์โหลดไฟล์ด้านบนเพื่อดูเอกสาร</p></div>';"
                             >
                         </div>
                     `;
