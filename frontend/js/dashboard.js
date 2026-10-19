@@ -38,6 +38,10 @@ function getApiBaseUrl() {
    ROLE & PERMISSION MANAGEMENT
 ===================================================== */
 function initRoleManagement() {
+    if (typeof window.initNavbarProfile === "function") {
+        window.initNavbarProfile();
+        return;
+    }
     updateRoleUI();
 
     if (roleMenuBtn && roleDropdown) {
@@ -565,6 +569,13 @@ function initializeDashboard() {
 
     currentRole = savedRole || "staff";
     currentUsername = savedUser || "staff01";
+
+    // รองรับการส่งคำค้นหาข้ามหน้า (เช่น มาจาก register.html หรือ guide.html)
+    const urlParams = new URLSearchParams(window.location.search);
+    const searchQuery = urlParams.get("search");
+    if (searchQuery && globalSearch) {
+        globalSearch.value = searchQuery;
+    }
 
     initRoleManagement();
     syncFilterButtons();

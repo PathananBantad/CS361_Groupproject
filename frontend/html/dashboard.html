@@ -45,40 +45,19 @@
             </label>
             <span class="top-divider"></span>
 
-            <!-- Role Selector & Profile Menu สำหรับทดสอบสิทธิ์ -->
+            <!-- Role Selector & Profile Menu -->
             <div class="role-selector-wrap">
                 <button class="profile-button" id="roleMenuBtn" type="button" aria-expanded="false"
-                    title="คลิกเพื่อสลับสิทธิ์ผู้ใช้ (Permission Testing)">
+                    title="คลิกเพื่อดูข้อมูลผู้ใช้และออกจากระบบ">
                     <span class="profile-icon role-staff" id="userRoleDot" aria-hidden="true">●</span>
                     <span id="userRoleDisplay">เจ้าหน้าที่ (Staff)</span>
                     <span class="chevron" aria-hidden="true">⌄</span>
                 </button>
                 <div class="role-dropdown" id="roleDropdown" hidden>
                     <div class="role-dropdown-header">
-                        <span>สลับสิทธิ์ผู้ใช้งาน</span>
-                        <small>ทดสอบการเข้าถึง Preview & Download</small>
+                        <span id="userRoleDropdownTitle">ข้อมูลผู้ใช้งาน</span>
+                        <small id="userRoleDropdownEmail">ผู้ใช้งานระบบ DocuFlow</small>
                     </div>
-                    <button type="button" class="role-option active" data-role="staff" data-user="staff01">
-                        <span class="role-badge staff">Staff</span>
-                        <div class="role-info">
-                            <strong>เจ้าหน้าที่ (staff01)</strong>
-                            <small>สิทธิ์: ดูรายละเอียด + เรียกดู + ดาวน์โหลดได้</small>
-                        </div>
-                    </button>
-                    <button type="button" class="role-option" data-role="admin" data-user="admin01">
-                        <span class="role-badge admin">Admin</span>
-                        <div class="role-info">
-                            <strong>ผู้ดูแลระบบ (admin01)</strong>
-                            <small>สิทธิ์: เข้าถึงและจัดการได้ทุกเอกสาร</small>
-                        </div>
-                    </button>
-                    <button type="button" class="role-option" data-role="guest" data-user="guest">
-                        <span class="role-badge guest">Guest</span>
-                        <div class="role-info">
-                            <strong>ผู้ใช้ภายนอก (Guest)</strong>
-                            <small>ไม่มีสิทธิ์: ถูกบล็อกการเปิด Preview และ Download</small>
-                        </div>
-                    </button>
                     <div style="border-top: 1px solid #f1e5e5; margin: 4px 0;"></div>
                     <button type="button" class="role-option" id="logoutBtn" style="color: #991b1b;">
                         <span class="role-badge" style="background: #fee2e2; color: #991b1b;">Exit</span>
@@ -155,6 +134,7 @@
     <div id="documentModalContainer"></div>
 
     <script src="../js/cognito-config.js"></script>
+    <script src="../js/navbar-profile.js"></script>
     <script src="../js/document-modal.js"></script>
     <script src="../js/dashboard.js"></script>
     <script src="../js/document-assignment.js"></script>
