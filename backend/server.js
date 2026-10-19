@@ -941,6 +941,47 @@ app.get("/api/assignees", requireCognitoAuth, loadUserRole, async (req, res) => 
     }
 });
 
+// GET /api/forward-recipients - รายชื่อผู้ใช้ที่รับเอกสารส่งต่อได้
+app.get(
+    "/api/forward-recipients",
+    requireCognitoAuth,
+    loadUserRole,
+    async (req, res) => {
+        const forwarderRoles = [
+            "document_officer",
+            "case_owner",
+            "admin",
+            "faculty_staff"
+        ];
+
+        if (!forwarderRoles.includes(req.userRole)) {
+            return res.status(403).json({
+                error: "คุณไม่มีสิทธิ์ดูรายชื่อผู้รับส่งต่อ"
+            });
+        }
+
+        try {
+            const [rows] = await pool.query(
+                `SELECT DISTINCT u.id, u.username, u.full_name
+                 FROM users u
+                 JOIN users_roles ur ON ur.user_id = u.id
+                 JOIN roles r ON r.id = ur.role_id
+                 WHERE u.is_active = 1
+                   AND r.name IN (?)
+                 ORDER BY u.username`,
+                [ASSIGNEE_ROLES]
+            );
+
+            return res.json({ data: rows, total: rows.length });
+        } catch (error) {
+            console.error("Fetch forwarding recipients error:", error);
+            return res.status(500).json({
+                error: "ไม่สามารถดึงรายชื่อผู้รับส่งต่อได้"
+            });
+        }
+    }
+);
+
 // GET /api/my-assignments - เอกสารที่ได้รับมอบหมายให้ "ฉัน" (ดูได้เฉพาะของตัวเอง)
 app.get("/api/my-assignments", requireCognitoAuth, loadUserRole, async (req, res) => {
     try {
