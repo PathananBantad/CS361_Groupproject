@@ -5,4 +5,4 @@ window.COGNITO_CONFIG = {
 };
 
 window.API_BASE_URL =
-    "https://utvhg6d6o3.execute-api.us-east-1.amazonaws.com/api";
+    "https://utvhg6d6o3.execute-api.us-east-1.amazonaws.com";
