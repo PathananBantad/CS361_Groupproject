@@ -1072,6 +1072,15 @@ app.post("/api/documents/:id/forward", requireCognitoAuth, loadUserRole, async (
         const sanitizedNewAssigneeId = new_assignee_id ? String(new_assignee_id).trim() : null;
         const sanitizedAssigneeName = sanitizeInput(new_assignee_name || "");
         const sanitizedReceiverName = sanitizeInput(receiver_name || "");
+        if (
+            sanitizedNewAssigneeId &&
+            !/^[1-9]\d*$/.test(sanitizedNewAssigneeId)
+        ) {
+            return res.status(400).json({
+                error: "รหัสผู้รับส่งต่อไม่ถูกต้อง"
+            });
+        }
+
         const sanitizedRemarks = sanitizeInput(remarks || "");
         const sanitizedReason = sanitizeInput(reason || "");
 
@@ -1092,6 +1101,16 @@ app.post("/api/documents/:id/forward", requireCognitoAuth, loadUserRole, async (
             if (!checkDocumentAccess(req, doc, "forward").allowed) {
                 await connection.rollback();
                 return res.status(403).json({ error: "Forbidden" });
+            }
+            if (
+                sanitizedNewAssigneeId &&
+                doc.assignee_id != null &&
+                String(doc.assignee_id) === sanitizedNewAssigneeId
+            ) {
+                await connection.rollback();
+                return res.status(409).json({
+                    error: "เอกสารนี้ส่งต่อให้ผู้รับคนนี้อยู่แล้ว"
+                });
             }
 
             const forwardableStatuses = ["Received", "Assigned", "Processing"];
