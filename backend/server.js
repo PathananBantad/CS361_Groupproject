@@ -146,68 +146,139 @@ const DOCUMENT_ROLES = [
     "staff"
 ];
 
+
 function checkDocumentAccess(req, document) {
-    // 1. รองรับ Session Login
-    const user = req.session?.user;
-    if (user && user.id && Array.isArray(user.roles)) {
-        const roles = user.roles.map(r => String(r).trim().toLowerCase());
+    const normalizeRole = (role) =>
+        typeof role === "string" ? role.trim().toLowerCase() : "";
+
+    // Role ที่ระบบอนุญาตตาม Role Matrix
+    const DOCUMENT_ROLES = [
+        "document_officer",
+        "faculty_staff",
+        "case_owner",
+        "admin",
+        "executive"
+    ];
+
+    // 1. ตรวจสอบ Session Login (ถ้ามี)
+    const sessionUser = req.session?.user;
+
+    if (sessionUser) {
+        const sessionRoles = Array.isArray(sessionUser.roles)
+            ? sessionUser.roles.map(normalizeRole)
+            : [];
+
+        const role = sessionRoles.find((item) =>
+            DOCUMENT_ROLES.includes(item)
+        );
+
+        // ไม่มี Role ที่ถูกต้อง ต้องปฏิเสธ
+        if (!sessionUser.id || !role) {
+            return {
+                allowed: false,
+                reason: "No valid role found for session user"
+            };
+        }
+
+        const userId = String(sessionUser.id);
+
+        if (role === "case_owner") {
+            const isOwner =
+                document?.owner_id != null &&
+                String(document.owner_id) === userId;
+
+            const isAssignee =
+                document?.assignee_id != null &&
+                String(document.assignee_id) === userId;
+
+            if (!isOwner && !isAssignee) {
+                return {
+                    allowed: false,
+                    role,
+                    userId,
+                    reason: "User is not the document owner or assignee"
+                };
+            }
+        }
+
         return {
             allowed: true,
-            role: roles.includes("admin") ? "admin" : "staff",
-            userId: String(user.id),
-            isAdmin: roles.includes("admin"),
-            isStaff: roles.includes("staff")
+            role,
+            userId,
+            isAdmin: role === "admin"
         };
     }
 
-    // 2. ตรวจสอบ Authentication ผ่าน req.auth
-    if (!req.auth || !req.auth.sub) {
+    // 2. ต้องผ่าน Cognito Authentication ก่อน
+    if (!req.auth?.sub) {
         return {
             allowed: false,
             reason: "Authentication required"
         };
     }
 
-    const userId = req.auth.sub;
-
-    // Role ต้องมาจากข้อมูลที่ผ่านการตรวจสอบแล้วเท่านั้น
+    // 3. ใช้ Role จาก Cognito Groups ที่ตรวจสอบแล้ว
+    // หรือ Role ที่ Middleware โหลดจากฐานข้อมูลเท่านั้น
     const groups = Array.isArray(req.auth.groups)
-        ? req.auth.groups
+        ? req.auth.groups.map(normalizeRole)
         : [];
 
-    const role = groups.find(group =>
-        DOCUMENT_ROLES.includes(
-            String(group).trim().toLowerCase()
-        )
-    ) || (req.userRole && DOCUMENT_ROLES.includes(String(req.userRole).trim().toLowerCase()) ? String(req.userRole).trim().toLowerCase() : null) || "staff";
+    const verifiedDbRole = normalizeRole(req.userRole);
 
-    if (["admin", "executive", "staff", "document_officer", "faculty_staff"].includes(role)) {
+    const role =
+        groups.find((item) => DOCUMENT_ROLES.includes(item)) ||
+        (DOCUMENT_ROLES.includes(verifiedDbRole)
+            ? verifiedDbRole
+            : null);
+
+    // ห้ามกำหนด Role เป็น staff โดยอัตโนมัติ
+    if (!role) {
         return {
-            allowed: true,
-            role,
-            userId
+            allowed: false,
+            reason: "No valid role found for authenticated user"
         };
     }
 
-    if (
-    role === "case_owner" &&
-        (!document || !document.owner_id || String(document.owner_id) === String(userId) ||
-        (document.assignee_id != null && req.userId != null &&
-        String(document.assignee_id) === String(req.userId)))
-    ) {
+    const userId = req.userId != null
+        ? String(req.userId)
+        : null;
+
+    if (!userId) {
         return {
-            allowed: true,
+            allowed: false,
             role,
-            userId
+            reason: "Database user ID not found"
         };
+    }
+
+    // 4. ตรวจสอบเจ้าของหรือผู้รับมอบหมายสำหรับ case_owner
+    if (role === "case_owner") {
+        const isOwner =
+            document?.owner_id != null &&
+            String(document.owner_id) === userId;
+
+        const isAssignee =
+            document?.assignee_id != null &&
+            String(document.assignee_id) === userId;
+
+        if (!isOwner && !isAssignee) {
+            return {
+                allowed: false,
+                role,
+                userId,
+                reason: "User is not the document owner or assignee"
+            };
+        }
     }
 
     return {
-        allowed: false,
+        allowed: true,
         role,
-        reason: "Access denied by role policy"
+        userId,
+        isAdmin: role === "admin"
     };
 }
+
 
 // Redirect root to html/index.html before static middleware catches it
 app.get('/', (req, res) => {
@@ -395,8 +466,12 @@ app.get(
     });
 
 // Get document by ID พร้อม Metadata ของไฟล์
-app.get("/api/documents/:id", requireCognitoAuth, async (req, res) => {
-    try {
+app.get(
+    "/api/documents/:id",
+    requireCognitoAuth,
+    loadUserRole,
+    async (req, res) => {
+            try {
         const [rows] = await pool.query(
             `
             SELECT 
@@ -664,8 +739,12 @@ app.get("/api/workflow/config", (req, res) => {
 });
 
 // GET /api/documents/:id/status-history - ดึงประวัติการเปลี่ยนสถานะของเอกสาร (Audit Log)
-app.get("/api/documents/:id/status-history", async (req, res) => {
-    try {
+app.get(
+    "/api/documents/:id/status-history",
+    requireCognitoAuth,
+    loadUserRole,
+    async (req, res) => {
+            try {
         const { id } = req.params;
 
         const [docRows] = await pool.query("SELECT id, reference_no, subject, status FROM documents WHERE id = ?", [id]);
@@ -1318,10 +1397,14 @@ app.get("/api/receiving-channels", (req, res) => {
     });
 });
 
-// Create S3 upload URL พร้อมบันทึก Metadata
 // รองรับไฟล์: PDF, DOCX, JPG/JPEG, PNG, XLSX, PPTX
-app.get("/api/documents/:id/upload-url", async (req, res) => {
-    try {
+//เพิ่มตรวจ role ของผู้ใช้ก่อนอนุญาตให้สร้าง upload URL
+app.get(
+    "/api/documents/:id/upload-url",
+    requireCognitoAuth,
+    loadUserRole,
+    async (req, res) => {
+   try {
         const { id } = req.params;
         const { fileName, contentType, fileSize } = req.query;
 
@@ -1464,8 +1547,15 @@ app.get("/api/documents/:id/upload-url", async (req, res) => {
 });
 
 // Endpoint สำหรับ Direct Upload ไฟล์ขึ้น S3 ผ่าน Backend โดยตรง (Bypass Browser CORS 100%)
-app.post("/api/documents/:id/upload-direct", express.raw({ type: "*/*", limit: "25mb" }), async (req, res) => {
-    try {
+
+app.post(
+    "/api/documents/:id/upload-direct",
+    requireCognitoAuth,
+    loadUserRole,
+    express.raw({ type: "*/*", limit: "25mb" }),
+    async (req, res) => {
+
+        try {
         const { id } = req.params;
         const fileName = req.query.fileName || req.headers["x-filename"] || `file-${Date.now()}`;
         const contentType = req.query.contentType || req.headers["content-type"] || "application/octet-stream";
@@ -1509,7 +1599,11 @@ app.post("/api/documents/:id/upload-direct", express.raw({ type: "*/*", limit: "
 });
 
 // Endpoint สำหรับบันทึก/ยืนยัน Metadata ไฟล์หลังการ Upload สำเร็จ
-app.post("/api/documents/:id/file-metadata", requireCognitoAuth, async (req, res) => {
+app.post(
+    "/api/documents/:id/file-metadata",
+    requireCognitoAuth,
+    loadUserRole,
+    async (req, res) => {
     try {
         const { id } = req.params;
         const { fileName, fileSize, mimeType, fileKey } = req.body;
