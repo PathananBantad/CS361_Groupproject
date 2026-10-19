@@ -154,6 +154,7 @@
     <!-- Document Details & Preview Modal Container (โหลดเทมเพลตแยกจาก document-modal.html) -->
     <div id="documentModalContainer"></div>
 
+    <script src="../js/cognito-config.js"></script>
     <script src="../js/document-modal.js"></script>
     <script src="../js/dashboard.js"></script>
     <script src="../js/document-assignment.js"></script>
@@ -188,11 +189,13 @@
             }
 
             try {
-                const response = await fetch(`/api/documents/${documentId}/assign`, {
+                const apiBase = typeof getApiBaseUrl === "function" ? getApiBaseUrl() : "https://utvhg6d6o3.execute-api.us-east-1.amazonaws.com/api";
+                const authToken = localStorage.getItem("docuflow_access_token") || localStorage.getItem("access_token") || localStorage.getItem("docuflow_id_token") || localStorage.getItem("id_token") || "";
+                const response = await fetch(`${apiBase}/documents/${documentId}/assign`, {
                     method: "POST",
                     headers: {
                         "Content-Type": "application/json",
-                        "Authorization": `Bearer ${localStorage.getItem("id_token") || ""}`
+                        "Authorization": authToken ? `Bearer ${authToken}` : ""
                     },
                     body: JSON.stringify({
                         assignee_id: assigneeId,
@@ -214,6 +217,7 @@
             }
         }
     </script>
+
 </body>
 
 </html>

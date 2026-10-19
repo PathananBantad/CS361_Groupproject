@@ -2,15 +2,32 @@
 (function () {
     "use strict";
 
-    const ASSIGNER_ROLES = ["document_officer", "admin"];
+    const ASSIGNER_ROLES = ["document_officer", "admin", "officer", "staff"];
 
     function apiBase() {
-        return window.location.port === "3000" ? "/api" : "http://localhost:3000/api";
+        if (typeof window.getApiBaseUrl === "function") {
+            return window.getApiBaseUrl();
+        }
+        if (window.API_BASE_URL) {
+            return window.API_BASE_URL.endsWith("/api")
+                ? window.API_BASE_URL
+                : `${window.API_BASE_URL}/api`;
+        }
+        if (window.location.port === "3000") {
+            return "/api";
+        }
+        return "https://utvhg6d6o3.execute-api.us-east-1.amazonaws.com/api";
     }
 
     // รวมการอ่าน token ไว้ที่เดียว (backend ตรวจ access token)
     function getAuthToken() {
         try {
+            const directToken = localStorage.getItem("docuflow_access_token") ||
+                localStorage.getItem("access_token") ||
+                localStorage.getItem("docuflow_id_token") ||
+                localStorage.getItem("id_token");
+            if (directToken) return directToken;
+
             const prefix = "CognitoIdentityServiceProvider.";
             for (let i = 0; i < localStorage.length; i++) {
                 const key = localStorage.key(i);
@@ -21,7 +38,7 @@
                     if (token) return token;
                 }
             }
-            return localStorage.getItem("access_token") || localStorage.getItem("id_token") || "";
+            return "";
         } catch (e) {
             return "";
         }
