@@ -1298,7 +1298,7 @@
 function renderForwardSection(documentId) {
     return `
         <div class="forward-container" style="margin-top: 15px; padding: 15px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px;">
-            <h4 style="margin-bottom: 10px; font-size: 15px; color: #166534;">ส่งต่อเอกสาร (Issue #32)</h4>
+            <h4 style="margin-bottom: 10px; font-size: 15px; color: #166534;">ส่งต่อเอกสาร</h4>
             
             <div style="margin-bottom: 10px;">
                 <label style="display: block; font-size: 13px; margin-bottom: 4px; color: #374151;">รหัสผู้รับส่งต่อ (New Assignee ID):</label>
