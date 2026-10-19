@@ -567,10 +567,37 @@ function escapeHtml(value) {
 /* =====================================================
    INITIALIZE
 ===================================================== */
-initRoleManagement();
-syncFilterButtons();
-setupSorting();
-fetchDocuments();
+async function initializeDashboard() {
+    try {
+        const response = await fetch("/api/auth/me", {
+            credentials: "same-origin",
+            cache: "no-store"
+        });
+
+        if (!response.ok) {
+            window.location.replace("login.html");
+            return;
+        }
+
+        const data = await response.json();
+
+        if (!data.authenticated || !data.user) {
+            window.location.replace("login.html");
+            return;
+        }
+
+        initRoleManagement();
+        syncFilterButtons();
+        setupSorting();
+        fetchDocuments();
+
+    } catch (error) {
+        console.error("Session verification failed:", error);
+        window.location.replace("login.html");
+    }
+}
+
+initializeDashboard();
 
 // Expose fetchDocuments for external trigger and listen to status change events
 window.fetchDocuments = fetchDocuments;
