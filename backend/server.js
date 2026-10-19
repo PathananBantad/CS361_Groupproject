@@ -41,7 +41,7 @@ async function loadUserRole(req, res, next) {
             `SELECT u.id AS userId, u.username, r.name AS role
              FROM users u JOIN users_roles ur ON ur.user_id = u.id
              JOIN roles r ON r.id = ur.role_id
-             WHERE u.username = ? AND u.is_active = TRUE`, [username]
+             WHERE (u.username = ? OR u.cognito_sub = ?) AND u.is_active = TRUE`, [username, req.auth.sub]
         );
         const roles = [...new Set(rows.map((row) => String(row.role || "").trim().toLowerCase()).filter((role) => DOCUMENT_ROLES.includes(role)))];
         if (rows.length === 0 || !roles.length || !rows[0].userId) {
