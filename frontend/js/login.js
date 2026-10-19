@@ -96,31 +96,50 @@ if (loginForm) {
                 localStorage.setItem("id_token", idToken);
                 localStorage.setItem("docuflow_user", username);
 
-                // ตรวจสอบ Role จาก Cognito Groups
-                let role = "staff";
-                try {
-                    const idPayload = session.getIdToken().decodePayload();
-                    const groups = idPayload["cognito:groups"] || [];
-                    if (groups.includes("admin")) {
-                        role = "admin";
-                    } else if (groups.includes("document_officer") || groups.includes("officer")) {
-                        role = "officer";
-                    } else if (groups.includes("faculty_staff")) {
-                        role = "faculty_staff";
-                    } else if (groups.includes("case_owner")) {
-                        role = "case_owner";
-                    } else if (groups.length > 0) {
-                        role = groups[0];
-                    } else if (username.toLowerCase().includes("admin")) {
-                        role = "admin";
-                    }
-                } catch (e) {
-                    if (username.toLowerCase().includes("admin")) {
-                        role = "admin";
+                // ตรวจสอบ Role จาก Email หรือ Cognito Groups
+                const EMAIL_ROLE_MAP = {
+                    "pathanan.ban@dome.tu.ac.th": "admin",
+                    "maneerat.aun@dome.tu.ac.th": "faculty_staff",
+                    "buynarimruo@gmail.com": "case_owner",
+                    "achiraya.kha@dome.tu.ac.th": "document_officer",
+                    "pakhwan.jul@dome.tu.ac.th": "executive"
+                };
+
+                const cleanUser = username.toLowerCase().trim();
+                let role = EMAIL_ROLE_MAP[cleanUser] || null;
+
+                if (!role) {
+                    try {
+                        const idPayload = session.getIdToken().decodePayload();
+                        const groups = idPayload["cognito:groups"] || [];
+                        if (groups.includes("admin")) {
+                            role = "admin";
+                        } else if (groups.includes("document_officer") || groups.includes("officer")) {
+                            role = "document_officer";
+                        } else if (groups.includes("faculty_staff") || groups.includes("staff")) {
+                            role = "faculty_staff";
+                        } else if (groups.includes("case_owner") || groups.includes("owner")) {
+                            role = "case_owner";
+                        } else if (groups.includes("executive")) {
+                            role = "executive";
+                        } else if (groups.length > 0) {
+                            role = groups[0];
+                        }
+                    } catch (e) {
+                        console.warn("Could not decode Cognito ID token:", e);
                     }
                 }
 
+                if (!role) {
+                    if (cleanUser.includes("admin")) role = "admin";
+                    else if (cleanUser.includes("officer")) role = "document_officer";
+                    else if (cleanUser.includes("owner")) role = "case_owner";
+                    else if (cleanUser.includes("exec")) role = "executive";
+                    else role = "faculty_staff";
+                }
+
                 localStorage.setItem("docuflow_role", role);
+
 
                 window.location.href = "dashboard.html";
             },

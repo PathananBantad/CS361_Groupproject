@@ -385,12 +385,28 @@
 
     // Helper ดึงสิทธิ์ปัจจุบัน
     function getCurrentAuth() {
-        const role = localStorage.getItem("docuflow_role") || "staff";
-        const user = localStorage.getItem("docuflow_user") || "staff01";
+        const role = (localStorage.getItem("docuflow_role") || "guest").toLowerCase().trim();
+        const user = localStorage.getItem("docuflow_user") || "";
+        const internalRoles = [
+            "admin",
+            "document_officer",
+            "officer",
+            "faculty_staff",
+            "staff",
+            "case_owner",
+            "executive"
+        ];
+        const hasPermission = internalRoles.includes(role);
         return {
             role,
             user,
-            hasPermission: role === "staff" || role === "admin"
+            hasPermission,
+            isAdmin: role === "admin",
+            isOfficer: role === "document_officer" || role === "officer",
+            isStaff: role === "faculty_staff" || role === "staff",
+            isCaseOwner: role === "case_owner",
+            isExecutive: role === "executive",
+            isGuest: !hasPermission
         };
     }
 
@@ -513,10 +529,19 @@
 
         // 2. Update Current Role Display (Task 3)
         if (actionCurrentRoleDisplay) {
-            if (auth.role === "admin") {
-                actionCurrentRoleDisplay.textContent = `ผู้ดูแลระบบ (${auth.user || "admin01"})`;
-            } else if (auth.role === "staff") {
-                actionCurrentRoleDisplay.textContent = `เจ้าหน้าที่ (${auth.user || "staff01"})`;
+            const roleLabels = {
+                admin: "ผู้ดูแลระบบ",
+                document_officer: "เจ้าหน้าที่สารบรรณ",
+                officer: "เจ้าหน้าที่สารบรรณ",
+                faculty_staff: "เจ้าหน้าที่คณะ",
+                staff: "เจ้าหน้าที่คณะ",
+                case_owner: "ผู้รับผิดชอบเอกสาร",
+                executive: "ผู้บริหาร",
+                guest: "ผู้ใช้ทั่วไป"
+            };
+            const roleLabel = roleLabels[auth.role] || auth.role || "ผู้ใช้ทั่วไป";
+            if (auth.hasPermission) {
+                actionCurrentRoleDisplay.textContent = `${roleLabel} (${auth.user || "-"})`;
             } else {
                 actionCurrentRoleDisplay.textContent = `ผู้ใช้ทั่วไป (Guest - ไม่มีสิทธิ์)`;
             }
@@ -552,9 +577,10 @@
         if (statusRemarksInput) statusRemarksInput.value = "";
         if (btnNextStatusSpinner) btnNextStatusSpinner.hidden = true;
 
-        const isGuest = auth.role === "guest" || auth.role === "unauthorized" || !auth.hasPermission;
+        const isGuest = auth.isGuest || !auth.hasPermission;
+        const isExecutive = auth.isExecutive;
         const isCompleted = rawStatus === "Completed";
-        const isAdmin = auth.role === "admin";
+        const isAdmin = auth.isAdmin;
 
         if (isGuest) {
             // Guest role cannot change status
@@ -562,7 +588,15 @@
             if (statusDisabledMessage) {
                 statusDisabledMessage.hidden = false;
                 if (statusDisabledIcon) statusDisabledIcon.textContent = "🔒";
-                if (statusDisabledText) statusDisabledText.textContent = "คุณอยู่ในบทบาท Guest ไม่มีสิทธิ์เปลี่ยนสถานะเอกสาร กรุณาสลับเป็น Staff หรือ Admin เพื่อดำเนินการ";
+                if (statusDisabledText) statusDisabledText.textContent = "คุณอยู่ในบทบาท Guest ไม่มีสิทธิ์เปลี่ยนสถานะเอกสาร กรุณาเข้าสู่ระบบด้วยบัญชีเจ้าหน้าที่เพื่อดำเนินการ";
+            }
+        } else if (isExecutive) {
+            // Executive role is monitoring / view-only
+            if (statusNextActionWrap) statusNextActionWrap.hidden = true;
+            if (statusDisabledMessage) {
+                statusDisabledMessage.hidden = false;
+                if (statusDisabledIcon) statusDisabledIcon.textContent = "👁️";
+                if (statusDisabledText) statusDisabledText.textContent = "บทบาทผู้บริหาร (Executive): สำหรับติดตามและตรวจสอบการดำเนินงานของเอกสาร (View / Audit Only)";
             }
         } else if (isCompleted && !isAdmin) {
             // Completed is terminal state for staff
@@ -573,7 +607,7 @@
                 if (statusDisabledText) statusDisabledText.textContent = "เอกสารนี้ดำเนินการเสร็จสิ้นสมบูรณ์แล้ว (Workflow Completed)";
             }
         } else {
-            // Staff or Admin can proceed with workflow
+            // Staff, Officer, Case Owner, Admin can proceed with workflow
             if (statusNextActionWrap) statusNextActionWrap.hidden = false;
             if (statusDisabledMessage) statusDisabledMessage.hidden = true;
 
@@ -609,8 +643,8 @@
         const apiBase = getApiBaseUrl();
 
         // Check permission client-side
-        if (auth.role === "guest" || !auth.hasPermission) {
-            showAlert("คุณไม่มีสิทธิ์ในการเปลี่ยนสถานะเอกสาร (ต้องการสิทธิ์ Staff หรือ Admin เท่านั้น)", "error", "ไม่อนุญาต (Permission Denied)");
+        if (auth.isGuest || auth.isExecutive || !auth.hasPermission) {
+            showAlert("คุณไม่มีสิทธิ์ในการเปลี่ยนสถานะเอกสาร", "error", "ไม่อนุญาต (Permission Denied)");
             return;
         }
 
@@ -916,24 +950,9 @@
                         <div class="permission-icon">🔒</div>
                         <h4>ไม่อนุญาตให้เข้าถึง (Permission Denied)</h4>
                         <p>คุณไม่มีสิทธิ์ในการเรียกดูเนื้อหาหรือดาวน์โหลดไฟล์เอกสารนี้ เนื่องจากบทบาทปัจจุบันของคุณคือ <strong>ผู้ใช้ทั่วไป (Guest)</strong></p>
-                        <button type="button" class="btn-switch-role" id="btnSwitchToStaffModal">
-                            สลับเป็นบทบาท "เจ้าหน้าที่ (Staff)" เพื่อเปิดไฟล์
-                        </button>
+                        <p style="margin-top:10px; font-size:13px; color:#64748b;">กรุณาเข้าสู่ระบบด้วยบัญชีผู้ใช้ที่มีสิทธิ์เพื่อเปิดอ่านเอกสาร</p>
                     </div>
                 `;
-
-                const switchBtn = document.getElementById("btnSwitchToStaffModal");
-                if (switchBtn) {
-                    switchBtn.addEventListener("click", () => {
-                        if (typeof window.setUserRole === "function") {
-                            window.setUserRole("staff", "staff01");
-                        } else {
-                            localStorage.setItem("docuflow_role", "staff");
-                            localStorage.setItem("docuflow_user", "staff01");
-                        }
-                        openDocumentModal(doc);
-                    });
-                }
             }
             return;
         }
@@ -1141,7 +1160,7 @@
     async function downloadDocumentFile(documentId, preferredFileName = "") {
         const auth = getCurrentAuth();
         if (!auth.hasPermission) {
-            alert("⛔ ไม่อนุญาตให้เข้าถึง (Permission Denied)\n\nคุณไม่มีสิทธิ์ในการดาวน์โหลดเอกสารนี้ กรุณาสลับเป็นบทบาท 'เจ้าหน้าที่' หรือ 'ผู้ดูแลระบบ'");
+            alert("⛔ ไม่อนุญาตให้เข้าถึง (Permission Denied)\n\nคุณไม่มีสิทธิ์ในการดาวน์โหลดเอกสารนี้ เนื่องจากบทบาทปัจจุบันของคุณไม่มีสิทธิ์เข้าถึง");
             return;
         }
 
