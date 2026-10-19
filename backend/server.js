@@ -13,7 +13,7 @@ const path = require("path");
 const sessionMiddleware = require("./session");
 const authRouter = require("./auth");
 const { requireCognitoAuth } = require("./cognito-auth");
-const { requireSessionAuth } = require("./session-auth");
+const { ROLES: DOCUMENT_ROLES, canAccessDocument } = require("./documentAuthorization");
 
 const {
     AUDIT_EVENTS,
@@ -35,40 +35,25 @@ async function loadUserRole(req, res, next) {
     }
 
     try {
+        const username = req.auth.username;
+        if (!username) return res.status(403).json({ error: "No authorized role found for this user" });
         const [rows] = await pool.execute(
-            `SELECT u.id AS userId, ur.role
-             FROM users u
-             INNER JOIN user_roles ur
-                 ON ur.cognito_sub = u.cognito_sub
-             WHERE u.cognito_sub = ?
-             LIMIT 1`,
-            [req.auth.sub]
+            `SELECT u.id AS userId, u.username, r.name AS role
+             FROM users u JOIN users_roles ur ON ur.user_id = u.id
+             JOIN roles r ON r.id = ur.role_id
+             WHERE u.username = ? AND u.is_active = TRUE`, [username]
         );
-
-        if (rows.length === 0 || !rows[0].role || !rows[0].userId) {
+        const roles = [...new Set(rows.map((row) => String(row.role || "").trim().toLowerCase()).filter((role) => DOCUMENT_ROLES.includes(role)))];
+        if (rows.length === 0 || !roles.length || !rows[0].userId) {
             return res.status(403).json({
                 error: "No authorized role found for this user"
             });
         }
 
-        const role = String(rows[0].role).trim().toLowerCase();
-
-        const allowedRoles = [
-            "document_officer",
-            "faculty_staff",
-            "case_owner",
-            "admin",
-            "executive"
-        ];
-
-        if (!allowedRoles.includes(role)) {
-            return res.status(403).json({
-                error: "Invalid or unauthorized role"
-            });
-        }
-
         req.userId = rows[0].userId;
-        req.userRole = role;
+        req.dbUsername = rows[0].username;
+        req.userRoles = roles;
+        req.userRole = ["admin", "executive", "document_officer", "case_owner", "faculty_staff"].find((role) => roles.includes(role));
 
         return next();
     } catch (error) {
@@ -84,6 +69,7 @@ const {
     createUploadUrl,
     createDownloadUrl,
     getS3Object,
+    getObjectMetadata,
     getPublicUrl,
     getMimeTypeByExtension,
     getObjectBuffer,
@@ -137,77 +123,11 @@ function isPreviewable(fileNameOrKey) {
 }
 
 // Helper ตรวจสอบสิทธิ์การเข้าถึง Preview และ Download ไฟล์
-const DOCUMENT_ROLES = [
-    "document_officer",
-    "faculty_staff",
-    "case_owner",
-    "admin",
-    "executive",
-    "staff"
-];
-
-function checkDocumentAccess(req, document) {
-    // 1. รองรับ Session Login
-    const user = req.session?.user;
-    if (user && user.id && Array.isArray(user.roles)) {
-        const roles = user.roles.map(r => String(r).trim().toLowerCase());
-        return {
-            allowed: true,
-            role: roles.includes("admin") ? "admin" : "staff",
-            userId: String(user.id),
-            isAdmin: roles.includes("admin"),
-            isStaff: roles.includes("staff")
-        };
-    }
-
-    // 2. ตรวจสอบ Authentication ผ่าน req.auth
-    if (!req.auth || !req.auth.sub) {
-        return {
-            allowed: false,
-            reason: "Authentication required"
-        };
-    }
-
-    const userId = req.auth.sub;
-
-    // Role ต้องมาจากข้อมูลที่ผ่านการตรวจสอบแล้วเท่านั้น
-    const groups = Array.isArray(req.auth.groups)
-        ? req.auth.groups
-        : [];
-
-    const role = groups.find(group =>
-        DOCUMENT_ROLES.includes(
-            String(group).trim().toLowerCase()
-        )
-    ) || (req.userRole && DOCUMENT_ROLES.includes(String(req.userRole).trim().toLowerCase()) ? String(req.userRole).trim().toLowerCase() : null) || "staff";
-
-    if (["admin", "executive", "staff", "document_officer", "faculty_staff"].includes(role)) {
-        return {
-            allowed: true,
-            role,
-            userId
-        };
-    }
-
-    if (
-    role === "case_owner" &&
-        (!document || !document.owner_id || String(document.owner_id) === String(userId) ||
-        (document.assignee_id != null && req.userId != null &&
-        String(document.assignee_id) === String(req.userId)))
-    ) {
-        return {
-            allowed: true,
-            role,
-            userId
-        };
-    }
-
-    return {
-        allowed: false,
-        role,
-        reason: "Access denied by role policy"
-    };
+function checkDocumentAccess(req, document, action = "read") {
+    const roles = req.userRoles || (req.userRole ? [req.userRole] : []);
+    return { allowed: canAccessDocument({ roles, userId: req.userId, document, action }), role: req.userRole, userId: req.userId };
 }
+
 
 // Redirect root to html/index.html before static middleware catches it
 app.get('/', (req, res) => {
@@ -270,18 +190,21 @@ app.get(
             let sql = `
             SELECT 
                 d.*,
+                assignee.username AS assignee_username,
+                assignee.full_name AS assignee_full_name,
                 f.file_name,
                 f.file_size,
                 f.mime_type,
                 f.uploaded_at AS file_uploaded_at
             FROM documents d
             LEFT JOIN document_files f ON d.id = f.document_id
+            LEFT JOIN users assignee ON assignee.id = d.assignee_id
             WHERE 1 = 1
         `;
 
             const params = [];
 
-            if (role === "case_owner") {
+            if (!req.userRoles.some((item) => ["admin", "executive", "document_officer"].includes(item))) {
                 sql += " AND (d.owner_id = ? OR d.assignee_id = ?)";
                 params.push(userId, userId);
             }
@@ -395,8 +318,12 @@ app.get(
     });
 
 // Get document by ID พร้อม Metadata ของไฟล์
-app.get("/api/documents/:id", requireCognitoAuth, async (req, res) => {
-    try {
+app.get(
+    "/api/documents/:id",
+    requireCognitoAuth,
+    loadUserRole,
+    async (req, res) => {
+            try {
         const [rows] = await pool.query(
             `
             SELECT 
@@ -419,7 +346,7 @@ app.get("/api/documents/:id", requireCognitoAuth, async (req, res) => {
         }
 
         const doc = rows[0];
-        const access = checkDocumentAccess(req, doc);
+        const access = checkDocumentAccess(req, doc, "read");
         if (!access.allowed) {
             return res.status(403).json({ error: access.reason || "Permission Denied" });
         }
@@ -445,7 +372,7 @@ app.get("/api/documents/:id", requireCognitoAuth, async (req, res) => {
 });
 
 // Create document
-app.post("/api/documents", requireSessionAuth, async (req, res) => {    try {
+app.post("/api/documents", requireCognitoAuth, loadUserRole, async (req, res) => {    try {
         let {
             reference_no,
             document_number,
@@ -460,9 +387,9 @@ app.post("/api/documents", requireSessionAuth, async (req, res) => {    try {
             deadline,
             remarks,
             receiving_channel,
-            status = "Received",
-            file_key = null
+            status = "Received"
         } = req.body;
+        if (req.body.file_key != null) return res.status(400).json({ error: "file_key is assigned by the server during upload" });
 
         // 1. ตรวจสอบช่องทางรับเอกสาร
         const allowedChannels = ["EMAIL", "PAPER"];
@@ -564,8 +491,8 @@ app.post("/api/documents", requireSessionAuth, async (req, res) => {    try {
                     sanitizedRemarks || null,
                     receiving_channel,
                     status,
-                    file_key,
-                    null
+                    null,
+                    req.userId
                 ]
             );
 
@@ -664,14 +591,19 @@ app.get("/api/workflow/config", (req, res) => {
 });
 
 // GET /api/documents/:id/status-history - ดึงประวัติการเปลี่ยนสถานะของเอกสาร (Audit Log)
-app.get("/api/documents/:id/status-history", async (req, res) => {
-    try {
+app.get(
+    "/api/documents/:id/status-history",
+    requireCognitoAuth,
+    loadUserRole,
+    async (req, res) => {
+            try {
         const { id } = req.params;
 
-        const [docRows] = await pool.query("SELECT id, reference_no, subject, status FROM documents WHERE id = ?", [id]);
+        const [docRows] = await pool.query("SELECT * FROM documents WHERE id = ?", [id]);
         if (docRows.length === 0) {
             return res.status(404).json({ error: "ไม่พบข้อมูลเอกสารในระบบ" });
         }
+        if (!checkDocumentAccess(req, docRows[0], "read").allowed) return res.status(403).json({ error: "Forbidden" });
 
         const [logs] = await pool.query(
             `SELECT id, document_id, old_status, new_status, changed_by, changed_by_user_id, remarks, changed_at
@@ -707,7 +639,7 @@ app.put("/api/documents/:id/status", requireCognitoAuth, loadUserRole, async (re
         const sanitizedRemarks = sanitizeInput(remarks || "");
 
         // 2. ตรวจสอบสิทธิ์ผู้ใช้: เฉพาะ staff, faculty_staff, document_officer, case_owner และ admin
-        if (!role || !["document_officer", "case_owner", "admin", "staff", "faculty_staff"].includes(role)) {
+        if (!role || !["document_officer", "case_owner", "admin", "faculty_staff"].includes(role)) {
             return res.status(403).json({
                 error: "คุณไม่มีสิทธิ์ในการเปลี่ยนสถานะเอกสาร (ต้องการสิทธิ์ Staff หรือ Admin เท่านั้น)"
             });
@@ -735,6 +667,7 @@ app.put("/api/documents/:id/status", requireCognitoAuth, loadUserRole, async (re
         }
 
         const doc = docRows[0];
+        if (!checkDocumentAccess(req, doc, "status").allowed) return res.status(403).json({ error: "Forbidden" });
         const oldStatus = doc.status || "Received";
 
         // 5. ป้องกันการเปลี่ยนเป็นสถานะเดิม
@@ -832,9 +765,7 @@ app.put("/api/documents/:id/status", requireCognitoAuth, loadUserRole, async (re
 
     } catch (error) {
         console.error("Update document status error:", error);
-        res.status(500).json({
-            error: "เกิดข้อผิดพลาดของเซิร์ฟเวอร์ในการเปลี่ยนสถานะเอกสาร: " + error.message
-        });
+        res.status(500).json({ error: "Unable to update document status" });
     }
 });
 
@@ -881,6 +812,10 @@ app.post("/api/documents/:id/assign", requireCognitoAuth, loadUserRole, async (r
         if (docRows.length === 0) throw new HttpError(404, "ไม่พบเอกสารที่ระบุในระบบ");
 
         const doc = docRows[0];
+        const documentAccess = checkDocumentAccess(req, doc);
+        if (!documentAccess.allowed) {
+            throw new HttpError(403, "คุณไม่มีสิทธิ์เข้าถึงเอกสารนี้เพื่อมอบหมาย");
+        }
         const oldStatus = doc.status || "Received";
         if (oldStatus === "Completed") {
             throw new HttpError(409, "เอกสารดำเนินการเสร็จสิ้นแล้ว ไม่สามารถมอบหมายได้");
@@ -891,9 +826,9 @@ app.post("/api/documents/:id/assign", requireCognitoAuth, loadUserRole, async (r
 
         // ตรวจผู้รับ: มีอยู่จริง + ใช้งานได้ + บทบาทเหมาะสม
         const [aRows] = await connection.query(
-            `SELECT u.id, u.username, u.is_active, ur.role
+            `SELECT u.id, u.username, u.full_name, u.is_active, r.name AS role
              FROM users u
-             JOIN user_roles ur ON ur.cognito_sub = u.cognito_sub
+             JOIN users_roles ur ON ur.user_id = u.id JOIN roles r ON r.id = ur.role_id
              WHERE u.id = ? LIMIT 1`,
             [assigneeId]
         );
@@ -958,10 +893,16 @@ app.post("/api/documents/:id/assign", requireCognitoAuth, loadUserRole, async (r
 
         await connection.commit();
 
-        const [rows] = await pool.query("SELECT * FROM documents WHERE id = ?", [documentId]);
+        const [rows] = await pool.query(
+            `SELECT d.*, u.username AS assignee_username, u.full_name AS assignee_full_name
+             FROM documents d
+             LEFT JOIN users u ON u.id = d.assignee_id
+             WHERE d.id = ?`,
+            [documentId]
+        );
         res.json({
             ok: true,
-            message: `มอบหมายเอกสารให้ ${assignee.username} เรียบร้อยแล้ว`,
+            message: `มอบหมายเอกสารให้ ${assignee.full_name || assignee.username} เรียบร้อยแล้ว`,
             data: rows[0],
             audit: auditRecord
         });
@@ -987,10 +928,10 @@ app.get("/api/assignees", requireCognitoAuth, loadUserRole, async (req, res) => 
 
     try {
         const [rows] = await pool.query(
-            `SELECT u.id, u.username, ur.role
+            `SELECT u.id, u.username, u.full_name, r.name AS role
              FROM users u
-             JOIN user_roles ur ON ur.cognito_sub = u.cognito_sub
-             WHERE u.is_active = 1 AND ur.role IN (?)
+             JOIN users_roles ur ON ur.user_id = u.id JOIN roles r ON r.id = ur.role_id
+             WHERE u.is_active = 1 AND r.name IN (?)
              ORDER BY u.username`,
             [ASSIGNEE_ROLES]
         );
@@ -1027,7 +968,7 @@ app.get("/api/documents/:id/assignments", requireCognitoAuth, loadUserRole, asyn
 
     try {
         const [docRows] = await pool.query(
-            "SELECT id, reference_no, assignee_id FROM documents WHERE id = ?",
+            "SELECT * FROM documents WHERE id = ?",
             [documentId]
         );
         if (docRows.length === 0) {
@@ -1035,11 +976,11 @@ app.get("/api/documents/:id/assignments", requireCognitoAuth, loadUserRole, asyn
         }
 
         const doc = docRows[0];
-        const canViewAll = [...ASSIGNER_ROLES, "executive"].includes(req.userRole);
+        const canViewDocument = checkDocumentAccess(req, doc, "read").allowed;
         const isCurrentAssignee =
             doc.assignee_id != null && Number(doc.assignee_id) === Number(req.userId);
 
-        if (!canViewAll && !isCurrentAssignee) {
+        if (!canViewDocument && !isCurrentAssignee) {
             return res.status(403).json({ error: "คุณไม่มีสิทธิ์ดูประวัติการมอบหมายของเอกสารนี้" });
         }
 
@@ -1079,7 +1020,7 @@ app.post("/api/documents/:id/forward", requireCognitoAuth, loadUserRole, async (
         const role = actor.actorRole;
 
         // ตรวจสอบสิทธิ์ผู้มีอำนาจส่งต่อ
-        if (!role || !["document_officer", "case_owner", "admin", "staff", "faculty_staff"].includes(role)) {
+        if (!role || !["document_officer", "case_owner", "admin", "faculty_staff"].includes(role)) {
             return res.status(403).json({
                 error: "คุณไม่มีสิทธิ์ในการส่งต่อเอกสาร (ต้องการสิทธิ์ Staff หรือ Admin)"
             });
@@ -1111,6 +1052,17 @@ app.post("/api/documents/:id/forward", requireCognitoAuth, loadUserRole, async (
             }
 
             const doc = docRows[0];
+            if (!checkDocumentAccess(req, doc, "forward").allowed) {
+                await connection.rollback();
+                return res.status(403).json({ error: "Forbidden" });
+            }
+            if (sanitizedNewAssigneeId) {
+                const [targetRows] = await connection.query(
+                    `SELECT u.id FROM users u JOIN users_roles ur ON ur.user_id=u.id JOIN roles r ON r.id=ur.role_id
+                     WHERE u.id=? AND u.is_active=1 AND r.name IN (?)`, [sanitizedNewAssigneeId, ASSIGNEE_ROLES]
+                );
+                if (!targetRows.length) { await connection.rollback(); return res.status(400).json({ error: "Invalid assignee" }); }
+            }
 
             // อัปเดตเอกสาร
             await connection.query(
@@ -1188,7 +1140,7 @@ app.post("/api/documents/:id/forward", requireCognitoAuth, loadUserRole, async (
 
     } catch (error) {
         console.error("Forward document error:", error);
-        res.status(500).json({ error: "เกิดข้อผิดพลาดในการส่งต่อเอกสาร: " + error.message });
+        res.status(500).json({ error: "Unable to forward document" });
     }
 });
 
@@ -1235,7 +1187,7 @@ app.get("/api/documents/:id/audit-trail", requireCognitoAuth, loadUserRole, asyn
 
     } catch (error) {
         console.error("Fetch audit trail error:", error);
-        res.status(500).json({ error: "ไม่สามารถดึงข้อมูล Audit Trail ได้: " + error.message });
+        res.status(500).json({ error: "Unable to fetch audit trail" });
     }
 });
 
@@ -1269,7 +1221,7 @@ app.get("/api/audit-trails", requireCognitoAuth, loadUserRole, async (req, res) 
 
     } catch (error) {
         console.error("Query audit trails error:", error);
-        res.status(500).json({ error: "ไม่สามารถดึงข้อมูลประวัติการตรวจสอบระบบได้: " + error.message });
+        res.status(500).json({ error: "Unable to query audit trails" });
     }
 });
 
@@ -1318,10 +1270,14 @@ app.get("/api/receiving-channels", (req, res) => {
     });
 });
 
-// Create S3 upload URL พร้อมบันทึก Metadata
 // รองรับไฟล์: PDF, DOCX, JPG/JPEG, PNG, XLSX, PPTX
-app.get("/api/documents/:id/upload-url", async (req, res) => {
-    try {
+//เพิ่มตรวจ role ของผู้ใช้ก่อนอนุญาตให้สร้าง upload URL
+app.get(
+    "/api/documents/:id/upload-url",
+    requireCognitoAuth,
+    loadUserRole,
+    async (req, res) => {
+   try {
         const { id } = req.params;
         const { fileName, contentType, fileSize } = req.query;
 
@@ -1337,7 +1293,7 @@ app.get("/api/documents/:id/upload-url", async (req, res) => {
             return res.status(404).json({ error: "Document not found" });
         }
 
-        const access = checkDocumentAccess(req, docRows[0]);
+        const access = checkDocumentAccess(req, docRows[0], "upload");
         if (!access.allowed) {
             return res.status(403).json({ error: access.reason || "Permission Denied: ไม่มีสิทธิ์อัปโหลดไฟล์" });
         }
@@ -1358,6 +1314,10 @@ app.get("/api/documents/:id/upload-url", async (req, res) => {
         };
 
         const extension = path.extname(fileName).toLowerCase();
+        const requestedSize = Number(fileSize);
+        if (!Number.isInteger(requestedSize) || requestedSize <= 0 || requestedSize > 10 * 1024 * 1024) {
+            return res.status(400).json({ error: "File size must be between 1 byte and 10 MB" });
+        }
 
         if (!allowedTypes[extension]) {
             return res.status(400).json({
@@ -1367,9 +1327,10 @@ app.get("/api/documents/:id/upload-url", async (req, res) => {
 
         // จัดการ Content Type ให้ถูกต้อง (หากเบราว์เซอร์ส่ง generic มา ให้ใช้ค่าที่ถูกต้องตาม extension)
         const expectedType = allowedTypes[extension];
-        const finalContentType = (contentType && contentType !== "application/octet-stream" && contentType !== "application/x-zip-compressed")
-            ? contentType
-            : expectedType;
+        if (contentType && !["application/octet-stream", "application/x-zip-compressed", expectedType].includes(contentType)) {
+            return res.status(400).json({ error: "File MIME type does not match its extension" });
+        }
+        const finalContentType = expectedType;
 
         // Prevent path traversal
         if (fileName.includes("/") || fileName.includes("\\")) {
@@ -1426,7 +1387,7 @@ app.get("/api/documents/:id/upload-url", async (req, res) => {
             [id]
         );
 
-        const parsedSize = fileSize ? Number(fileSize) : null;
+        const parsedSize = requestedSize;
 
         if (existingFiles.length > 0) {
             await pool.query(
@@ -1449,10 +1410,11 @@ app.get("/api/documents/:id/upload-url", async (req, res) => {
 
         res.json({
             document_id: id,
-            file_name: finalFileName,
-            file_size: doc.file_size,
-            mime_type: resolvedMime,
-            download_url: downloadUrl
+            file_name: safeFileName,
+            file_size: parsedSize,
+            mime_type: finalContentType,
+            upload_url: uploadUrl,
+            file_key: fileKey
         });
 
     } catch (error) {
@@ -1464,8 +1426,15 @@ app.get("/api/documents/:id/upload-url", async (req, res) => {
 });
 
 // Endpoint สำหรับ Direct Upload ไฟล์ขึ้น S3 ผ่าน Backend โดยตรง (Bypass Browser CORS 100%)
-app.post("/api/documents/:id/upload-direct", express.raw({ type: "*/*", limit: "25mb" }), async (req, res) => {
-    try {
+
+app.post(
+    "/api/documents/:id/upload-direct",
+    requireCognitoAuth,
+    loadUserRole,
+    express.raw({ type: "*/*", limit: "10mb" }),
+    async (req, res) => {
+
+        try {
         const { id } = req.params;
         const fileName = req.query.fileName || req.headers["x-filename"] || `file-${Date.now()}`;
         const contentType = req.query.contentType || req.headers["content-type"] || "application/octet-stream";
@@ -1475,10 +1444,16 @@ app.post("/api/documents/:id/upload-direct", express.raw({ type: "*/*", limit: "
             return res.status(404).json({ error: "Document not found" });
         }
 
+        if (!checkDocumentAccess(req, docRows[0], "upload").allowed) return res.status(403).json({ error: "Forbidden" });
+        if (!Buffer.isBuffer(req.body) || req.body.length === 0 || req.body.length > 10 * 1024 * 1024) return res.status(400).json({ error: "Invalid file size" });
+
         const safeFileName = decodeURIComponent(fileName).replace(/[\u0000-\u001F\u007F]/g, "").trim();
+        if (!safeFileName || /[\\/]/.test(safeFileName)) return res.status(400).json({ error: "Invalid file name" });
+        const finalContentType = getMimeTypeByExtension(safeFileName);
+        if (finalContentType === "application/octet-stream" || (contentType !== finalContentType && contentType !== "application/octet-stream")) return res.status(400).json({ error: "Unsupported or mismatched file type" });
         const fileKey = `documents/${id}/${Date.now()}-${safeFileName}`;
 
-        await uploadObjectBuffer(fileKey, req.body, contentType);
+        await uploadObjectBuffer(fileKey, req.body, finalContentType);
 
         await pool.query("UPDATE documents SET file_key = ? WHERE id = ?", [fileKey, id]);
 
@@ -1486,12 +1461,12 @@ app.post("/api/documents/:id/upload-direct", express.raw({ type: "*/*", limit: "
         if (existingFiles.length > 0) {
             await pool.query(
                 "UPDATE document_files SET file_name = ?, file_path = ?, file_size = ?, mime_type = ?, uploaded_at = CURRENT_TIMESTAMP WHERE document_id = ?",
-                [safeFileName, fileKey, req.body.length, contentType, id]
+                [safeFileName, fileKey, req.body.length, finalContentType, id]
             );
         } else {
             await pool.query(
                 "INSERT INTO document_files (document_id, file_name, file_path, file_size, mime_type, uploaded_at) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)",
-                [id, safeFileName, fileKey, req.body.length, contentType]
+                [id, safeFileName, fileKey, req.body.length, finalContentType]
             );
         }
 
@@ -1504,12 +1479,16 @@ app.post("/api/documents/:id/upload-direct", express.raw({ type: "*/*", limit: "
         });
     } catch (error) {
         console.error("Direct upload error:", error);
-        res.status(500).json({ error: error.message || "Failed to upload file to S3" });
+        res.status(500).json({ error: "Failed to upload file" });
     }
 });
 
 // Endpoint สำหรับบันทึก/ยืนยัน Metadata ไฟล์หลังการ Upload สำเร็จ
-app.post("/api/documents/:id/file-metadata", requireCognitoAuth, async (req, res) => {
+app.post(
+    "/api/documents/:id/file-metadata",
+    requireCognitoAuth,
+    loadUserRole,
+    async (req, res) => {
     try {
         const { id } = req.params;
         const { fileName, fileSize, mimeType, fileKey } = req.body;
@@ -1524,31 +1503,20 @@ app.post("/api/documents/:id/file-metadata", requireCognitoAuth, async (req, res
         }
 
         // [เพิ่มใหม่] ตรวจสอบสิทธิ์ก่อนยอมให้บันทึก Metadata ไฟล์
-        const access = checkDocumentAccess(req, docRows[0]);
+        const access = checkDocumentAccess(req, docRows[0], "upload");
         if (!access.allowed) {
             return res.status(403).json({ error: access.reason || "Permission Denied" });
         }
 
         const safeFileName = fileName.replace(/[\u0000-\u001F\u007F]/g, "").trim();
+        const finalKey = fileKey;
+        if (!finalKey || finalKey !== docRows[0].file_key || !finalKey.startsWith(`documents/${id}/`)) return res.status(400).json({ error: "Invalid file key" });
         const finalMime = mimeType || getMimeTypeByExtension(safeFileName);
         const parsedSize = fileSize ? Number(fileSize) : null;
 
-        // ดึง file_key ปัจจุบันถ้าไม่ได้ส่งมา
-        let finalKey = fileKey;
-        if (!finalKey) {
-            const [docRows] = await pool.query("SELECT file_key FROM documents WHERE id = ?", [id]);
-            if (docRows.length > 0 && docRows[0].file_key) {
-                finalKey = docRows[0].file_key;
-            } else {
-                finalKey = `documents/${id}/${Date.now()}-${safeFileName}`;
-            }
-        }
-
-        // Update documents table
-        await pool.query(
-            "UPDATE documents SET file_key = ? WHERE id = ?",
-            [finalKey, id]
-        );
+        if (!Number.isInteger(parsedSize) || parsedSize <= 0 || parsedSize > 10 * 1024 * 1024 || finalMime !== getMimeTypeByExtension(safeFileName)) return res.status(400).json({ error: "Invalid file metadata" });
+        const storedObject = await getObjectMetadata(finalKey);
+        if (storedObject.ContentLength !== parsedSize || (storedObject.ContentType && storedObject.ContentType !== finalMime)) return res.status(400).json({ error: "Uploaded file metadata does not match" });
 
         // Update or Insert into document_files
         const [existing] = await pool.query("SELECT id FROM document_files WHERE document_id = ?", [id]);
@@ -1620,6 +1588,9 @@ app.get(
             const doc = rows[0];
             const fileKey = doc.file_key;
 
+            const access = checkDocumentAccess(req, doc, "read");
+            if (!access.allowed) return res.status(403).json({ error: "Forbidden" });
+
             if (!fileKey) {
                 return res.status(404).json({
                     error: "Document file not found"
@@ -1627,13 +1598,6 @@ app.get(
             }
 
             // ตรวจสอบสิทธิ์การเข้าถึง
-            const access = checkDocumentAccess(req, doc);
-            if (!access.allowed) {
-                return res.status(403).json({
-                    error: access.reason || "ไม่มีสิทธิ์ในการเรียกดูเอกสารนี้ (Permission Denied)"
-                });
-            }
-
             const finalFileName = doc.file_name || extractFileNameFromKey(fileKey);
             const ext = finalFileName ? path.extname(finalFileName).toLowerCase() : "";
             const canPreview = PREVIEWABLE_EXTENSIONS.includes(ext);
@@ -1684,7 +1648,7 @@ async function getDocumentFileBuffer(doc) {
 }
 
 // Endpoint สตรีมไฟล์สำหรับ Preview (Inline)
-app.get("/api/documents/:id/view-file", requireCognitoAuth, async (req, res) => {
+app.get("/api/documents/:id/view-file", requireCognitoAuth, loadUserRole, async (req, res) => {
     try {
         const { id } = req.params;
 
@@ -1702,15 +1666,16 @@ app.get("/api/documents/:id/view-file", requireCognitoAuth, async (req, res) => 
             [id]
         );
 
-        if (rows.length === 0 || !rows[0].file_key) {
+        if (rows.length === 0) {
             return res.status(404).send("Document or file not found");
         }
 
         const doc = rows[0];
-        const access = checkDocumentAccess(req, doc);
+        const access = checkDocumentAccess(req, doc, "read");
         if (!access.allowed) {
-            return res.status(403).send("Permission Denied: ไม่มีสิทธิ์ในการเรียกดูเอกสารนี้");
+            return res.status(403).send("Forbidden");
         }
+        if (!doc.file_key) return res.status(404).send("Document or file not found");
 
         const fileData = await getDocumentFileBuffer(doc);
         if (!fileData) {
@@ -1757,15 +1722,16 @@ app.get(
                 [id]
             );
 
-            if (rows.length === 0 || !rows[0].file_key) {
+            if (rows.length === 0) {
                 return res.status(404).send("Document or file not found");
             }
 
             const doc = rows[0];
             const access = checkDocumentAccess(req, doc);
             if (!access.allowed) {
-                return res.status(403).send("Permission Denied: ไม่มีสิทธิ์ในการดาวน์โหลดเอกสารนี้");
+                return res.status(403).send("Forbidden");
             }
+            if (!doc.file_key) return res.status(404).send("Document or file not found");
 
             const finalFileName = doc.file_name || extractFileNameFromKey(doc.file_key) || "document";
             const resolvedMime = doc.mime_type || getMimeTypeByExtension(finalFileName);
@@ -1815,7 +1781,7 @@ app.get(
                 [id]
             );
 
-            if (rows.length === 0 || !rows[0].file_key) {
+            if (rows.length === 0) {
                 return res.status(404).json({
                     error: "Document or file not found"
                 });
@@ -1823,12 +1789,9 @@ app.get(
 
             const doc = rows[0];
 
-            const access = checkDocumentAccess(req, doc);
-            if (!access.allowed) {
-                return res.status(403).json({
-                    error: access.reason || "Permission denied"
-                });
-            }
+            const access = checkDocumentAccess(req, doc, "read");
+            if (!access.allowed) return res.status(403).json({ error: "Forbidden" });
+            if (!doc.file_key) return res.status(404).json({ error: "Document or file not found" });
 
             const fileName =
                 doc.file_name ||
@@ -1927,18 +1890,13 @@ app.get(
             const doc = rows[0];
             const fileKey = doc.file_key;
 
+            const access = checkDocumentAccess(req, doc, "read");
+            if (!access.allowed) return res.status(403).json({ error: "Forbidden" });
+
             // Check file exists in database
             if (!fileKey) {
                 return res.status(404).json({
                     error: "Document file not found"
-                });
-            }
-
-            // ตรวจสอบสิทธิ์การเข้าถึง
-            const access = checkDocumentAccess(req, doc);
-            if (!access.allowed) {
-                return res.status(403).json({
-                    error: access.reason || "ไม่มีสิทธิ์ในการดาวน์โหลดเอกสารนี้ (Permission Denied)"
                 });
             }
 
@@ -1966,7 +1924,7 @@ app.get(
 // ดักจับกรณีส่ง Request เกิน 1MB
 app.use((err, req, res, next) => {
     if (err.type === 'entity.too.large') {
-        return res.status(413).json({ error: "Payload too large. Maximum size is 1MB." });
+        return res.status(413).json({ error: "Payload too large" });
     }
     console.error("Server error:", err.message);
     res.status(500).json({ error: "Internal server error" });
