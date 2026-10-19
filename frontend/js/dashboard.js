@@ -94,11 +94,13 @@ function updateRoleUI() {
     if (!userRoleDisplay || !userRoleDot) return;
 
     const roleLabels = {
-        staff: "เจ้าหน้าที่",
-        officer: "เจ้าหน้าที่ (Officer)",
-        faculty_staff: "เจ้าหน้าที่คณะ",
         admin: "ผู้ดูแลระบบ",
+        document_officer: "เจ้าหน้าที่สารบรรณ",
+        officer: "เจ้าหน้าที่สารบรรณ",
+        faculty_staff: "เจ้าหน้าที่คณะ",
+        staff: "เจ้าหน้าที่คณะ",
         case_owner: "ผู้รับผิดชอบเอกสาร",
+        executive: "ผู้บริหาร",
         guest: "ผู้ใช้ทั่วไป"
     };
 
@@ -108,6 +110,12 @@ function updateRoleUI() {
 
     if (currentRole === "admin") {
         userRoleDot.classList.add("role-admin");
+    } else if (currentRole === "executive") {
+        userRoleDot.classList.add("role-executive");
+    } else if (currentRole === "document_officer" || currentRole === "officer") {
+        userRoleDot.classList.add("role-officer");
+    } else if (currentRole === "case_owner") {
+        userRoleDot.classList.add("role-owner");
     } else if (currentRole === "guest") {
         userRoleDot.classList.add("role-guest");
     } else {
