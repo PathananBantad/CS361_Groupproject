@@ -204,10 +204,14 @@ app.get(
 
             const params = [];
 
-            // Reading is conditional for every role in the V3 Role Matrix.
-            // Limit rows in SQL before returning document data or file metadata.
-            sql += " AND (d.owner_id = ? OR d.assignee_id = ?)";
-            params.push(userId, userId);
+            // Admin, Executive, and Document Officer roles can view all documents and their files across the system.
+            // Faculty staff and Case owner roles are scoped to documents they own or are assigned to.
+            const userRoles = (req.userRoles || (role ? [role] : [])).map((r) => String(r || "").trim().toLowerCase());
+            const canViewAll = userRoles.some((r) => ["admin", "executive", "document_officer"].includes(r));
+            if (!canViewAll) {
+                sql += " AND (d.owner_id = ? OR d.assignee_id = ?)";
+                params.push(userId, userId);
+            }
 
             // Search by reference number
             if (reference_no) {
@@ -2007,6 +2011,7 @@ app.get(
             }
 
             const finalFileName = doc.file_name || extractFileNameFromKey(fileKey);
+            const resolvedMime = doc.mime_type || getMimeTypeByExtension(finalFileName);
             let downloadUrl = null;
             try {
                 downloadUrl = await createDownloadUrl(fileKey, {

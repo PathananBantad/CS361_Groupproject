@@ -17,14 +17,22 @@ function canAccessDocument({ roles, userId, document, action = "read" }) {
     const allowedRoles = ACTION_ROLES[action];
     if (!allowedRoles || !normalized.some((role) => allowedRoles.includes(role)) || userId == null || !document) return false;
 
+    // Admin, Executive, and Document Officer have system-wide read/view access to all documents and files
+    if (action === "read" && normalized.some((r) => ["admin", "executive", "document_officer"].includes(r))) {
+        return true;
+    }
+
+    // Document officers and Admins can assign any document across the system
+    if (action === "assign" && normalized.some((r) => ["document_officer", "admin"].includes(r))) {
+        return true;
+    }
+
     const isRelated = [document.owner_id, document.assignee_id]
         .some((id) => id != null && String(id) === String(userId));
 
-    // The matrix marks document reads as conditional for every role. A global
-    // role does not by itself grant access to a document's contents.
-    // Document officers may assign any document, but other assignment-capable
-    // roles must already be related to it.
-    if (action === "assign" && normalized.includes("document_officer")) return true;
+    // Admin has system-wide override to update status
+    if (action === "status" && normalized.includes("admin")) return true;
+
     return isRelated;
 }
 
