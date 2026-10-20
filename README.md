@@ -93,6 +93,9 @@ V1 มุ่งเน้นการพัฒนา Information Service เพ�
 ## Deploy link
 https://main.ds9q6gagifqjo.amplifyapp.com/html/index.html
 
+## Demo link
+https://drive.google.com/file/d/1R_aK4wGe_OutfZ1EYv8MoW61mMjnNwqG/view?usp=sharing
+
 ## Architecture V3
 <img width="1204" height="727" alt="image" src="https://github.com/user-attachments/assets/e660a57c-ea9a-4bec-867b-546786d2b304" />
 
