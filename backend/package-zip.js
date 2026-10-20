@@ -13,10 +13,8 @@ const filesToCopy = [
   's3.js',
   'db.js',
   'auth.js',
-  'authMiddleware.js',
   'auditTrail.js',
   'documentAuthorization.js',
-  'session-auth.js',
   'session.js',
   'package.json'
 ];

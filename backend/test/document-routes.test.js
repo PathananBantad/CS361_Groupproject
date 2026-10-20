@@ -27,7 +27,8 @@ const pool = {
         if (/FROM documents d/i.test(sql) && /WHERE 1 = 1/i.test(sql)) {
             const [ownerId, assigneeId] = params;
             const scoped = /d\.owner_id\s*=\s*\?/i.test(sql) && /d\.assignee_id\s*=\s*\?/i.test(sql);
-            return [[...documents.filter((doc) => scoped && (String(doc.owner_id) === String(ownerId) || String(doc.assignee_id) === String(assigneeId)))]];
+            if (!scoped) return [[...documents]];
+            return [[...documents.filter((doc) => String(doc.owner_id) === String(ownerId) || String(doc.assignee_id) === String(assigneeId))]];
         }
         if (/FROM documents d/i.test(sql) && /WHERE d\.id = \?/i.test(sql)) return [documents.filter((doc) => String(doc.id) === String(params[0]))];
         if (/SELECT \* FROM documents WHERE id/i.test(sql)) return [documents.filter((doc) => String(doc.id) === String(params[0]))];
@@ -116,8 +117,14 @@ test("missing and invalid bearer tokens are rejected", async () => {
     assert.equal((await request("/api/documents/101", "invalid")).status, 401);
 });
 
-test("document lists are scoped to each authenticated role's own related documents", async () => {
-    const expected = { officer: [103], faculty: [101], "case-owner": [105], admin: [102], executive: [104] };
+test("document lists are scoped to each authenticated role's own related documents except admin, executive, and officer who can view all", async () => {
+    const expected = {
+        officer: [101, 102, 103, 104, 105],
+        admin: [101, 102, 103, 104, 105],
+        executive: [101, 102, 103, 104, 105],
+        faculty: [101],
+        "case-owner": [105]
+    };
     const visible = {};
     for (const [token, ids] of Object.entries(expected)) {
         const response = await request("/api/documents", token);
@@ -125,15 +132,23 @@ test("document lists are scoped to each authenticated role's own related documen
         visible[token] = (await response.json()).data.map((doc) => doc.id);
         assert.deepEqual(visible[token], ids);
     }
-    assert.equal(new Set(Object.values(visible).map((ids) => ids.join(","))).size, Object.keys(expected).length);
 });
 
-test("authorized related reads succeed while unrelated and conflicting group reads fail", async () => {
+test("authorized related reads succeed while unrelated and conflicting group reads fail; admin, executive, officer can read any document", async () => {
     const own = await request("/api/documents/103", "officer");
     assert.equal(own.status, 200, JSON.stringify(own.body));
     assert.equal((await request("/api/documents/102", "faculty")).status, 403);
     assert.equal((await request("/api/documents/102", "group-admin-faculty")).status, 403);
+
+    // Admin, Executive, and Officer can read any document
+    assert.equal((await request("/api/documents/101", "admin")).status, 200);
     assert.equal((await request("/api/documents/102", "admin")).status, 200);
+    assert.equal((await request("/api/documents/101", "officer")).status, 200);
+    assert.equal((await request("/api/documents/101", "executive")).status, 200);
+    assert.equal((await request("/api/documents/102", "executive")).status, 200);
+    assert.equal((await request("/api/documents/103", "executive")).status, 200);
+    assert.equal((await request("/api/documents/101/preview-url", "executive")).status, 200);
+    assert.equal((await request("/api/documents/101/download-url", "executive")).status, 200);
 });
 
 test("unauthorized history and status changes do not read history or mutate data", async () => {
@@ -142,6 +157,8 @@ test("unauthorized history and status changes do not read history or mutate data
     assert.equal((await request("/api/documents/102/status-history", "faculty")).status, 403);
     assert.equal(effects.historyReads, historyBefore);
     assert.equal((await request("/api/documents/102/status", "faculty", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: "Assigned" }) })).status, 403);
+    assert.equal((await request("/api/documents/101/status", "executive", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: "Assigned" }) })).status, 403);
+    assert.equal((await request("/api/documents/101/assign", "executive", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ assigneeId: 8 }) })).status, 403);
     assert.equal(effects.updates, writesBefore);
 });
 
@@ -150,6 +167,9 @@ test("unauthorized upload, metadata, preview, and download stop before storage",
     assert.equal((await request("/api/documents/102/upload-url?fileName=a.pdf&fileSize=4", "faculty")).status, 403);
     assert.equal((await request("/api/documents/102/upload-direct?fileName=a.pdf", "faculty", { method: "POST", headers: { "Content-Type": "application/pdf" }, body: "data" })).status, 403);
     assert.equal((await request("/api/documents/102/file-metadata", "faculty", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ fileName: "a.pdf", fileSize: 4, fileKey: "documents/102/a.pdf" }) })).status, 403);
+    // Executive cannot upload or mutate file metadata
+    assert.equal((await request("/api/documents/101/upload-url?fileName=a.pdf&fileSize=4", "executive")).status, 403);
+    assert.equal((await request("/api/documents/101/file-metadata", "executive", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ fileName: "a.pdf", fileSize: 4, fileKey: "documents/101/a.pdf" }) })).status, 403);
     const preview = await request("/api/documents/102/preview-url", "faculty");
     assert.ok([403, 404].includes(preview.status), JSON.stringify(preview.body));
     const download = await request("/api/documents/102/download-url", "faculty");
