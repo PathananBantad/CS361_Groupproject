@@ -1,5 +1,8 @@
 Mailbox & Document Flow System(G6)
 
+## Demo link
+https://drive.google.com/file/d/1R_aK4wGe_OutfZ1EYv8MoW61mMjnNwqG/view?usp=sharing
+
 ## Project Vision
 พัฒนาระบบรับและกระจายเอกสารอิเล็กทรอนิกส์ให้เป็นแพลตฟอร์มกลางที่ช่วยจัดการเอกสารตั้งแต่การรับ ลงทะเบียน จัดเก็บ และส่งต่ออย่างเป็นระบบ ผู้ใช้สามารถติดตามสถานะและตรวจสอบการดำเนินงานย้อนหลังได้ ช่วยลดปัญหาเอกสารสูญหาย งานล่าช้า และความไม่ชัดเจนในการส่งต่องานระหว่างฝ่าย
 
@@ -92,9 +95,6 @@ V1 มุ่งเน้นการพัฒนา Information Service เพ�
 
 ## Deploy link
 https://main.ds9q6gagifqjo.amplifyapp.com/html/index.html
-
-## Demo link
-https://drive.google.com/file/d/1R_aK4wGe_OutfZ1EYv8MoW61mMjnNwqG/view?usp=sharing
 
 ## Architecture V3
 <img width="1204" height="727" alt="image" src="https://github.com/user-attachments/assets/e660a57c-ea9a-4bec-867b-546786d2b304" />
