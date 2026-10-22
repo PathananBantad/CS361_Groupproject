@@ -1073,22 +1073,6 @@ app.get(
     }
 );
 
-// GET /api/my-assignments - เอกสารที่ได้รับมอบหมายให้ "ฉัน" (ดูได้เฉพาะของตัวเอง)
-app.get("/api/my-assignments", requireCognitoAuth, loadUserRole, async (req, res) => {
-    try {
-        const [rows] = await pool.query(
-            `SELECT id, reference_no, subject, document_type, status, deadline, receive_date, created_at
-             FROM documents
-             WHERE assignee_id = ?
-             ORDER BY created_at DESC`,
-            [req.userId]
-        );
-        res.json({ data: rows, total: rows.length });
-    } catch (error) {
-        console.error("Fetch my assignments error:", error);
-        res.status(500).json({ error: "ไม่สามารถดึงรายการเอกสารที่ได้รับมอบหมายได้" });
-    }
-});
 
 // GET /api/documents/:id/assignments - ประวัติการมอบหมายของเอกสาร
 app.get("/api/documents/:id/assignments", requireCognitoAuth, loadUserRole, async (req, res) => {
