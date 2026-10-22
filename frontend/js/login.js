@@ -8,12 +8,76 @@ const loginMessage = document.getElementById("loginMessage");
 const togglePassword = document.getElementById("togglePassword");
 const guestLoginBtn = document.getElementById("guestLoginBtn");
 
-// โหลด Username ล่าสุด
+const EMAIL_ROLE_MAP = {
+    "pathanan.ban@dome.tu.ac.th": "admin",
+    "maneerat.aun@dome.tu.ac.th": "faculty_staff",
+    "buynarimruo@gmail.com": "case_owner",
+    "achiraya.kha@dome.tu.ac.th": "document_officer",
+    "pakhwan.jul@dome.tu.ac.th": "executive",
+    "admin": "admin",
+    "staff-1": "document_officer",
+    "head-1": "case_owner",
+    "fac-a": "faculty_staff",
+    "fac-b": "faculty_staff",
+    "staff": "faculty_staff"
+};
+
+function performLocalMockLogin(username, role) {
+    const cleanUser = String(username).toLowerCase().trim();
+    const resolvedRole = role || EMAIL_ROLE_MAP[cleanUser] || "faculty_staff";
+    localStorage.setItem("docuflow_access_token", `mock-${cleanUser}`);
+    localStorage.setItem("docuflow_id_token", `mock-${cleanUser}`);
+    localStorage.setItem("access_token", `mock-${cleanUser}`);
+    localStorage.setItem("id_token", `mock-${cleanUser}`);
+    localStorage.setItem("docuflow_user", username);
+    localStorage.setItem("docuflow_role", resolvedRole);
+    window.location.href = "dashboard.html";
+}
+
+// โหลด Username ล่าสุด และแสดงปุ่มทดสอบสำหรับ localhost
 document.addEventListener("DOMContentLoaded", () => {
     const savedUser = localStorage.getItem("docuflow_user");
 
     if (savedUser && savedUser !== "Guest") {
         usernameInput.value = savedUser;
+    }
+
+    // เพิ่มแผงทดสอบบน Localhost สำหรับจำลองสิทธิ์ต่างๆ
+    const isLocal = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
+    if (isLocal && loginForm) {
+        let devBox = document.getElementById("localDevBox");
+        if (!devBox) {
+            devBox = document.createElement("div");
+            devBox.id = "localDevBox";
+            devBox.style.marginTop = "18px";
+            devBox.style.padding = "14px";
+            devBox.style.borderRadius = "8px";
+            devBox.style.background = "rgba(79, 70, 229, 0.08)";
+            devBox.style.border = "1px dashed #6366f1";
+            devBox.style.textAlign = "center";
+
+            devBox.innerHTML = `
+                <div style="font-size: 13px; font-weight: 600; color: #4338ca; margin-bottom: 8px;">
+                    ⚡ Local Dev Quick Test (คลิกเข้าทดสอบได้ทันที)
+                </div>
+                <div style="display: flex; flex-wrap: wrap; gap: 6px; justify-content: center;">
+                    <button type="button" class="btn-dev-role" data-user="admin" data-role="admin" style="padding: 5px 10px; font-size: 12px; border: 1px solid #c7d2fe; border-radius: 4px; background: #ffffff; cursor: pointer;">👑 Admin</button>
+                    <button type="button" class="btn-dev-role" data-user="FAC-A" data-role="faculty_staff" style="padding: 5px 10px; font-size: 12px; border: 1px solid #c7d2fe; border-radius: 4px; background: #ffffff; cursor: pointer;">👨‍🏫 อาจารย์ (FAC-A)</button>
+                    <button type="button" class="btn-dev-role" data-user="STAFF-1" data-role="document_officer" style="padding: 5px 10px; font-size: 12px; border: 1px solid #c7d2fe; border-radius: 4px; background: #ffffff; cursor: pointer;">📋 สารบรรณ (STAFF-1)</button>
+                    <button type="button" class="btn-dev-role" data-user="HEAD-1" data-role="case_owner" style="padding: 5px 10px; font-size: 12px; border: 1px solid #c7d2fe; border-radius: 4px; background: #ffffff; cursor: pointer;">👔 หัวหน้าสาขา (HEAD-1)</button>
+                </div>
+            `;
+
+            devBox.querySelectorAll(".btn-dev-role").forEach(btn => {
+                btn.addEventListener("click", () => {
+                    const u = btn.getAttribute("data-user");
+                    const r = btn.getAttribute("data-role");
+                    performLocalMockLogin(u, r);
+                });
+            });
+
+            loginForm.parentNode.insertBefore(devBox, loginForm.nextSibling);
+        }
     }
 });
 
@@ -102,7 +166,13 @@ if (loginForm) {
                     "maneerat.aun@dome.tu.ac.th": "faculty_staff",
                     "buynarimruo@gmail.com": "case_owner",
                     "achiraya.kha@dome.tu.ac.th": "document_officer",
-                    "pakhwan.jul@dome.tu.ac.th": "executive"
+                    "pakhwan.jul@dome.tu.ac.th": "executive",
+                    "admin": "admin",
+                    "staff-1": "document_officer",
+                    "head-1": "case_owner",
+                    "fac-a": "faculty_staff",
+                    "fac-b": "faculty_staff",
+                    "staff": "faculty_staff"
                 };
 
                 const cleanUser = username.toLowerCase().trim();
@@ -146,6 +216,14 @@ if (loginForm) {
 
             onFailure: (error) => {
                 console.error("Cognito login failed:", error);
+
+                // หากทดสอบบน Localhost ให้เข้าใช้งานผ่านสิทธิ์จำลองได้ทันที
+                const isLocal = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
+                const cleanUser = username.toLowerCase().trim();
+                if (isLocal && (EMAIL_ROLE_MAP[cleanUser] || cleanUser.startsWith("mock") || cleanUser.includes("fac") || cleanUser.includes("admin") || cleanUser.includes("staff"))) {
+                    performLocalMockLogin(username, EMAIL_ROLE_MAP[cleanUser]);
+                    return;
+                }
 
                 loginMessage.textContent =
                     error.message ||

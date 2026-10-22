@@ -204,7 +204,29 @@
                 <!-- ข้อมูลผู้รับ -->
                 <div class="field">
                     <label for="recipient">หน่วยงานผู้รับ / ชื่อผู้รับ <span style="color: red;">*</span></label>
-                    <input id="recipient" name="recipient" type="text" placeholder="ระบุผู้รับหรือหน่วยงาน..." required>
+                    <input id="recipient" name="recipient" type="text" list="recipientList" placeholder="ระบุผู้รับหรือหน่วยงาน (เช่น อ.ดร.วรินทร์ พงษ์ดี (FAC-A))..." required>
+                    <datalist id="recipientList">
+                        <option value="อ.ดร.วรินทร์ พงษ์ดี (FAC-A)">อาจารย์ผู้รับ (FAC-A)</option>
+                        <option value="อ.ดร.ณัฐวุฒิ ศรีวัฒน์ (FAC-B)">อาจารย์ผู้รับ (FAC-B)</option>
+                        <option value="หัวหน้าสาขาวิชาวิทยาการคอมพิวเตอร์ (HEAD-1)">หัวหน้าสาขา (HEAD-1)</option>
+                        <option value="คุณธารินี สุขสวัสดิ์ (STAFF-1)">ธุรการ (STAFF-1)</option>
+                        <option value="อาจารย์ประจำสาขา">อาจารย์ทั่วไป</option>
+                    </datalist>
+                </div>
+
+                <!-- ผู้รับมอบหมาย (Assignee - ส่งตรงไปยัง Role อาจารย์) -->
+                <div class="field">
+                    <label for="assigneeSelect">ส่งมอบหมายให้ (Assignee) <span style="font-size:0.88em;color:#6b7280;">(ส่งไปยัง Dashboard ของอาจารย์ทันที)</span></label>
+                    <div class="select-wrap">
+                        <select id="assigneeSelect" name="assigneeSelect">
+                            <option value="">-- ส่งมอบหมายให้อาจารย์โดยตรง (FAC-A อัตโนมัติ) --</option>
+                            <option value="10">อ.ดร.วรินทร์ พงษ์ดี (FAC-A) - อาจารย์</option>
+                            <option value="11">อ.ดร.ณัฐวุฒิ ศรีวัฒน์ (FAC-B) - อาจารย์</option>
+                            <option value="9">อ.ดร.ปกรณ์ สุขใจ (HEAD-1) - หัวหน้าสาขา</option>
+                            <option value="4">staff - อาจารย์/เจ้าหน้าที่คณะ</option>
+                        </select>
+                    </div>
+                    <small class="field-desc">เอกสารจะปรากฏบนหน้า Dashboard ของ role อาจารย์ (Faculty Staff) ทันทีที่เพิ่มเสร็จสิ้น</small>
                 </div>
 
                 <!-- วันที่ส่งเอกสาร -->

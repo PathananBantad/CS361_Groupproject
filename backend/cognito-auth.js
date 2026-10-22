@@ -120,6 +120,32 @@ async function requireCognitoAuth(req, res, next) {
 
     const token = authorization.replace(/^Bearer\s+/i, "").trim();
 
+    // Support mock tokens for local testing when not in AWS Lambda production
+    if ((process.env.NODE_ENV !== "production" && !process.env.LAMBDA_TASK_ROOT) && token.startsWith("mock-")) {
+        const identifier = token.replace(/^mock-/, "").toLowerCase().trim();
+        const mockMap = {
+            "admin": { sub: "5448a408-e021-707c-1d11-b55e3d175081", username: "admin", groups: ["admin"] },
+            "pathanan.ban@dome.tu.ac.th": { sub: "5448a408-e021-707c-1d11-b55e3d175081", username: "admin", groups: ["admin"] },
+            "staff-1": { sub: "staff-1-mock-sub", username: "STAFF-1", groups: ["document_officer"] },
+            "document_officer": { sub: "647894e8-3051-7035-4815-dfaf9bd1c5be", username: "document_officer", groups: ["document_officer"] },
+            "head-1": { sub: "head-1-mock-sub", username: "HEAD-1", groups: ["case_owner"] },
+            "case_owner": { sub: "04385448-d091-708b-05de-9acd6a322b40", username: "case_owner", groups: ["case_owner"] },
+            "fac-a": { sub: "fac-a-mock-sub", username: "FAC-A", groups: ["faculty_staff"] },
+            "fac-b": { sub: "fac-b-mock-sub", username: "FAC-B", groups: ["faculty_staff"] },
+            "staff": { sub: "44487458-e051-70c5-f8b2-51e4398c001f", username: "staff", groups: ["faculty_staff"] },
+            "faculty_staff": { sub: "fac-a-mock-sub", username: "FAC-A", groups: ["faculty_staff"] },
+            "executive": { sub: "34487488-a021-70a9-118b-19e5a44505ae", username: "executive", groups: ["executive"] }
+        };
+
+        const resolved = mockMap[identifier] || { sub: `mock-sub-${identifier}`, username: identifier, groups: [] };
+        req.auth = {
+            sub: resolved.sub,
+            username: resolved.username,
+            groups: resolved.groups
+        };
+        return next();
+    }
+
     try {
         let payload;
         try {

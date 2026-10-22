@@ -9,6 +9,57 @@ const fileText = document.getElementById("fileText");
 const uploadBox = document.querySelector(".upload-box");
 const submitBtn = document.getElementById("submitBtn");
 const submitText = document.getElementById("submitText");
+const assigneeSelect = document.getElementById("assigneeSelect");
+const recipientInput = document.getElementById("recipient");
+
+// โหลดรายชื่อผู้รับมอบหมายจาก API ให้เป็นปัจจุบัน
+async function loadAssignees() {
+    if (!assigneeSelect) return;
+    try {
+        const token = localStorage.getItem("docuflow_access_token") || localStorage.getItem("access_token") || "";
+        const res = await window.apiFetch(`${getApiBaseUrl()}/assignees`, {
+            headers: token ? { "Authorization": `Bearer ${token}` } : {}
+        });
+        if (res.ok) {
+            const data = await res.json();
+            const users = data.data || [];
+            if (users.length > 0) {
+                assigneeSelect.innerHTML = '<option value="">-- ส่งมอบหมายให้อาจารย์โดยตรง (FAC-A อัตโนมัติ) --</option>' +
+                    users.map(u => `<option value="${u.id}">${u.full_name || u.username} (${u.role === 'faculty_staff' ? 'อาจารย์' : u.role})</option>`).join('');
+            }
+        }
+    } catch (e) {
+        console.warn("Load assignees warning:", e);
+    }
+}
+
+if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", loadAssignees);
+} else {
+    loadAssignees();
+}
+
+if (assigneeSelect && recipientInput) {
+    assigneeSelect.addEventListener("change", () => {
+        if (assigneeSelect.value) {
+            const selectedText = assigneeSelect.options[assigneeSelect.selectedIndex].text;
+            recipientInput.value = selectedText.replace(/\s*\(.*\)$/, "").trim();
+        }
+    });
+
+    recipientInput.addEventListener("input", () => {
+        const val = recipientInput.value.toLowerCase();
+        if (val.includes("fac-a") || val.includes("วรินทร์")) {
+            assigneeSelect.value = "10";
+        } else if (val.includes("fac-b") || val.includes("ณัฐวุฒิ")) {
+            assigneeSelect.value = "11";
+        } else if (val.includes("head-1") || val.includes("ปกรณ์")) {
+            assigneeSelect.value = "9";
+        } else if (val.includes("staff")) {
+            assigneeSelect.value = "4";
+        }
+    });
+}
 
 // รายการนามสกุลไฟล์ที่ระบบรองรับ (PDF, DOCX, JPG/JPEG, PNG, XLSX, PPTX)
 const ALLOWED_EXTENSIONS = [
@@ -201,6 +252,16 @@ registerForm.addEventListener("submit", async (event) => {
     const apiBase = getApiBaseUrl();
 
     try {
+        let assigneeId = assigneeSelect && assigneeSelect.value ? Number(assigneeSelect.value) : null;
+        if (!assigneeId && recipient) {
+            const recLower = recipient.toLowerCase();
+            if (recLower.includes("fac-a") || recLower.includes("วรินทร์")) assigneeId = 10;
+            else if (recLower.includes("fac-b") || recLower.includes("ณัฐวุฒิ")) assigneeId = 11;
+            else if (recLower.includes("head-1") || recLower.includes("ปกรณ์")) assigneeId = 9;
+            else if (recLower.includes("staff-1") || recLower.includes("ธารินี")) assigneeId = 8;
+            else if (recLower.includes("อาจารย์") || recLower.includes("staff")) assigneeId = 10;
+        }
+
         const payload = {
             document_number: docNo,
             subject: subject,
@@ -213,7 +274,8 @@ registerForm.addEventListener("submit", async (event) => {
             receive_date: receiveDate,
             deadline: deadline || null,
             remarks: remarks || null,
-            receiving_channel: receiveChannel
+            receiving_channel: receiveChannel,
+            assignee_id: assigneeId
         };
 
         const token = localStorage.getItem("docuflow_access_token") || localStorage.getItem("access_token") || localStorage.getItem("docuflow_id_token") || localStorage.getItem("id_token") || "";
