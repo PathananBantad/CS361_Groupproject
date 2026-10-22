@@ -677,9 +677,66 @@
     }
 }
 
-.document-search-filters { display: flex; flex-wrap: wrap; gap: 12px; margin: 16px 0 24px; padding: 18px; background: #fff; border: 1px solid #eadfe0; border-radius: 14px; }
-.document-search-filters label { display: flex; flex-direction: column; gap: 6px; flex: 1 1 180px; font-size: 14px; }
-.document-search-filters input, .document-search-filters select { min-width: 0; padding: 9px; border: 1px solid #d8cdd0; border-radius: 8px; font: inherit; background: white; }
-.document-search-filters p { flex-basis: 100%; font-size: 13px; color: #68565b; margin: 0; }
+.document-search-filters {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 16px 18px;
+    margin: 16px 0 24px;
+    padding: 24px;
+    background: linear-gradient(135deg, var(--cream-2), #f3e4d9);
+    border: 1px solid #dfbcb6;
+    border-radius: 20px;
+    box-shadow: 0 8px 24px rgba(94, 16, 38, .06);
+}
+.document-search-filters label {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    gap: 8px;
+    color: var(--wine-dark);
+    font-size: 14px;
+    font-weight: 600;
+}
+.document-search-filters input,
+.document-search-filters select {
+    width: 100%;
+    min-width: 0;
+    min-height: 44px;
+    padding: 10px 12px;
+    border: 1px solid #dcbdb5;
+    border-radius: 10px;
+    font: inherit;
+    font-weight: 400;
+    color: var(--text);
+    background-color: var(--cream-2);
+    box-shadow: inset 0 1px 2px rgba(94, 16, 38, .025);
+}
+.document-search-filters select {
+    -webkit-appearance: none;
+    appearance: none;
+    padding-right: 36px;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'%3E%3Cpath d='m4 6 4 4 4-4' fill='none' stroke='%237d1634' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    cursor: pointer;
+}
+.document-search-filters input:focus-visible,
+.document-search-filters select:focus-visible {
+    outline: 2px solid var(--wine);
+    outline-offset: 2px;
+    border-color: var(--wine);
+}
+.document-search-filters p {
+    grid-column: 1 / -1;
+    font-size: 13px;
+    color: #795761;
+    margin: 0;
+}
+@media (max-width: 1000px) {
+    .document-search-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 600px) {
+    .document-search-filters { grid-template-columns: minmax(0, 1fr); padding: 18px; }
+}
 .deadline-label { display: block; margin-top: 6px; color: #68565b; }
 .deadline-overdue { color: #a15b00; font-weight: 700; }
