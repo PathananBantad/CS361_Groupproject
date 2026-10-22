@@ -7,11 +7,11 @@
     "use strict";
 
     const ROLE_LABELS = {
-        admin: "ผู้ดูแลระบบ",
+        admin: "ผู้ดูแลระบบ (Admin)",
         document_officer: "เจ้าหน้าที่สารบรรณ",
         officer: "เจ้าหน้าที่สารบรรณ",
-        faculty_staff: "เจ้าหน้าที่คณะ",
-        staff: "เจ้าหน้าที่คณะ",
+        faculty_staff: "อาจารย์ / บุคลากร",
+        staff: "อาจารย์ / บุคลากร",
         case_owner: "ผู้รับผิดชอบเอกสาร",
         executive: "ผู้บริหาร",
         guest: "ผู้ใช้ทั่วไป"

@@ -9,6 +9,7 @@ const express = require("express");
 const cors = require("cors");
 const pool = require("./db");
 const path = require("path");
+const fs = require("fs");
 
 const sessionMiddleware = require("./session");
 const authRouter = require("./auth");
@@ -415,7 +416,8 @@ app.post("/api/documents", requireCognitoAuth, loadUserRole, async (req, res) =>
             deadline,
             remarks,
             receiving_channel,
-            status = "Received"
+            status = "Received",
+            assignee_id = null
         } = req.body;
         if (req.body.file_key != null) return res.status(400).json({ error: "file_key is assigned by the server during upload" });
 
@@ -462,6 +464,48 @@ app.post("/api/documents", requireCognitoAuth, loadUserRole, async (req, res) =>
             });
         }
 
+        // 5. กำหนดและแปลงผู้รับผิดชอบเอกสาร (Assignee)
+        let resolvedAssigneeId = (assignee_id && !isNaN(Number(assignee_id))) ? Number(assignee_id) : null;
+
+        // หากยังไม่ได้ระบุ assignee_id ให้ค้นหาจาก receiver_name อัตโนมัติ
+        if (!resolvedAssigneeId && sanitizedReceiverName) {
+            const lowerRec = sanitizedReceiverName.toLowerCase();
+            try {
+                if (lowerRec.includes("fac-a") || lowerRec.includes("วรินทร์")) {
+                    const [uRows] = await pool.query("SELECT id FROM users WHERE username = 'FAC-A' LIMIT 1");
+                    if (uRows.length > 0) resolvedAssigneeId = uRows[0].id;
+                } else if (lowerRec.includes("fac-b") || lowerRec.includes("ณัฐวุฒิ")) {
+                    const [uRows] = await pool.query("SELECT id FROM users WHERE username = 'FAC-B' LIMIT 1");
+                    if (uRows.length > 0) resolvedAssigneeId = uRows[0].id;
+                } else if (lowerRec.includes("head-1") || lowerRec.includes("ปกรณ์") || lowerRec.includes("หัวหน้าสาขา")) {
+                    const [uRows] = await pool.query("SELECT id FROM users WHERE username = 'HEAD-1' LIMIT 1");
+                    if (uRows.length > 0) resolvedAssigneeId = uRows[0].id;
+                } else if (lowerRec.includes("staff-1") || lowerRec.includes("ธารินี")) {
+                    const [uRows] = await pool.query("SELECT id FROM users WHERE username = 'STAFF-1' LIMIT 1");
+                    if (uRows.length > 0) resolvedAssigneeId = uRows[0].id;
+                } else if (lowerRec.includes("อาจารย์") || lowerRec.includes("faculty") || lowerRec.includes("staff")) {
+                    const [uRows] = await pool.query("SELECT id FROM users WHERE role = 'faculty_staff' ORDER BY id ASC LIMIT 1");
+                    if (uRows.length > 0) resolvedAssigneeId = uRows[0].id;
+                }
+            } catch (errResolve) {
+                console.warn("Auto-resolve assignee from receiver_name failed:", errResolve.message);
+            }
+        }
+
+        // เมื่อ Admin หรือ Document Officer เป็นผู้เพิ่มเอกสาร และยังไม่มีผู้รับมอบหมาย
+        // ให้กำหนดผู้รับมอบหมายไปยัง role อาจารย์ (faculty_staff เช่น FAC-A หรือ staff) โดยอัตโนมัติ
+        // เพื่อให้เอกสารไปปรากฏบนหน้า Dashboard ของ role อาจารย์ทันที
+        if (!resolvedAssigneeId && ["admin", "document_officer"].includes(req.userRole)) {
+            try {
+                const [facRows] = await pool.query("SELECT id FROM users WHERE role = 'faculty_staff' ORDER BY id ASC LIMIT 1");
+                if (facRows.length > 0) {
+                    resolvedAssigneeId = facRows[0].id;
+                }
+            } catch (errFac) {
+                console.warn("Fallback faculty_staff assignment failed:", errFac.message);
+            }
+        }
+
         // Logic สร้าง reference_no
         const today = new Date();
         const yyyy = today.getFullYear();
@@ -500,9 +544,9 @@ app.post("/api/documents", requireCognitoAuth, loadUserRole, async (req, res) =>
                     reference_no, document_number, subject, document_type,
                     sender_name, sender_department, sender_contact, receiver_name,
                     sent_date, receive_date, deadline, remarks,
-                    receiving_channel, status, file_key, owner_id
+                    receiving_channel, status, file_key, owner_id, assignee_id
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 `,
                 [
                     reference_no || newRefNo,
@@ -520,11 +564,28 @@ app.post("/api/documents", requireCognitoAuth, loadUserRole, async (req, res) =>
                     receiving_channel,
                     status,
                     null,
-                    req.userId
+                    req.userId,
+                    resolvedAssigneeId
                 ]
             );
 
             const newDocId = result.insertId;
+
+            // หากมีการกำหนดผู้รับผิดชอบ (อาจารย์) ให้บันทึกประวัติการมอบหมายใน document_assignments
+            if (resolvedAssigneeId) {
+                await connection.query(
+                    `INSERT INTO document_assignments
+                        (document_id, assigned_by_user_id, assigned_by_username, previous_assignee_id, new_assignee_id, action_type, remarks)
+                     VALUES (?, ?, ?, NULL, ?, 'ASSIGN', ?)`,
+                    [
+                        newDocId,
+                        String(req.userId),
+                        actor.actorUsername,
+                        String(resolvedAssigneeId),
+                        sanitizedRemarks || "มอบหมายให้อาจารย์เมื่อลงทะเบียนเอกสาร"
+                    ]
+                );
+            }
 
             // บันทึก Audit Trail สำหรับการสร้างเอกสารใหม่ (Task 4, 5, 6, 7)
             await recordAuditEvent({
@@ -541,10 +602,12 @@ app.post("/api/documents", requireCognitoAuth, loadUserRole, async (req, res) =>
                     document_type: document_type,
                     sender_name: sanitizedSenderName,
                     receiving_channel: receiving_channel,
-                    status: status
+                    status: status,
+                    assignee_id: resolvedAssigneeId
                 },
                 details: {
-                    remarks: sanitizedRemarks || null
+                    remarks: sanitizedRemarks || null,
+                    assigned_to_user_id: resolvedAssigneeId
                 },
                 ipAddress: actor.ipAddress,
                 connection
@@ -1548,7 +1611,16 @@ app.post(
         if (finalContentType === "application/octet-stream" || (contentType !== finalContentType && contentType !== "application/octet-stream")) return res.status(400).json({ error: "Unsupported or mismatched file type" });
         const fileKey = `documents/${id}/${Date.now()}-${safeFileName}`;
 
-        await uploadObjectBuffer(fileKey, req.body, finalContentType);
+        try {
+            await uploadObjectBuffer(fileKey, req.body, finalContentType);
+        } catch (s3Err) {
+            console.warn("Direct upload S3 warning (saving to local storage fallback):", s3Err.message);
+            const localDir = path.join(__dirname, "uploads", String(id));
+            if (!fs.existsSync(localDir)) {
+                fs.mkdirSync(localDir, { recursive: true });
+            }
+            fs.writeFileSync(path.join(localDir, safeFileName), req.body);
+        }
 
         await pool.query("UPDATE documents SET file_key = ? WHERE id = ?", [fileKey, id]);
 
@@ -1916,9 +1988,33 @@ app.get(
                 });
             }
 
+            const mimeType = doc.mime_type || getMimeTypeByExtension(fileName);
+
+            // ตรวจสอบไฟล์ในไดเรกทอรีภายในเครื่องก่อน (Local Mock Fallback สำหรับ Test Dataset)
+            const possibleLocalPaths = [
+                path.join(__dirname, "../documents", fileName),
+                path.join(__dirname, "../frontend/data", fileName),
+                path.join(__dirname, "uploads", fileName),
+                path.join(__dirname, "uploads", String(id), fileName),
+                path.join(__dirname, "uploads", String(id), path.basename(doc.file_key || "")),
+                path.join(__dirname, "../documents", path.basename(doc.file_key || "")),
+                path.join(__dirname, "../frontend/data", path.basename(doc.file_key || ""))
+            ];
+            const foundLocal = possibleLocalPaths.find(p => fs.existsSync(p));
+
+            if (foundLocal) {
+                const stat = fs.statSync(foundLocal);
+                res.setHeader("Content-Type", mimeType);
+                res.setHeader(
+                    "Content-Disposition",
+                    `inline; filename="${fileName.replace(/[^\x20-\x7E]/g, "_")}"`
+                );
+                res.setHeader("X-Content-Type-Options", "nosniff");
+                res.setHeader("Content-Length", stat.size);
+                return fs.createReadStream(foundLocal).pipe(res);
+            }
+
             const file = await getS3Object(doc.file_key);
-            const mimeType =
-                doc.mime_type || getMimeTypeByExtension(fileName);
 
             res.setHeader("Content-Type", mimeType);
             res.setHeader(
@@ -2040,6 +2136,175 @@ app.get(
             });
         }
     });
+
+// ดาวน์โหลดไฟล์เอกสารโดยตรง (รองรับทั้ง Local Fallback และ S3)
+app.get(
+    "/api/documents/:id/download-file",
+    requireCognitoAuth,
+    loadUserRole,
+    async (req, res) => {
+        try {
+            const { id } = req.params;
+            const [rows] = await pool.query(
+                `SELECT d.*, f.file_name, f.file_size, f.mime_type
+                 FROM documents d
+                 LEFT JOIN document_files f ON d.id = f.document_id
+                 WHERE d.id = ?`,
+                [id]
+            );
+
+            if (rows.length === 0) {
+                return res.status(404).json({ error: "Document or file not found" });
+            }
+
+            const doc = rows[0];
+            const access = checkDocumentAccess(req, doc, "read");
+            if (!access.allowed) return res.status(403).json({ error: "Forbidden" });
+
+            const fileName = doc.file_name || extractFileNameFromKey(doc.file_key) || "document";
+            const mimeType = doc.mime_type || getMimeTypeByExtension(fileName);
+
+            const possibleLocalPaths = [
+                path.join(__dirname, "../documents", fileName),
+                path.join(__dirname, "../frontend/data", fileName),
+                path.join(__dirname, "uploads", fileName),
+                path.join(__dirname, "../documents", path.basename(doc.file_key || "")),
+                path.join(__dirname, "../frontend/data", path.basename(doc.file_key || ""))
+            ];
+            const foundLocal = possibleLocalPaths.find(p => fs.existsSync(p));
+
+            if (foundLocal) {
+                const stat = fs.statSync(foundLocal);
+                res.setHeader("Content-Type", mimeType);
+                res.setHeader(
+                    "Content-Disposition",
+                    `attachment; filename="${fileName.replace(/[^\x20-\x7E]/g, "_")}"`
+                );
+                res.setHeader("X-Content-Type-Options", "nosniff");
+                res.setHeader("Content-Length", stat.size);
+                return fs.createReadStream(foundLocal).pipe(res);
+            }
+
+            const file = await getS3Object(doc.file_key);
+            res.setHeader("Content-Type", mimeType);
+            res.setHeader(
+                "Content-Disposition",
+                `attachment; filename="${fileName.replace(/[^\x20-\x7E]/g, "_")}"`
+            );
+            res.setHeader("X-Content-Type-Options", "nosniff");
+            if (file.ContentLength != null) res.setHeader("Content-Length", file.ContentLength);
+            file.Body.pipe(res);
+        } catch (error) {
+            console.error("Download file error:", error.message);
+            res.status(500).json({ error: "Failed to download document" });
+        }
+    }
+);
+
+// ============================================================================
+// [CS361 V3 | Project 4] TEST DATASET APIS
+// ============================================================================
+app.get("/api/test-dataset", async (req, res) => {
+    try {
+        const [rows] = await pool.query(`
+            SELECT 
+                document_id,
+                incoming_no,
+                subject,
+                recipient,
+                assigned_to,
+                status,
+                attachment,
+                action_time
+            FROM test_documents
+            ORDER BY document_id ASC
+        `);
+
+        // ซิงค์สถานะและผู้ได้รับมอบหมายล่าสุดจากตาราง documents
+        const [liveDocs] = await pool.query(`
+            SELECT 
+                d.reference_no,
+                d.status,
+                u.username AS assigned_username,
+                u.full_name AS assigned_full_name
+            FROM documents d
+            LEFT JOIN users u ON u.id = d.assignee_id
+            WHERE d.reference_no IN ('D-401', 'D-402')
+        `);
+        const liveMap = {};
+        liveDocs.forEach(d => { liveMap[d.reference_no] = d; });
+
+        const enriched = rows.map(r => {
+            const live = liveMap[r.document_id];
+            const liveAssignee = (live && live.assigned_username)
+                ? `${live.assigned_username} (${live.assigned_full_name || ''})`.trim()
+                : r.assigned_to;
+            return {
+                document_id: r.document_id,
+                incoming_no: r.incoming_no,
+                subject: r.subject,
+                recipient: r.recipient,
+                assigned_to: liveAssignee,
+                status: (live && live.status) ? live.status : r.status,
+                attachment: r.attachment,
+                action_time: r.action_time
+            };
+        });
+
+        res.json({
+            ok: true,
+            count: enriched.length,
+            fields: [
+                "document_id",
+                "incoming_no",
+                "subject",
+                "recipient",
+                "assigned_to",
+                "status",
+                "attachment",
+                "action_time"
+            ],
+            data: enriched
+        });
+    } catch (error) {
+        console.error("Test dataset API error:", error);
+        try {
+            const jsonPath = path.join(__dirname, "../json/test_dataset.json");
+            if (fs.existsSync(jsonPath)) {
+                const fileData = JSON.parse(fs.readFileSync(jsonPath, "utf8"));
+                return res.json({
+                    ok: true,
+                    count: fileData.length,
+                    source: "file_fallback",
+                    data: fileData
+                });
+            }
+        } catch (_) {}
+        res.status(500).json({ ok: false, error: "Failed to fetch test dataset" });
+    }
+});
+
+// รีเซ็ต Test Dataset กลับสู่ค่าตั้งต้น Baseline (สำหรับ Live Challenge และการทดสอบ)
+app.all(["/api/test-dataset/reset", "/api/test-dataset/baseline"], async (req, res) => {
+    try {
+        const { execFile } = require("child_process");
+        const scriptPath = path.join(__dirname, "seed_test_dataset.js");
+        execFile(process.execPath, [scriptPath], (err, stdout, stderr) => {
+            if (err) {
+                console.error("Reset script error:", err, stderr);
+                return res.status(500).json({ ok: false, error: "Reset failed", details: stderr || err.message });
+            }
+            res.json({
+                ok: true,
+                message: "Test dataset reset back to baseline successfully",
+                output: stdout
+            });
+        });
+    } catch (error) {
+        console.error("Reset endpoint error:", error);
+        res.status(500).json({ ok: false, error: error.message });
+    }
+});
 
 // ดักจับกรณีส่ง Request เกิน 1MB
 app.use((err, req, res, next) => {

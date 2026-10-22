@@ -6,6 +6,8 @@
   "scripts": {
     "start": "node server.js",
     "migrate": "node migrate.js",
+    "seed:test": "node seed_test_dataset.js",
+    "reset:test": "node seed_test_dataset.js",
     "test": "node --test test/*.test.js"
   },
   "keywords": [],
