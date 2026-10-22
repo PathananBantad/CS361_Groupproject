@@ -91,7 +91,16 @@
         <section class="document-search-filters" aria-label="ค้นหาเอกสารเพิ่มเติม">
             <label>เลขอ้างอิง<input id="filterReference" type="search"></label>
             <label>เรื่อง<input id="filterSubject" type="search"></label>
-            <label>ประเภท<input id="filterType" type="search"></label>
+            <label>ประเภท<select id="filterType">
+                <option value="">ทุกประเภท</option>
+                <option value="ประชาสัมพันธ์">เอกสารประชาสัมพันธ์</option>
+                <option value="ขออนุมัติ">เอกสารขออนุมัติ</option>
+                <option value="มอบหมายงาน">เอกสารมอบหมายงาน</option>
+                <option value="แจ้งเพื่อทราบ">เอกสารแจ้งเพื่อทราบ</option>
+                <option value="รอการตอบกลับ">เอกสารรอการตอบกลับ</option>
+                <option value="กำหนดการ/การนัดหมาย">เอกสารแจ้งกำหนดการ/การนัดหมาย</option>
+                <option value="รายงานผล">เอกสารรายงานผล</option>
+            </select></label>
             <label>ผู้ส่ง<input id="filterSender" type="search"></label>
             <label>ผู้รับ<input id="filterReceiver" type="search"></label>
             <label>วันที่รับตั้งแต่<input id="filterFrom" type="date"></label>
