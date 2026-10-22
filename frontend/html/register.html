@@ -216,17 +216,11 @@
 
                 <!-- ผู้รับมอบหมาย (Assignee - ส่งตรงไปยัง Role อาจารย์) -->
                 <div class="field">
-                    <label for="assigneeSelect">ส่งมอบหมายให้ (Assignee) <span style="font-size:0.88em;color:#6b7280;">(ส่งไปยัง Dashboard ของอาจารย์ทันที)</span></label>
-                    <div class="select-wrap">
-                        <select id="assigneeSelect" name="assigneeSelect">
-                            <option value="">-- ส่งมอบหมายให้อาจารย์โดยตรง (FAC-A อัตโนมัติ) --</option>
-                            <option value="10">อ.ดร.วรินทร์ พงษ์ดี (FAC-A) - อาจารย์</option>
-                            <option value="11">อ.ดร.ณัฐวุฒิ ศรีวัฒน์ (FAC-B) - อาจารย์</option>
-                            <option value="9">อ.ดร.ปกรณ์ สุขใจ (HEAD-1) - หัวหน้าสาขา</option>
-                            <option value="4">staff - อาจารย์/เจ้าหน้าที่คณะ</option>
-                        </select>
-                    </div>
-                    <small class="field-desc">เอกสารจะปรากฏบนหน้า Dashboard ของ role อาจารย์ (Faculty Staff) ทันทีที่เพิ่มเสร็จสิ้น</small>
+                    <label for="assigneeSearch">ส่งมอบหมายให้ <span aria-hidden="true">*</span></label>
+                    <input id="assigneeSearch" type="search" required placeholder="พิมพ์ชื่อหรือชื่อผู้ใช้เพื่อค้นหา..." autocomplete="off" aria-controls="assigneeResults" aria-describedby="assigneeHint">
+                    <input id="assigneeSelect" type="hidden" name="assigneeSelect">
+                    <div id="assigneeResults" class="assignee-results" hidden></div>
+                    <small id="assigneeHint" class="field-desc" role="status">กรุณาเลือกผู้รับมอบหมายจากผลการค้นหาก่อนบันทึกเอกสาร</small>
                 </div>
 
                 <!-- วันที่ส่งเอกสาร -->

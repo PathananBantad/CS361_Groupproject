@@ -88,6 +88,17 @@
             <button class="status-filter" data-filter="Completed" role="tab">ดำเนินการเสร็จสิ้น</button>
         </div>
 
+        <section class="document-search-filters" aria-label="ค้นหาเอกสารเพิ่มเติม">
+            <label>เลขอ้างอิง<input id="filterReference" type="search"></label>
+            <label>เรื่อง<input id="filterSubject" type="search"></label>
+            <label>ประเภท<input id="filterType" type="search"></label>
+            <label>ผู้ส่ง<input id="filterSender" type="search"></label>
+            <label>ผู้รับ<input id="filterReceiver" type="search"></label>
+            <label>วันที่รับตั้งแต่<input id="filterFrom" type="date"></label>
+            <label>วันที่รับถึง<input id="filterTo" type="date"></label>
+            <label>กำหนดเวลา<select id="filterDeadline"><option value="">ทั้งหมด</option><option value="overdue">เกินกำหนดและยังไม่เสร็จ</option></select></label>
+            <p>วันที่รับ คือวันที่หน่วยงานลงรับเอกสาร ส่วนวันที่ส่ง คือวันที่ระบุในหนังสือ</p>
+        </section>
         <!-- Main registry -->
         <section class="registry-layout">
             <div class="registry-card">
@@ -138,62 +149,7 @@
     <script src="../js/navbar-profile.js"></script>
     <script src="../js/document-modal.js"></script>
     <script src="../js/dashboard.js"></script>
-    <script src="../js/document-assignment.js"></script>
 
-    <script>
-        function renderAssignSection(documentId, currentAssigneeId) {
-            return `
-                <div class="assign-container" style="margin-top: 15px; padding: 15px; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px;">
-                    <h4 style="margin-bottom: 10px; font-size: 15px; color: #374151;">จัดการการมอบหมายเอกสาร</h4>
-                    <div style="margin-bottom: 10px;">
-                        <label style="display: block; font-size: 13px; margin-bottom: 4px; color: #4b5563;">ระบุรหัสผู้รับผิดชอบ (Assignee ID):</label>
-                        <input type="text" id="modalAssigneeId" placeholder="ระบุ ID เช่น 1 หรือ 2..." style="width: 100%; padding: 8px; border: 1px solid #d1d5db; border-radius: 4px;">
-                    </div>
-                    <div style="margin-bottom: 10px;">
-                        <label style="display: block; font-size: 13px; margin-bottom: 4px; color: #4b5563;">หมายเหตุการมอบหมาย:</label>
-                        <input type="text" id="modalAssignRemarks" placeholder="ระบุเหตุผลการมอบหมาย (ถ้ามี)..." style="width: 100%; padding: 8px; border: 1px solid #d1d5db; border-radius: 4px;">
-                    </div>
-                    <button type="button" onclick="submitDocumentAssignment('${documentId}')" style="background: #2563eb; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-weight: 500;">
-                        ยืนยันการมอบหมาย
-                    </button>
-                </div>
-            `;
-        }
-
-        async function submitDocumentAssignment(documentId) {
-            const assigneeId = document.getElementById("modalAssigneeId").value.trim();
-            const remarks = document.getElementById("modalAssignRemarks").value.trim();
-
-            if (!assigneeId) {
-                alert("กรุณาระบุรหัสผู้รับผิดชอบก่อนกดยืนยัน");
-                return;
-            }
-
-            try {
-                const apiBase = typeof getApiBaseUrl === "function" ? getApiBaseUrl() : "https://utvhg6d6o3.execute-api.us-east-1.amazonaws.com/api";
-                const response = await window.apiFetch(`${apiBase}/documents/${documentId}/assign`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        assignee_id: assigneeId,
-                        remarks: remarks
-                    })
-                });
-
-                const result = await response.json();
-
-                if (!response.ok) {
-                    throw new Error(result.error || "ไม่สามารถมอบหมายเอกสารได้");
-                }
-
-                alert("มอบหมายเอกสารสำเร็จเรียบร้อย!");
-                location.reload();
-            } catch (error) {
-                console.error("Assignment error:", error);
-                alert("เกิดข้อผิดพลาด: " + error.message);
-            }
-        }
-    </script>
 
 </body>
 

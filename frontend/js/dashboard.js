@@ -134,27 +134,7 @@ function updateRoleUI() {
    FETCH DOCUMENTS
 ===================================================== */
 async function fetchDocuments() {
-    const keyword = globalSearch ? globalSearch.value.trim() : "";
     const params = new URLSearchParams();
-
-    if (keyword) {
-        params.append("search", keyword);
-    }
-
-    if (!currentFilters.has("all")) {
-        currentFilters.forEach(filter => {
-            let statusParam = filter;
-            const lower = filter.toLowerCase();
-            if (lower === "received" || filter === "waiting") statusParam = "Received";
-            else if (lower === "assigned" || filter === "approval") statusParam = "Assigned";
-            else if (lower === "processing") statusParam = "Processing";
-            else if (lower === "completed") statusParam = "Completed";
-
-            if (statusParam && statusParam !== "all") {
-                params.append("status", statusParam);
-            }
-        });
-    }
 
     const apiBase = getApiBaseUrl();
     const token = localStorage.getItem("docuflow_access_token") || localStorage.getItem("access_token") || localStorage.getItem("docuflow_id_token") || localStorage.getItem("id_token") || "";
@@ -190,7 +170,7 @@ async function fetchDocuments() {
                 step: 1
             };
 
-            const dateValue = row.received_at || row.created_at || row.updated_at;
+            const dateValue = row.receive_date || row.received_at || row.created_at;
             let receivedDate = "-";
             let receivedTime = "-";
 
@@ -237,6 +217,8 @@ async function fetchDocuments() {
                 send_date: safeFormatDate(row.sent_date),
                 receive_date: safeFormatDate(row.receive_date),
                 deadline: safeFormatDate(row.deadline),
+                deadlineDate: dateOnly(row.deadline),
+                receivedDateKey: dateOnly(row.receive_date || row.received_at || row.created_at),
                 remarks: row.remarks || "-",
                 channel: row.receiving_channel || "-",
                 rawStatus: rawStatus,
@@ -276,6 +258,33 @@ async function fetchDocuments() {
     }
 }
 
+// Date-only deadlines expire after the end of that day in Thailand.
+function dateOnly(value) {
+    if (!value) return "";
+    const text = String(value);
+    if (/T.*(?:Z|[+-]\d{2}:?\d{2})$/.test(text)) {
+        const date = new Date(text);
+        if (Number.isNaN(date.getTime())) return "";
+        const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Bangkok", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(date);
+        const get = type => parts.find(part => part.type === type).value;
+        return `${get("year")}-${get("month")}-${get("day")}`;
+    }
+    if (/^\d{4}-\d{2}-\d{2}/.test(text)) return text.slice(0, 10);
+    return "";
+}
+function todayInThailand() {
+    const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Bangkok", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date());
+    const get = type => parts.find(part => part.type === type).value;
+    return `${get("year")}-${get("month")}-${get("day")}`;
+}
+function isOverdue(doc) {
+    return Boolean(doc.deadlineDate && doc.rawStatus !== "Completed" && doc.deadlineDate < todayInThailand());
+}
+function deadlineLabel(doc) {
+    if (!doc.deadlineDate) return "";
+    return `<small class="deadline-label ${isOverdue(doc) ? "deadline-overdue" : ""}">ครบกำหนด: ${escapeHtml(doc.deadline)}${isOverdue(doc) ? " • เกินกำหนด" : ""}</small>`;
+}
+
 /* =====================================================
    RENDER
 ===================================================== */
@@ -290,7 +299,9 @@ function render() {
             doc.type.toLowerCase().includes(keyword) ||
             doc.description.toLowerCase().includes(keyword) ||
             doc.sender.toLowerCase().includes(keyword) ||
-            doc.receiver.toLowerCase().includes(keyword)
+            doc.receiver.toLowerCase().includes(keyword) ||
+            doc.rawStatus.toLowerCase().includes(keyword) ||
+            doc.statusLabel.toLowerCase().includes(keyword)
         ));
     }
 
@@ -309,6 +320,17 @@ function render() {
             return false;
         });
     }
+
+    const fields = { filterReference: "code", filterSubject: "description", filterType: "type", filterSender: "sender", filterReceiver: "receiver" };
+    for (const [id, field] of Object.entries(fields)) {
+        const query = document.getElementById(id).value.trim().toLocaleLowerCase();
+        if (query) result = result.filter(doc => String(doc[field]).toLocaleLowerCase().includes(query));
+    }
+    const from = document.getElementById("filterFrom").value;
+    const to = document.getElementById("filterTo").value;
+    if (from) result = result.filter(doc => doc.receivedDateKey && doc.receivedDateKey >= from);
+    if (to) result = result.filter(doc => doc.receivedDateKey && doc.receivedDateKey <= to);
+    if (document.getElementById("filterDeadline").value === "overdue") result = result.filter(isOverdue);
 
     if (sortKey) {
         result.sort((a, b) => {
@@ -373,6 +395,7 @@ function renderTable(list) {
                     <span class="status-badge status-${doc.statusKey}">
                         ${escapeHtml(doc.statusLabel)}
                     </span>
+                    ${deadlineLabel(doc)}
                 </td>
                 <td class="received">
                     <strong>${escapeHtml(doc.receivedDate)}</strong>
@@ -436,6 +459,7 @@ function renderMobile(list) {
                     <span class="status-badge status-${doc.statusKey}">
                         ${escapeHtml(doc.statusLabel)}
                     </span>
+                    ${deadlineLabel(doc)}
                 </div>
                 <div class="mobile-meta">
                     <div>
@@ -534,6 +558,13 @@ if (globalSearch) {
         render();
     });
 }
+
+document.querySelectorAll(".document-search-filters input, .document-search-filters select").forEach(input => {
+    input.addEventListener("input", render);
+});
+// Re-evaluate deadlines when returning to the dashboard and across midnight.
+window.addEventListener("focus", render);
+setInterval(render, 60000);
 
 document.querySelectorAll("[data-filter]").forEach(button => {
     button.addEventListener("click", () => {

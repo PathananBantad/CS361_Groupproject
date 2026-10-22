@@ -259,3 +259,6 @@
         font-size: 15px;
     }
 }
+.assignee-results { max-height: 240px; overflow-y: auto; border: 1px solid #d8cdd0; border-radius: 10px; background: #fff; padding: 6px; }
+.assignee-results button { display: block; width: 100%; text-align: left; padding: 12px; background: white; border: 0; border-radius: 6px; font: inherit; cursor: pointer; }
+.assignee-results button:hover, .assignee-results button:focus-visible { background: #f3edf0; }

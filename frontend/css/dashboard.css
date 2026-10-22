@@ -677,4 +677,9 @@
     }
 }
 
-
+.document-search-filters { display: flex; flex-wrap: wrap; gap: 12px; margin: 16px 0 24px; padding: 18px; background: #fff; border: 1px solid #eadfe0; border-radius: 14px; }
+.document-search-filters label { display: flex; flex-direction: column; gap: 6px; flex: 1 1 180px; font-size: 14px; }
+.document-search-filters input, .document-search-filters select { min-width: 0; padding: 9px; border: 1px solid #d8cdd0; border-radius: 8px; font: inherit; background: white; }
+.document-search-filters p { flex-basis: 100%; font-size: 13px; color: #68565b; margin: 0; }
+.deadline-label { display: block; margin-top: 6px; color: #68565b; }
+.deadline-overdue { color: #a15b00; font-weight: 700; }
