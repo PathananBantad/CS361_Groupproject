@@ -297,12 +297,9 @@
                                         <label for="statusRemarksInput" class="status-input-label">บันทึกหมายเหตุการเปลี่ยนสถานะ (ทางเลือก):</label>
                                         <input type="text" id="statusRemarksInput" class="status-remarks-input" placeholder="ระบุเหตุผลหรือบันทึกช่วยจำ...">
                                         <div class="action-buttons-group">
-                                            <button type="button" class="btn-workflow-primary" id="btnNextStatus">
-                                                <span class="btn-spinner" id="btnNextStatusSpinner" hidden></span>
-                                                <span id="btnNextStatusText">➡️ ดำเนินการขั้นตอนถัดไป</span>
-                                            </button>
+
                                             <div class="admin-override-wrap" id="adminOverrideWrap" hidden>
-                                                <label class="admin-select-label">ผู้ดูแลระบบ (เลือกสถานะที่ต้องการเปลี่ยน):</label>
+                                                <label class="admin-select-label">เลือกสถานะที่ต้องการเปลี่ยน:</label>
                                                 <div class="admin-select-row">
                                                     <select id="adminStatusSelect" class="admin-status-dropdown">
                                                         <option value="Received">Received (ได้รับเอกสารแล้ว)</option>
@@ -333,8 +330,8 @@
                                 <div class="meta-item"><span class="meta-label">ชื่อผู้ส่ง</span><span class="meta-value" id="modalSenderName">-</span></div>
                                 <div class="meta-item"><span class="meta-label">ช่องทางติดต่อผู้ส่ง</span><span class="meta-value" id="modalSenderContact">-</span></div>
                                 <div class="meta-item"><span class="meta-label">ผู้รับ</span><span class="meta-value" id="modalReceiver">-</span></div>
-                                <div class="meta-item"><span class="meta-label">วันที่ส่ง (ในหนังสือ)</span><span class="meta-value" id="modalSendDate">-</span></div>
-                                <div class="meta-item"><span class="meta-label">วันที่รับ (สารบรรณลงรับ)</span><span class="meta-value" id="modalReceiveDate">-</span></div>
+                                <div class="meta-item"><span class="meta-label">วันที่ส่ง (วันที่ระบุในหนังสือ)</span><span class="meta-value" id="modalSendDate">-</span></div>
+                                <div class="meta-item"><span class="meta-label">วันที่รับ (วันที่หน่วยงานลงรับเอกสาร)</span><span class="meta-value" id="modalReceiveDate">-</span></div>
                                 <div class="meta-item"><span class="meta-label">วันครบกำหนด (Deadline)</span><span class="meta-value" id="modalDeadline">-</span></div>
                                 <div class="meta-item full-width" id="modalRemarksWrap"><span class="meta-label">หมายเหตุ</span><p class="meta-value remarks-box" id="modalRemarks">-</p></div>
                             </div>
@@ -628,8 +625,11 @@
 
             // เมนูเลือกสถานะสำหรับ Admin: ตั้งค่าให้ตรงกับสถานะปัจจุบันของเอกสารที่เปิดอยู่เสมอ (ไม่ใช่ขั้นตอนถัดไป)
             if (adminOverrideWrap) {
-                adminOverrideWrap.hidden = !isAdmin;
-                if (isAdmin && adminStatusSelect) {
+                adminOverrideWrap.hidden = false;
+                if (adminStatusSelect) {
+                    Array.from(adminStatusSelect.options).forEach(option => {
+                        option.disabled = !isAdmin && option.value !== rawStatus && option.value !== details.nextStatus;
+                    });
                     adminStatusSelect.value = rawStatus;
                 }
             }
@@ -888,9 +888,15 @@
         if (modalSenderName) modalSenderName.textContent = doc.sender || doc.sender_name || "-";
         if (modalSenderContact) modalSenderContact.textContent = doc.sender_contact || "-";
         if (modalReceiver) modalReceiver.textContent = doc.receiver || doc.receiver_name || "-";
-        if (modalSendDate) modalSendDate.textContent = formatDisplayDate(doc.send_date || doc.sent_date);
-        if (modalReceiveDate) modalReceiveDate.textContent = formatDisplayDate(doc.receive_date);
-        if (modalDeadline) modalDeadline.textContent = formatDisplayDate(doc.deadline);
+        if (modalSendDate) modalSendDate.textContent = formatDisplayDate(doc.raw ? doc.raw.sent_date : (doc.send_date || doc.sent_date));
+        if (modalReceiveDate) modalReceiveDate.textContent = formatDisplayDate(doc.raw ? doc.raw.receive_date : doc.receive_date);
+        if (modalDeadline) {
+            const deadline = doc.raw ? doc.raw.deadline : doc.deadline;
+            modalDeadline.textContent = formatDisplayDate(deadline);
+            const overdue = typeof window.isOverdue === "function" && window.isOverdue(doc);
+            modalDeadline.classList.toggle("deadline-overdue", Boolean(overdue));
+            if (overdue) modalDeadline.textContent += " • เกินกำหนด";
+        }
         if (modalRemarks) {
             const rm = doc.remarks;
             modalRemarks.textContent = rm && rm !== "-" ? rm : "ไม่มีหมายเหตุเพิ่มเติม";
@@ -1084,8 +1090,8 @@
 
                 if (fileExt === ".pdf") {
                     previewViewport.innerHTML = `
-                        <iframe 
-                            src="${escapeHtml(finalPreviewUrl)}#toolbar=1&navpanes=0" 
+                        <iframe
+                            src="${escapeHtml(finalPreviewUrl)}#toolbar=1&navpanes=0"
                             title="${escapeHtml(fileName)}"
                             loading="lazy"
                             style="width: 100%; height: 100%; border: none; min-height: 500px;"
@@ -1094,9 +1100,9 @@
                 } else if ([".jpg", ".jpeg", ".png"].includes(fileExt)) {
                     previewViewport.innerHTML = `
                         <div class="preview-image-wrap" style="display: flex; justify-content: center; align-items: center; width: 100%; height: 100%; min-height: 400px; background: #f8fafc; padding: 20px;">
-                            <img 
-                                src="${escapeHtml(finalPreviewUrl)}" 
-                                alt="${escapeHtml(fileName)}" 
+                            <img
+                                src="${escapeHtml(finalPreviewUrl)}"
+                                alt="${escapeHtml(fileName)}"
                                 loading="lazy"
                                 style="max-width: 100%; max-height: 520px; object-fit: contain; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.08);"
                                 onerror="this.parentElement.innerHTML='<div class=\\'preview-error\\' style=\\'text-align:center;padding:40px 20px;color:#856404;background:#fff3cd;border:1px solid #ffeeba;border-radius:8px;\\'><h4>⚠️ ไม่สามารถแสดงตัวอย่างไฟล์ได้</h4><p style=\\'margin-top:8px;font-size:13px;\\'>สามารถคลิกปุ่มดาวน์โหลดไฟล์ด้านบนเพื่อดูเอกสาร</p></div>';"
@@ -1299,7 +1305,7 @@ function renderForwardSection(documentId) {
     return `
         <div class="forward-container" style="margin-top: 15px; padding: 15px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px;">
             <h4 style="margin-bottom: 10px; font-size: 15px; color: #166534;">ส่งต่อเอกสาร</h4>
-            
+
             <div style="margin-bottom: 10px;">
                 <label style="display: block; font-size: 13px; margin-bottom: 4px; color: #374151;">รหัสผู้รับส่งต่อ (New Assignee ID):</label>
                 <select id="modalForwardAssigneeId"

@@ -99,15 +99,11 @@
 
                                 <div class="action-buttons-group">
                                     <!-- ปุ่มเปลี่ยนสถานะเป็นขั้นตอนถัดไป -->
-                                    <button type="button" class="btn-workflow-primary" id="btnNextStatus">
-                                        <span class="btn-spinner" id="btnNextStatusSpinner" hidden></span>
-                                        <span id="btnNextStatusText">➡️ ดำเนินการขั้นตอนถัดไป</span>
-                                    </button>
+
 
                                     <!-- สำหรับ Admin: เลือกสถานะได้ตามต้องการหรือ Rollback -->
                                     <div class="admin-override-wrap" id="adminOverrideWrap" hidden>
-                                        <label class="admin-select-label">ผู้ดูแลระบบ
-                                            (เลือกสถานะที่ต้องการเปลี่ยน):</label>
+                                        <label class="admin-select-label">เลือกสถานะที่ต้องการเปลี่ยน:</label>
                                         <div class="admin-select-row">
                                             <select id="adminStatusSelect" class="admin-status-dropdown">
                                                 <option value="Received">Received (ได้รับเอกสารแล้ว)</option>
@@ -162,11 +158,11 @@
                             <span class="meta-value" id="modalReceiver">-</span>
                         </div>
                         <div class="meta-item">
-                            <span class="meta-label">วันที่ส่ง (ในหนังสือ)</span>
+                            <span class="meta-label">วันที่ส่ง (วันที่ระบุในหนังสือ)</span>
                             <span class="meta-value" id="modalSendDate">-</span>
                         </div>
                         <div class="meta-item">
-                            <span class="meta-label">วันที่รับ (สารบรรณลงรับ)</span>
+                            <span class="meta-label">วันที่รับ (วันที่หน่วยงานลงรับเอกสาร)</span>
                             <span class="meta-value" id="modalReceiveDate">-</span>
                         </div>
                         <div class="meta-item">
