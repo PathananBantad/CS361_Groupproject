@@ -8,7 +8,7 @@ const documents = [
     { id: 102, reference_no: "DOC-102", subject: "Admin owned", status: "Received", owner_id: 8, assignee_id: null, file_key: "documents/102/file.pdf", file_name: "file.pdf", file_size: 4, mime_type: "application/pdf" },
     { id: 103, reference_no: "DOC-103", subject: "Officer owned", status: "Received", owner_id: 6, assignee_id: null, file_key: "documents/103/file.pdf", file_name: "file.pdf", file_size: 4, mime_type: "application/pdf" },
     { id: 104, reference_no: "DOC-104", subject: "Executive owned", status: "Received", owner_id: 10, assignee_id: null, file_key: "documents/104/file.pdf", file_name: "file.pdf", file_size: 4, mime_type: "application/pdf" },
-    { id: 105, reference_no: "DOC-105", subject: "Case owner owned", status: "Received", owner_id: 9, assignee_id: null, file_key: "documents/105/file.pdf", file_name: "file.pdf", file_size: 4, mime_type: "application/pdf" }
+    { id: 105, reference_no: "DOC-105", subject: "Assigned to faculty", status: "Received", owner_id: 9, assignee_id: null, file_key: "documents/105/file.pdf", file_name: "file.pdf", file_size: 4, mime_type: "application/pdf" }
 ];
 const effects = { updates: 0, s3: 0, historyReads: 0 };
 const identities = {
@@ -48,7 +48,7 @@ const cognito = (req, res, next) => {
     if (token === "Bearer invalid") return res.status(401).json({ error: "Unauthorized" });
     if (!token || !token.startsWith("Bearer ")) return res.status(401).json({ error: "Unauthorized" });
     const name = token.slice(7);
-    const username = ({ admin: "admin@example.test", officer: "officer@example.test", faculty: "faculty@example.test", "case-owner": "case-owner@example.test", executive: "executive@example.test", "group-admin-faculty": "faculty@example.test" })[name] || "faculty@example.test";
+    const username = ({ admin: "admin@example.test", officer: "officer@example.test", faculty: "faculty@example.test", executive: "executive@example.test", "group-admin-faculty": "faculty@example.test" })[name] || "faculty@example.test";
     req.auth = { sub: `sub-${name}`, username, groups: name === "group-admin-faculty" ? ["admin"] : [] };
     next();
 };
@@ -122,7 +122,6 @@ test("document lists are scoped to each authenticated role's own related documen
         admin: [101, 102, 103, 104, 105],
         executive: [101, 102, 103, 104, 105],
         faculty: [101],
-        "case-owner": [105]
     };
     const visible = {};
     for (const [token, ids] of Object.entries(expected)) {

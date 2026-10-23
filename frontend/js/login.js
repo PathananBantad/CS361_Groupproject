@@ -11,12 +11,10 @@ const guestLoginBtn = document.getElementById("guestLoginBtn");
 const EMAIL_ROLE_MAP = {
     "pathanan.ban@dome.tu.ac.th": "admin",
     "maneerat.aun@dome.tu.ac.th": "faculty_staff",
-    "buynarimruo@gmail.com": "case_owner",
     "achiraya.kha@dome.tu.ac.th": "document_officer",
     "pakhwan.jul@dome.tu.ac.th": "executive",
     "admin": "admin",
     "staff-1": "document_officer",
-    "head-1": "case_owner",
     "fac-a": "faculty_staff",
     "fac-b": "faculty_staff",
     "staff": "faculty_staff"
@@ -64,7 +62,6 @@ document.addEventListener("DOMContentLoaded", () => {
                     <button type="button" class="btn-dev-role" data-user="admin" data-role="admin" style="padding: 5px 10px; font-size: 12px; border: 1px solid #c7d2fe; border-radius: 4px; background: #ffffff; cursor: pointer;">👑 Admin</button>
                     <button type="button" class="btn-dev-role" data-user="FAC-A" data-role="faculty_staff" style="padding: 5px 10px; font-size: 12px; border: 1px solid #c7d2fe; border-radius: 4px; background: #ffffff; cursor: pointer;">👨‍🏫 อาจารย์ (FAC-A)</button>
                     <button type="button" class="btn-dev-role" data-user="STAFF-1" data-role="document_officer" style="padding: 5px 10px; font-size: 12px; border: 1px solid #c7d2fe; border-radius: 4px; background: #ffffff; cursor: pointer;">📋 สารบรรณ (STAFF-1)</button>
-                    <button type="button" class="btn-dev-role" data-user="HEAD-1" data-role="case_owner" style="padding: 5px 10px; font-size: 12px; border: 1px solid #c7d2fe; border-radius: 4px; background: #ffffff; cursor: pointer;">👔 หัวหน้าสาขา (HEAD-1)</button>
                 </div>
             `;
 
@@ -164,12 +161,10 @@ if (loginForm) {
                 const EMAIL_ROLE_MAP = {
                     "pathanan.ban@dome.tu.ac.th": "admin",
                     "maneerat.aun@dome.tu.ac.th": "faculty_staff",
-                    "buynarimruo@gmail.com": "case_owner",
                     "achiraya.kha@dome.tu.ac.th": "document_officer",
                     "pakhwan.jul@dome.tu.ac.th": "executive",
                     "admin": "admin",
                     "staff-1": "document_officer",
-                    "head-1": "case_owner",
                     "fac-a": "faculty_staff",
                     "fac-b": "faculty_staff",
                     "staff": "faculty_staff"
@@ -188,8 +183,6 @@ if (loginForm) {
                             role = "document_officer";
                         } else if (groups.includes("faculty_staff") || groups.includes("staff")) {
                             role = "faculty_staff";
-                        } else if (groups.includes("case_owner") || groups.includes("owner")) {
-                            role = "case_owner";
                         } else if (groups.includes("executive")) {
                             role = "executive";
                         } else if (groups.length > 0) {
@@ -203,7 +196,6 @@ if (loginForm) {
                 if (!role) {
                     if (cleanUser.includes("admin")) role = "admin";
                     else if (cleanUser.includes("officer")) role = "document_officer";
-                    else if (cleanUser.includes("owner")) role = "case_owner";
                     else if (cleanUser.includes("exec")) role = "executive";
                     else role = "faculty_staff";
                 }

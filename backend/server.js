@@ -206,7 +206,7 @@ app.get(
             const params = [];
 
             // Admin, Executive, and Document Officer roles can view all documents and their files across the system.
-            // Faculty staff and Case owner roles are scoped to documents they own or are assigned to.
+            // Faculty staff roles are scoped to documents they own or are assigned to.
             const userRoles = (req.userRoles || (role ? [role] : [])).map((r) => String(r || "").trim().toLowerCase());
             const canViewAll = userRoles.some((r) => ["admin", "executive", "document_officer"].includes(r));
             if (!canViewAll) {
