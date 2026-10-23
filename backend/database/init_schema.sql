@@ -150,6 +150,5 @@ CREATE TABLE IF NOT EXISTS document_audit_trails (
 INSERT IGNORE INTO roles (name, description) VALUES 
 ('document_officer', 'เจ้าหน้าที่รับเอกสาร'),
 ('faculty_staff', 'อาจารย์ / เจ้าหน้าที่'),
-('case_owner', 'ผู้รับผิดชอบเรื่อง'),
 ('admin', 'ผู้ดูแลระบบ'),
 ('executive', 'ผู้บริหาร');

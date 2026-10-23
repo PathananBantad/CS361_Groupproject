@@ -105,7 +105,7 @@ router.post("/login", async (req, res) => {
         }
 
         const user = users[0];
-        const roles = (user.roles || "").split(",").map((role) => role.trim()).filter((role) => ["document_officer", "faculty_staff", "case_owner", "admin", "executive"].includes(role));
+        const roles = (user.roles || "").split(",").map((role) => role.trim()).filter((role) => ["document_officer", "faculty_staff", "admin", "executive"].includes(role));
         if (!roles.length) return res.status(403).json({ ok: false, message: "บัญชีนี้ยังไม่มีบทบาทที่ได้รับอนุญาต" });
 
         // 5. สร้าง Session หลังยืนยันตัวตนสำเร็จ
