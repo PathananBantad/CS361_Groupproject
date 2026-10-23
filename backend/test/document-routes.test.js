@@ -15,7 +15,6 @@ const identities = {
     "admin@example.test": { role: "admin", userId: 8 },
     "officer@example.test": { role: "document_officer", userId: 6 },
     "faculty@example.test": { role: "faculty_staff", userId: 7 },
-    "case-owner@example.test": { role: "case_owner", userId: 9 },
     "executive@example.test": { role: "executive", userId: 10 }
 };
 const pool = {

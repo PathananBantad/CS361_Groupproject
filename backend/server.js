@@ -54,7 +54,7 @@ async function loadUserRole(req, res, next) {
         req.userId = rows[0].userId;
         req.dbUsername = rows[0].username;
         req.userRoles = roles;
-        req.userRole = ["admin", "executive", "document_officer", "case_owner", "faculty_staff"].find((role) => roles.includes(role));
+        req.userRole = ["admin", "executive", "document_officer", "faculty_staff"].find((role) => roles.includes(role));
 
         return next();
     } catch (error) {
@@ -729,8 +729,8 @@ app.put("/api/documents/:id/status", requireCognitoAuth, loadUserRole, async (re
         const role = actor.actorRole;
         const sanitizedRemarks = sanitizeInput(remarks || "");
 
-        // 2. ตรวจสอบสิทธิ์ผู้ใช้: เฉพาะ staff, faculty_staff, document_officer, case_owner และ admin
-        if (!role || !["document_officer", "case_owner", "admin", "faculty_staff"].includes(role)) {
+        // 2. ตรวจสอบสิทธิ์ผู้ใช้: เฉพาะ staff, faculty_staff, document_officer และ admin
+        if (!role || !["document_officer", "admin", "faculty_staff"].includes(role)) {
             return res.status(403).json({
                 error: "คุณไม่มีสิทธิ์ในการเปลี่ยนสถานะเอกสาร (ต้องการสิทธิ์ Staff หรือ Admin เท่านั้น)"
             });
@@ -861,8 +861,8 @@ app.put("/api/documents/:id/status", requireCognitoAuth, loadUserRole, async (re
 });
 
 // กติกาการมอบหมายเอกสาร (ปรับตาม Role Matrix)
-const ASSIGNER_ROLES = ["document_officer", "faculty_staff", "case_owner", "admin"]; // ตาม Role Matrix
-const ASSIGNEE_ROLES = ["case_owner", "faculty_staff"];   // รับมอบหมายได้
+const ASSIGNER_ROLES = ["document_officer", "faculty_staff", "admin"]; // ตาม Role Matrix
+const ASSIGNEE_ROLES = ["faculty_staff"];   // รับมอบหมายได้
 
 class HttpError extends Error {
     constructor(status, message) {
@@ -1040,7 +1040,6 @@ app.get(
     async (req, res) => {
         const forwarderRoles = [
             "document_officer",
-            "case_owner",
             "admin",
             "faculty_staff"
         ];
@@ -1132,7 +1131,7 @@ app.post("/api/documents/:id/forward", requireCognitoAuth, loadUserRole, async (
         const role = actor.actorRole;
 
         // ตรวจสอบสิทธิ์ผู้มีอำนาจส่งต่อ
-        if (!role || !["document_officer", "case_owner", "admin", "faculty_staff"].includes(role)) {
+        if (!role || !["document_officer", "admin", "faculty_staff"].includes(role)) {
             return res.status(403).json({
                 error: "คุณไม่มีสิทธิ์ในการส่งต่อเอกสาร (ต้องการสิทธิ์ Staff หรือ Admin)"
             });

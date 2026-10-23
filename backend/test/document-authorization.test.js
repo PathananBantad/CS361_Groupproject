@@ -7,13 +7,12 @@ const assigned = { owner_id: null, assignee_id: 7 };
 const unrelated = { owner_id: 8, assignee_id: 9 };
 
 test("only configured database roles are recognized", () => {
-    assert.deepEqual(ROLES, ["document_officer", "faculty_staff", "case_owner", "admin", "executive"]);
+    assert.deepEqual(ROLES, ["document_officer", "faculty_staff", "admin", "executive"]);
     assert.equal(canAccessDocument({ roles: ["staff"], userId: 7, document: owned }), false);
-    assert.equal(canAccessDocument({ roles: ["case_owner"], userId: 7, document: unrelated }), false);
 });
 
-test("document reads require owner or assignee relationship for staff/case_owner, while admin, executive, and officer can view all", () => {
-    for (const role of ["faculty_staff", "case_owner"]) {
+test("document reads require owner or assignee relationship for faculty staff, while admin, executive, and document officer can view all", () => {
+    for (const role of ["faculty_staff"]) {
         assert.equal(canAccessDocument({ roles: [role], userId: 7, document: owned }), true);
         assert.equal(canAccessDocument({ roles: [role], userId: 7, document: assigned }), true);
         assert.equal(canAccessDocument({ roles: [role], userId: 7, document: unrelated }), false);
@@ -48,7 +47,7 @@ test("status and forwarding require an allowed role and document relationship", 
 test("assignment follows role permissions and document relevance", () => {
     assert.equal(canAccessDocument({ roles: ["document_officer"], userId: 7, document: unrelated, action: "assign" }), true);
     assert.equal(canAccessDocument({ roles: ["admin"], userId: 7, document: unrelated, action: "assign" }), true);
-    for (const role of ["faculty_staff", "case_owner"]) {
+    for (const role of ["faculty_staff"]) {
         assert.equal(canAccessDocument({ roles: [role], userId: 7, document: owned, action: "assign" }), true);
         assert.equal(canAccessDocument({ roles: [role], userId: 7, document: unrelated, action: "assign" }), false);
     }

@@ -403,7 +403,6 @@ async function queryAuditTrails(options = {}, poolOrConn = defaultPool) {
  * - admin: ดูได้ทุกเอกสาร และดูประวัติรวมทั้งระบบได้
  * - executive: ดูได้ทุกเอกสาร
  * - document_officer: ดูได้ทุกเอกสารที่รับเข้ามาในระบบ
- * - case_owner: ดูได้เฉพาะเอกสารที่ตนเองเป็นเจ้าของ (owner_id หรือ assignee_id)
  * - faculty_staff / staff: ดูได้เฉพาะเอกสารที่ตนเองเกี่ยวข้อง
  * - guest / unauthenticated: ไม่มีสิทธิ์เข้าถึง (403/401)
  *
@@ -424,7 +423,7 @@ function verifyAuditTrailAccess(actor, document) {
         return { allowed: true };
     }
 
-    // 2. หากเป็น case_owner หรือ faculty_staff ต้องเป็นเจ้าของหรือผู้รับมอบหมายเอกสาร
+    // 2. หากเป็น faculty_staff ต้องเป็นเจ้าของหรือผู้รับมอบหมายเอกสาร
     if (document) {
         const docOwnerId = document.owner_id ? String(document.owner_id) : null;
         const docAssigneeId = document.assignee_id ? String(document.assignee_id) : null;
