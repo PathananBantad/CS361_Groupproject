@@ -12,7 +12,6 @@
         officer: "เจ้าหน้าที่สารบรรณ",
         faculty_staff: "อาจารย์ / บุคลากร",
         staff: "อาจารย์ / บุคลากร",
-        case_owner: "ผู้รับผิดชอบเอกสาร",
         executive: "ผู้บริหาร",
         guest: "ผู้ใช้ทั่วไป"
     };
@@ -56,8 +55,6 @@
                 userRoleDot.classList.add("role-executive");
             } else if (savedRole === "document_officer" || savedRole === "officer") {
                 userRoleDot.classList.add("role-officer");
-            } else if (savedRole === "case_owner") {
-                userRoleDot.classList.add("role-owner");
             } else if (savedRole === "guest") {
                 userRoleDot.classList.add("role-guest");
             } else {

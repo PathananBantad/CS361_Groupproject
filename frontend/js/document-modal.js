@@ -391,7 +391,6 @@
             "officer",
             "faculty_staff",
             "staff",
-            "case_owner",
             "executive"
         ];
         const hasPermission = internalRoles.includes(role);
@@ -402,7 +401,6 @@
             isAdmin: role === "admin",
             isOfficer: role === "document_officer" || role === "officer",
             isStaff: role === "faculty_staff" || role === "staff",
-            isCaseOwner: role === "case_owner",
             isExecutive: role === "executive",
             isGuest: !hasPermission
         };
@@ -533,7 +531,6 @@
                 officer: "เจ้าหน้าที่สารบรรณ",
                 faculty_staff: "เจ้าหน้าที่คณะ",
                 staff: "เจ้าหน้าที่คณะ",
-                case_owner: "ผู้รับผิดชอบเอกสาร",
                 executive: "ผู้บริหาร",
                 guest: "ผู้ใช้ทั่วไป"
             };
@@ -605,7 +602,7 @@
                 if (statusDisabledText) statusDisabledText.textContent = "เอกสารนี้ดำเนินการเสร็จสิ้นสมบูรณ์แล้ว (Workflow Completed)";
             }
         } else {
-            // Staff, Officer, Case Owner, Admin can proceed with workflow
+            // Staff, Officer, Admin can proceed with workflow
             if (statusNextActionWrap) statusNextActionWrap.hidden = false;
             if (statusDisabledMessage) statusDisabledMessage.hidden = true;
 
@@ -919,7 +916,6 @@
 
         const forwarderRoles = [
             "document_officer",
-            "case_owner",
             "admin",
             "faculty_staff"
         ];

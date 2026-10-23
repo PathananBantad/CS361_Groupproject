@@ -112,7 +112,7 @@ https://main.ds9q6gagifqjo.amplifyapp.com/html/index.html
 - ป้องกันการแก้ไขหรือลบประวัติ (Immutable & Append-Only Record คืนค่า HTTP 405)
 - ระบบกรองและตัดข้อมูลลับอัตโนมัติ (Sanitization: Password, Token, JWT, API Key)
 - จัดการข้อผิดพลาดด้วย Database Transaction ป้องกันข้อมูลไม่สอดคล้องกัน
-- ตรวจสอบสิทธิ์การเรียกดูตาม Role/Permission Matrix (Admin, Executive, Officer, Case Owner, Staff)
+- ตรวจสอบสิทธิ์การเรียกดูตาม Role/Permission Matrix (Admin, Executive, Officer, Staff)
 
 📖 ดูรายละเอียดโครงสร้างฐานข้อมูล ข้อกำหนด API และแนวทางการตรวจสอบย้อนหลังฉบับเต็มได้ที่ [docs/AUDIT_TRAIL.md](docs/AUDIT_TRAIL.md)
 
