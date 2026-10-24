@@ -176,7 +176,11 @@ if (loginForm) {
                 if (!role) {
                     try {
                         const idPayload = session.getIdToken().decodePayload();
-                        const groups = idPayload["cognito:groups"] || [];
+                        const groups = (idPayload["cognito:groups"] || []).map(group => {
+                            const name = String(group).trim().toLowerCase();
+                            const aliases = { documentreceiver: "document_officer", "staff/instructor": "faculty_staff", instructor: "faculty_staff" };
+                            return aliases[name] || name;
+                        });
                         if (groups.includes("admin")) {
                             role = "admin";
                         } else if (groups.includes("document_officer") || groups.includes("officer")) {
