@@ -39,6 +39,17 @@
             }
         }
 
+        const canRegister = ["admin", "document_officer", "officer"].includes(savedRole);
+        document.querySelectorAll('a[href="register.html"]').forEach(link => {
+            link.hidden = !canRegister;
+        });
+        if (currentPath.endsWith("/register.html") && !canRegister) {
+            const form = document.getElementById("registerForm");
+            if (form) form.hidden = true;
+            window.location.replace(savedRole === "guest" ? "login.html" : "dashboard.html");
+            return;
+        }
+
         const roleLabel = ROLE_LABELS[savedRole] || savedRole || "ไม่ระบุบทบาท";
 
         // Update profile button display

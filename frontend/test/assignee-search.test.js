@@ -24,6 +24,7 @@ async function picker(ok = true) {
             { id: 42, full_name: 'สมชาย ใจดี', username: 'faculty42' },
             { id: 99, full_name: 'สมหญิง ดีใจ', username: 'faculty99' }
         ] }) }) },
+        localStorage: { getItem: () => "admin" },
         getApiBaseUrl: () => '/api'
     });
     const source = fs.readFileSync(path.join(__dirname, '../../frontend/js/register.js'), 'utf8').split('// รายการนามสกุล')[0];
