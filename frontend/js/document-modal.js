@@ -383,7 +383,8 @@
 
     // Helper ดึงสิทธิ์ปัจจุบัน
     function getCurrentAuth() {
-        const role = (localStorage.getItem("docuflow_role") || "guest").toLowerCase().trim();
+        const storedRole = (localStorage.getItem("docuflow_role") || "guest").toLowerCase().trim();
+        const role = storedRole === "documentreceiver" ? "document_officer" : storedRole;
         const user = localStorage.getItem("docuflow_user") || "";
         const internalRoles = [
             "admin",

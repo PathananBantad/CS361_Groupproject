@@ -39,7 +39,8 @@ function renderAssignees() {
     });
 }
 async function loadAssignees() {
-    const role = (localStorage.getItem("docuflow_role") || "guest").toLowerCase().trim();
+    const storedRole = (localStorage.getItem("docuflow_role") || "guest").toLowerCase().trim();
+        const role = storedRole === "documentreceiver" ? "document_officer" : storedRole;
     if (!["admin", "document_officer", "officer"].includes(role)) return;
     try {
         const response = await window.apiFetch(`${getApiBaseUrl()}/assignees`);
@@ -199,7 +200,8 @@ if (uploadBox) {
 registerForm.addEventListener("submit", async (event) => {
     event.preventDefault();
 
-    const role = (localStorage.getItem("docuflow_role") || "guest").toLowerCase().trim();
+    const storedRole = (localStorage.getItem("docuflow_role") || "guest").toLowerCase().trim();
+        const role = storedRole === "documentreceiver" ? "document_officer" : storedRole;
     if (!["admin", "document_officer", "officer"].includes(role)) {
         window.location.replace(role === "guest" ? "login.html" : "dashboard.html");
         return;

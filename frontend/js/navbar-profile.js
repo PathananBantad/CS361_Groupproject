@@ -26,7 +26,8 @@
         const userRoleDropdownTitle = document.getElementById("userRoleDropdownTitle");
         const userRoleDropdownEmail = document.getElementById("userRoleDropdownEmail");
 
-        const savedRole = (localStorage.getItem("docuflow_role") || "guest").toLowerCase().trim();
+        const storedRole = (localStorage.getItem("docuflow_role") || "guest").toLowerCase().trim();
+        const savedRole = storedRole === "documentreceiver" ? "document_officer" : storedRole;
         const savedUser = localStorage.getItem("docuflow_user") || "";
         const token = localStorage.getItem("docuflow_access_token") || localStorage.getItem("access_token") || "";
 
