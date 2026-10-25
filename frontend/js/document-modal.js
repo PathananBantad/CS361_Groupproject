@@ -723,7 +723,6 @@
         statusHistoryTimeline.innerHTML = `<div class="history-loading">กำลังโหลดประวัติการดำเนินการ (Audit Trail)...</div>`;
 
         const apiBase = getApiBaseUrl();
-        const role = localStorage.getItem("docflow_mock_role") || "staff";
 
         try {
             // ลองดึงจาก Audit Trail API ส่วนกลางก่อน (Task 8)
@@ -882,8 +881,6 @@
                 onDone: () => { if (window.fetchDocuments) window.fetchDocuments(); }
             });
         }
-
-        const auth = getCurrentAuth();
 
         // 1. เติมข้อมูลรายละเอียดเอกสาร (Details)
         if (modalDocSubject) modalDocSubject.textContent = doc.description || doc.subject || doc.number || "เอกสาร";

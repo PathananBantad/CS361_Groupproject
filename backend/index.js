@@ -17,11 +17,6 @@ async function handleCognitoPostAuth(event) {
     const userAttributes = event.request?.userAttributes || {};
     const email = (userAttributes.email || userName || "").toLowerCase().trim();
 
-    const ADMIN_EMAILS = [
-        "pathanan.ban@dome.tu.ac.th",
-        "pakhwan.jul@dome.tu.ac.th"
-    ];
-
     try {
         const cognitoClient = new CognitoIdentityProviderClient({});
         // 1. ตรวจสอบว่า user มีกลุ่มอยู่แล้วหรือไม่
@@ -37,8 +32,8 @@ async function handleCognitoPostAuth(event) {
             return event;
         }
 
-        // 3. Login ครั้งแรก (ยังไม่มีกลุ่ม): กำหนด Admin หรือ Staff/Instructor
-        const targetGroup = ADMIN_EMAILS.includes(email) ? "admin" : "Staff/Instructor";
+        // 3. ผู้ใช้ใหม่ที่เข้าสู่ระบบ: กำหนดกลุ่มเริ่มต้นเป็น "Staff/Instructor" ใน Cognito
+        const targetGroup = "Staff/Instructor";
         await cognitoClient.send(new AdminAddUserToGroupCommand({
             UserPoolId: userPoolId,
             Username: userName,

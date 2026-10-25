@@ -52,10 +52,8 @@ async function loadUserRole(req, res, next) {
         if (rows.length === 0 || !roles.length || !userId) {
             const mappedRoles = mapCognitoGroupsToRoles(req.auth.groups || []);
             const cleanUser = String(username).toLowerCase().trim();
-            if (["pathanan.ban@dome.tu.ac.th", "pakhwan.jul@dome.tu.ac.th"].includes(cleanUser) && !mappedRoles.includes("admin")) {
-                mappedRoles.push("admin");
-            } else if (mappedRoles.length === 0) {
-                // ผู้ใช้ใหม่จาก TU API ที่ยังไม่มีกลุ่มใน Cognito -> กำหนดเป็น Staff (faculty_staff) เป็น Default อัตโนมัติ
+            if (mappedRoles.length === 0) {
+                // ผู้ใช้ใหม่ที่ยังไม่มีกลุ่มใน Cognito -> กำหนดเป็น Staff (faculty_staff) เป็น Default อัตโนมัติ
                 mappedRoles.push("faculty_staff");
             }
 

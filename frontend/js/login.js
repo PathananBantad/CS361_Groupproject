@@ -8,72 +8,12 @@ const loginMessage = document.getElementById("loginMessage");
 const togglePassword = document.getElementById("togglePassword");
 const guestLoginBtn = document.getElementById("guestLoginBtn");
 
-const EMAIL_ROLE_MAP = {
-    "pathanan.ban@dome.tu.ac.th": "admin",
-    "pakhwan.jul@dome.tu.ac.th": "admin",
-    "officer@dome.tu.ac.th": "document_officer",
-    "executive@dome.tu.ac.th": "executive",
-    "staff@dome.tu.ac.th": "faculty_staff",
-    "staff": "faculty_staff"
-};
-
-function performLocalMockLogin(username, role) {
-    const cleanUser = String(username).toLowerCase().trim();
-    const resolvedRole = role || EMAIL_ROLE_MAP[cleanUser] || "faculty_staff";
-    localStorage.setItem("docuflow_access_token", `mock-${cleanUser}`);
-    localStorage.setItem("docuflow_id_token", `mock-${cleanUser}`);
-    localStorage.setItem("access_token", `mock-${cleanUser}`);
-    localStorage.setItem("id_token", `mock-${cleanUser}`);
-    localStorage.setItem("docuflow_user", username);
-    localStorage.setItem("docuflow_role", resolvedRole);
-    window.location.href = "dashboard.html";
-}
-
-// โหลด Username ล่าสุด และแสดงปุ่มทดสอบสำหรับ localhost
+// โหลด Username ล่าสุด
 document.addEventListener("DOMContentLoaded", () => {
     const savedUser = localStorage.getItem("docuflow_user");
 
     if (savedUser && savedUser !== "Guest") {
         usernameInput.value = savedUser;
-    }
-
-    // เพิ่มแผงทดสอบบน Localhost สำหรับจำลองสิทธิ์ต่างๆ
-    const isLocal = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
-    if (isLocal && loginForm) {
-        let devBox = document.getElementById("localDevBox");
-        if (!devBox) {
-            devBox = document.createElement("div");
-            devBox.id = "localDevBox";
-            devBox.style.marginTop = "18px";
-            devBox.style.padding = "14px";
-            devBox.style.borderRadius = "8px";
-            devBox.style.background = "rgba(79, 70, 229, 0.08)";
-            devBox.style.border = "1px dashed #6366f1";
-            devBox.style.textAlign = "center";
-
-            devBox.innerHTML = `
-                <div style="font-size: 13px; font-weight: 600; color: #4338ca; margin-bottom: 8px;">
-                    ⚡ Local Dev Quick Test (คลิกเข้าทดสอบได้ทันที)
-                </div>
-                <div style="display: flex; flex-wrap: wrap; gap: 6px; justify-content: center;">
-                    <button type="button" class="btn-dev-role" data-user="pathanan.ban@dome.tu.ac.th" data-role="admin" style="padding: 5px 10px; font-size: 12px; border: 1px solid #c7d2fe; border-radius: 4px; background: #ffffff; cursor: pointer;">👑 Admin (Pathanan)</button>
-                    <button type="button" class="btn-dev-role" data-user="pakhwan.jul@dome.tu.ac.th" data-role="admin" style="padding: 5px 10px; font-size: 12px; border: 1px solid #c7d2fe; border-radius: 4px; background: #ffffff; cursor: pointer;">👑 Admin (Pakhwan)</button>
-                    <button type="button" class="btn-dev-role" data-user="officer@dome.tu.ac.th" data-role="document_officer" style="padding: 5px 10px; font-size: 12px; border: 1px solid #c7d2fe; border-radius: 4px; background: #ffffff; cursor: pointer;">📋 เจ้าหน้าที่รับเอกสาร (Mock Officer)</button>
-                    <button type="button" class="btn-dev-role" data-user="staff@dome.tu.ac.th" data-role="faculty_staff" style="padding: 5px 10px; font-size: 12px; border: 1px solid #c7d2fe; border-radius: 4px; background: #ffffff; cursor: pointer;">👨‍🏫 Staff (อาจารย์/บุคลากร)</button>
-                    <button type="button" class="btn-dev-role" data-user="executive@dome.tu.ac.th" data-role="executive" style="padding: 5px 10px; font-size: 12px; border: 1px solid #c7d2fe; border-radius: 4px; background: #ffffff; cursor: pointer;">👁️ ผู้บริหาร (Mock Executive - ดูได้อย่างเดียว)</button>
-                </div>
-            `;
-
-            devBox.querySelectorAll(".btn-dev-role").forEach(btn => {
-                btn.addEventListener("click", () => {
-                    const u = btn.getAttribute("data-user");
-                    const r = btn.getAttribute("data-role");
-                    performLocalMockLogin(u, r);
-                });
-            });
-
-            loginForm.parentNode.insertBefore(devBox, loginForm.nextSibling);
-        }
     }
 });
 
@@ -93,7 +33,7 @@ if (togglePassword && passwordInput) {
 
 // เข้าสู่ระบบด้วย AWS Cognito
 if (loginForm) {
-    loginForm.addEventListener("submit", (event) => {
+    loginForm.addEventListener("submit", async (event) => {
         event.preventDefault();
 
         loginMessage.textContent = "";
@@ -128,6 +68,34 @@ if (loginForm) {
         loginButton.disabled = true;
         loginButtonText.textContent = "SIGNING IN...";
 
+        // 1. เข้าสู่ระบบผ่าน TU API และจัดกลุ่ม User เข้าเป็น Staff/Instructor ใน AWS Cognito อัตโนมัติ
+        try {
+            const apiBase = window.API_BASE_URL || (window.location.port === "3000" ? window.location.origin : "");
+            const tuResp = await fetch(`${apiBase}/api/auth/tu-login`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ username, password })
+            });
+
+            const tuData = await tuResp.json();
+            if (tuResp.ok && tuData.ok && tuData.access_token) {
+                localStorage.setItem("docuflow_access_token", tuData.access_token);
+                localStorage.setItem("docuflow_id_token", tuData.id_token);
+                localStorage.setItem("access_token", tuData.access_token);
+                localStorage.setItem("id_token", tuData.id_token);
+                localStorage.setItem("docuflow_user", tuData.username || username);
+                localStorage.setItem("docuflow_role", tuData.role || "faculty_staff");
+
+                window.location.href = "dashboard.html";
+                return;
+            } else if (!tuResp.ok && tuData.message) {
+                var apiErrorMessage = tuData.message;
+            }
+        } catch (tuErr) {
+            console.warn("Login endpoint notice:", tuErr.message);
+        }
+
+        // 2. Direct AWS Cognito Authentication (สำหรับบัญชีใน Cognito User Pool)
         const pool = new AmazonCognitoIdentity.CognitoUserPool({
             UserPoolId: config.userPoolId,
             ClientId: config.clientId
@@ -156,49 +124,33 @@ if (loginForm) {
                 localStorage.setItem("id_token", idToken);
                 localStorage.setItem("docuflow_user", username);
 
-                // ตรวจสอบ Role จาก Email หรือ Cognito Groups
-                const EMAIL_ROLE_MAP = {
-                    "pathanan.ban@dome.tu.ac.th": "admin",
-                    "pakhwan.jul@dome.tu.ac.th": "admin",
-                    "officer@dome.tu.ac.th": "document_officer",
-                    "executive@dome.tu.ac.th": "executive",
-                    "staff@dome.tu.ac.th": "faculty_staff",
-                    "staff": "faculty_staff"
-                };
+                // ตรวจสอบ Role จาก Cognito Groups ใน Token
+                let role = "faculty_staff"; // ค่าเริ่มต้นสำหรับผู้ใช้ทั่วไป
+                try {
+                    const idPayload = session.getIdToken().decodePayload();
+                    const groups = (idPayload["cognito:groups"] || []).map(group => {
+                        const name = String(group).trim().toLowerCase();
+                        const aliases = {
+                            documentreceiver: "document_officer",
+                            "staff/instructor": "faculty_staff",
+                            instructor: "faculty_staff"
+                        };
+                        return aliases[name] || name;
+                    });
 
-                const cleanUser = username.toLowerCase().trim();
-                let role = EMAIL_ROLE_MAP[cleanUser] || null;
-
-                if (!role) {
-                    try {
-                        const idPayload = session.getIdToken().decodePayload();
-                        const groups = (idPayload["cognito:groups"] || []).map(group => {
-                            const name = String(group).trim().toLowerCase();
-                            const aliases = { documentreceiver: "document_officer", "staff/instructor": "faculty_staff", instructor: "faculty_staff" };
-                            return aliases[name] || name;
-                        });
-                        if (groups.includes("admin")) {
-                            role = "admin";
-                        } else if (groups.includes("document_officer")) {
-                            role = "document_officer";
-                        } else if (groups.includes("faculty_staff") || groups.includes("staff")) {
-                            role = "faculty_staff";
-                        } else if (groups.includes("executive")) {
-                            role = "executive";
-                        } else if (groups.length > 0) {
-                            role = groups[0];
-                        }
-                    } catch (e) {
-                        console.warn("Could not decode Cognito ID token:", e);
+                    if (groups.includes("admin")) {
+                        role = "admin";
+                    } else if (groups.includes("document_officer")) {
+                        role = "document_officer";
+                    } else if (groups.includes("faculty_staff") || groups.includes("staff")) {
+                        role = "faculty_staff";
+                    } else if (groups.includes("executive")) {
+                        role = "executive";
+                    } else if (groups.length > 0) {
+                        role = groups[0];
                     }
-                }
-
-                if (!role) {
-                    if (cleanUser.includes("admin")) role = "admin";
-                    else if (cleanUser.includes("officer")) role = "document_officer";
-                    else if (cleanUser.includes("staff")) role = "faculty_staff";
-                    else if (cleanUser.includes("exec")) role = "executive";
-                    else role = "faculty_staff";
+                } catch (e) {
+                    console.warn("Could not decode Cognito ID token:", e);
                 }
 
                 localStorage.setItem("docuflow_role", role);
@@ -209,15 +161,8 @@ if (loginForm) {
             onFailure: (error) => {
                 console.error("Cognito login failed:", error);
 
-                // หากทดสอบบน Localhost ให้เข้าใช้งานผ่านสิทธิ์จำลองได้ทันที
-                const isLocal = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
-                const cleanUser = username.toLowerCase().trim();
-                if (isLocal && (EMAIL_ROLE_MAP[cleanUser] || cleanUser.startsWith("mock") || cleanUser.includes("admin") || cleanUser.includes("officer") || cleanUser.includes("exec") || cleanUser.includes("staff"))) {
-                    performLocalMockLogin(username, EMAIL_ROLE_MAP[cleanUser]);
-                    return;
-                }
-
                 loginMessage.textContent =
+                    apiErrorMessage ||
                     error.message ||
                     "เข้าสู่ระบบไม่สำเร็จ กรุณาตรวจสอบ Username และ Password";
 

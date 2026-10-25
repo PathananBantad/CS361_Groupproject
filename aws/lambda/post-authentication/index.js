@@ -19,15 +19,8 @@ const {
 
 const cognitoClient = new CognitoIdentityProviderClient({});
 
-// รายชื่ออีเมลที่ได้รับสิทธิ์ Admin อัตโนมัติเมื่อเข้าสู่ระบบครั้งแรก
-const ADMIN_EMAILS = [
-    "pathanan.ban@dome.tu.ac.th",
-    "pakhwan.jul@dome.tu.ac.th"
-];
-
-// กลุ่มเริ่มต้นสำหรับผู้ใช้งานทั่วไปที่ดึงมาจาก TU API
+// กลุ่มเริ่มต้นสำหรับผู้ใช้งานทุกคนที่เข้าสู่ระบบผ่าน TU API
 const DEFAULT_STAFF_GROUP = "Staff/Instructor";
-const ADMIN_GROUP = "admin";
 
 exports.handler = async (event) => {
     console.log("PostAuthentication trigger started for user:", event.userName);
@@ -49,20 +42,15 @@ exports.handler = async (event) => {
 
         console.log(`User [${userName} / ${email}] existing groups:`, currentGroups.map(g => g.GroupName));
 
-        // 2. หากมีกลุ่มอยู่แล้ว (ไม่ว่าจะ default หรือถูกแก้ไขโดย Admin) ให้ปล่อยผ่าน ห้าม reset ทับ
+        // 2. หากมีกลุ่มอยู่แล้ว (ไม่ว่าจะ default หรือถูกกำหนดโดย Admin) ให้ปล่อยผ่าน ห้าม reset ทับ
         if (currentGroups.length > 0) {
             console.log(`User already has group(s) assigned: ${currentGroups.map(g => g.GroupName).join(", ")}. Skipping assignment.`);
             return event;
         }
 
-        // 3. หากยังไม่มีกลุ่ม (Login ครั้งแรก): ตรวจสอบสิทธิ์ Admin หรือกำหนดเป็น Staff/Instructor
-        let targetGroup = DEFAULT_STAFF_GROUP;
-        if (ADMIN_EMAILS.includes(email)) {
-            targetGroup = ADMIN_GROUP;
-            console.log(`User matched Admin whitelist (${email}). Setting group to "${ADMIN_GROUP}".`);
-        } else {
-            console.log(`User has no groups (${email}). Setting default group to "${DEFAULT_STAFF_GROUP}".`);
-        }
+        // 3. หากยังไม่มีกลุ่ม (Login ครั้งแรก): กำหนดเข้ากลุ่ม "Staff/Instructor" อัตโนมัติใน Cognito
+        const targetGroup = DEFAULT_STAFF_GROUP;
+        console.log(`Assigning new user [${userName} / ${email}] to default group "${targetGroup}".`);
 
         const addGroupCommand = new AdminAddUserToGroupCommand({
             UserPoolId: userPoolId,
