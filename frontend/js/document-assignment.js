@@ -2,7 +2,8 @@
 (function () {
     "use strict";
 
-    const ASSIGNER_ROLES = ["document_officer", "faculty_staff", "admin"];
+    // มี 2 บทบาทที่มีสิทธิ์มอบหมายเอกสาร: เจ้าหน้าที่รับเอกสาร และ ผู้ดูแลระบบ
+    const ASSIGNER_ROLES = ["document_officer", "admin"];
 
     function apiBase() {
         const base = window.API_BASE_URL || "https://utvhg6d6o3.execute-api.us-east-1.amazonaws.com";
@@ -74,7 +75,7 @@
         const section = ensureSection();
         if (!section || !doc) return;
         const onDone = (opts && opts.onDone) || function () {};
-        const role = (localStorage.getItem("docuflow_role") || "").toLowerCase();
+        const role = (localStorage.getItem("docuflow_role") || "").toLowerCase().trim();
         const canAssign = ASSIGNER_ROLES.includes(role);
 
         section.innerHTML =

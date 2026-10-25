@@ -125,14 +125,14 @@ async function requireCognitoAuth(req, res, next) {
         const identifier = token.replace(/^mock-/, "").toLowerCase().trim();
         const mockMap = {
             "admin": { sub: "5448a408-e021-707c-1d11-b55e3d175081", username: "admin", groups: ["admin"] },
-            "pathanan.ban@dome.tu.ac.th": { sub: "5448a408-e021-707c-1d11-b55e3d175081", username: "admin", groups: ["admin"] },
-            "staff-1": { sub: "staff-1-mock-sub", username: "STAFF-1", groups: ["document_officer"] },
-            "document_officer": { sub: "647894e8-3051-7035-4815-dfaf9bd1c5be", username: "document_officer", groups: ["document_officer"] },
-            "fac-a": { sub: "fac-a-mock-sub", username: "FAC-A", groups: ["faculty_staff"] },
-            "fac-b": { sub: "fac-b-mock-sub", username: "FAC-B", groups: ["faculty_staff"] },
-            "staff": { sub: "44487458-e051-70c5-f8b2-51e4398c001f", username: "staff", groups: ["faculty_staff"] },
-            "faculty_staff": { sub: "fac-a-mock-sub", username: "FAC-A", groups: ["faculty_staff"] },
-            "executive": { sub: "34487488-a021-70a9-118b-19e5a44505ae", username: "executive", groups: ["executive"] }
+            "pathanan.ban@dome.tu.ac.th": { sub: "5448a408-e021-707c-1d11-b55e3d175081", username: "pathanan.ban@dome.tu.ac.th", groups: ["admin"] },
+            "pakhwan.jul@dome.tu.ac.th": { sub: "pakhwan-admin-sub", username: "pakhwan.jul@dome.tu.ac.th", groups: ["admin"] },
+            "officer@dome.tu.ac.th": { sub: "647894e8-3051-7035-4815-dfaf9bd1c5be", username: "officer@dome.tu.ac.th", groups: ["document_officer"] },
+            "document_officer": { sub: "647894e8-3051-7035-4815-dfaf9bd1c5be", username: "officer@dome.tu.ac.th", groups: ["document_officer"] },
+            "staff@dome.tu.ac.th": { sub: "staff-mock-sub", username: "staff@dome.tu.ac.th", groups: ["Staff/Instructor"] },
+            "staff": { sub: "staff-mock-sub", username: "staff@dome.tu.ac.th", groups: ["Staff/Instructor"] },
+            "executive@dome.tu.ac.th": { sub: "34487488-a021-70a9-118b-19e5a44505ae", username: "executive@dome.tu.ac.th", groups: ["executive"] },
+            "executive": { sub: "34487488-a021-70a9-118b-19e5a44505ae", username: "executive@dome.tu.ac.th", groups: ["executive"] }
         };
 
         const resolved = mockMap[identifier] || { sub: `mock-sub-${identifier}`, username: identifier, groups: [] };

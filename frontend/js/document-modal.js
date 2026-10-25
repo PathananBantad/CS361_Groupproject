@@ -141,13 +141,25 @@
                 });
             }
 
-            // ปุ่ม Admin ปรับสถานะ / Override
+            // ปุ่ม ปรับสถานะ
             if (btnAdminApplyStatus) {
                 btnAdminApplyStatus.addEventListener("click", () => {
                     const targetStatus = adminStatusSelect ? adminStatusSelect.value : "";
                     const currentStatus = currentActiveDoc ? (currentActiveDoc.rawStatus || currentActiveDoc.status) : "";
+                    const auth = getCurrentAuth();
+                    const details = V3_STATUS_DETAILS[currentStatus] || {};
+
+                    // สำหรับ Staff และ Document Officer: บังคับให้เลื่อนสถานะไปข้างหน้าได้ทีละขั้นตอนเท่านั้น
+                    if (!auth.isAdmin) {
+                        if (!details.nextStatus || targetStatus !== details.nextStatus) {
+                            const nextLabel = details.nextStatus ? (V3_STATUS_DETAILS[details.nextStatus]?.label || details.nextStatus) : "ไม่มีขั้นตอนถัดไป";
+                            showAlert(`สำหรับบทบาทของคุณ สามารถเลื่อนสถานะไปข้างหน้าได้ทีละขั้นตอนเท่านั้น (ขั้นตอนถัดไปคือ: ${nextLabel})`, "warning", "แจ้งเตือน");
+                            return;
+                        }
+                    }
+
                     if (targetStatus && targetStatus === currentStatus) {
-                        showAlert(`เอกสารนี้อยู่ในสถานะ "${V3_STATUS_DETAILS[currentStatus] ? V3_STATUS_DETAILS[currentStatus].label : currentStatus}" อยู่แล้ว กรุณาเลือกสถานะใหม่ที่ต้องการเปลี่ยน`, "warning", "แจ้งเตือน");
+                        showAlert(`เอกสารนี้อยู่ในสถานะ "${details.label || currentStatus}" อยู่แล้ว กรุณาเลือกสถานะใหม่ที่ต้องการเปลี่ยน`, "warning", "แจ้งเตือน");
                         return;
                     }
                     const remarks = statusRemarksInput ? statusRemarksInput.value.trim() : "";
@@ -297,7 +309,10 @@
                                         <label for="statusRemarksInput" class="status-input-label">บันทึกหมายเหตุการเปลี่ยนสถานะ (ทางเลือก):</label>
                                         <input type="text" id="statusRemarksInput" class="status-remarks-input" placeholder="ระบุเหตุผลหรือบันทึกช่วยจำ...">
                                         <div class="action-buttons-group">
-
+                                            <button type="button" class="btn-workflow-primary" id="btnNextStatus">
+                                                <span class="btn-spinner" id="btnNextStatusSpinner" hidden></span>
+                                                <span id="btnNextStatusText">➡️ เลื่อนสถานะเป็นขั้นตอนถัดไป</span>
+                                            </button>
                                             <div class="admin-override-wrap" id="adminOverrideWrap" hidden>
                                                 <label class="admin-select-label">เลือกสถานะที่ต้องการเปลี่ยน:</label>
                                                 <div class="admin-select-row">
@@ -383,13 +398,11 @@
 
     // Helper ดึงสิทธิ์ปัจจุบัน
     function getCurrentAuth() {
-        const storedRole = (localStorage.getItem("docuflow_role") || "guest").toLowerCase().trim();
-        const role = storedRole === "documentreceiver" ? "document_officer" : storedRole;
+        const role = (localStorage.getItem("docuflow_role") || "guest").toLowerCase().trim();
         const user = localStorage.getItem("docuflow_user") || "";
         const internalRoles = [
             "admin",
             "document_officer",
-            "officer",
             "faculty_staff",
             "staff",
             "executive"
@@ -400,7 +413,7 @@
             user,
             hasPermission,
             isAdmin: role === "admin",
-            isOfficer: role === "document_officer" || role === "officer",
+            isOfficer: role === "document_officer",
             isStaff: role === "faculty_staff" || role === "staff",
             isExecutive: role === "executive",
             isGuest: !hasPermission
@@ -528,10 +541,9 @@
         if (actionCurrentRoleDisplay) {
             const roleLabels = {
                 admin: "ผู้ดูแลระบบ",
-                document_officer: "เจ้าหน้าที่สารบรรณ",
-                officer: "เจ้าหน้าที่สารบรรณ",
-                faculty_staff: "เจ้าหน้าที่คณะ",
-                staff: "เจ้าหน้าที่คณะ",
+                document_officer: "เจ้าหน้าที่รับเอกสาร",
+                faculty_staff: "อาจารย์ / บุคลากร (Staff)",
+                staff: "อาจารย์ / บุคลากร (Staff)",
                 executive: "ผู้บริหาร",
                 guest: "ผู้ใช้ทั่วไป"
             };
@@ -591,7 +603,6 @@
             if (statusNextActionWrap) statusNextActionWrap.hidden = true;
             if (statusDisabledMessage) {
                 statusDisabledMessage.hidden = false;
-                if (statusDisabledIcon) statusDisabledIcon.textContent = "👁️";
                 if (statusDisabledText) statusDisabledText.textContent = "บทบาทผู้บริหาร (Executive): สำหรับติดตามและตรวจสอบการดำเนินงานของเอกสาร (View / Audit Only)";
             }
         } else if (isCompleted && !isAdmin) {
@@ -621,12 +632,12 @@
                 }
             }
 
-            // เมนูเลือกสถานะสำหรับ Admin: ตั้งค่าให้ตรงกับสถานะปัจจุบันของเอกสารที่เปิดอยู่เสมอ (ไม่ใช่ขั้นตอนถัดไป)
+            // เมนูเลือกสถานะ: แสดงเฉพาะ Admin เท่านั้น (สำหรับ Staff และ Document Officer ให้ใช้ปุ่มเลื่อนสถานะไปข้างหน้า btnNextStatus เท่านั้น)
             if (adminOverrideWrap) {
-                adminOverrideWrap.hidden = false;
-                if (adminStatusSelect) {
+                adminOverrideWrap.hidden = !isAdmin;
+                if (isAdmin && adminStatusSelect) {
                     Array.from(adminStatusSelect.options).forEach(option => {
-                        option.disabled = !isAdmin && option.value !== rawStatus && option.value !== details.nextStatus;
+                        option.disabled = false;
                     });
                     adminStatusSelect.value = rawStatus;
                 }
@@ -832,6 +843,12 @@
        OPEN DOCUMENT MODAL
     ===================================================== */
     async function openDocumentModal(docOrId) {
+        const auth = getCurrentAuth();
+        if (auth.isGuest || !auth.hasPermission) {
+            alert("ผู้ใช้ทั่วไป (Guest) ไม่มีสิทธิ์ในการเปิดดูรายละเอียดเอกสาร กรุณาเข้าสู่ระบบด้วยบัญชีเจ้าหน้าที่");
+            return;
+        }
+
         await ensureModalLoaded();
         let doc = docOrId;
 
@@ -918,28 +935,29 @@
         const forwarderRoles = [
             "document_officer",
             "admin",
-            "faculty_staff"
+            "faculty_staff",
+            "staff"
         ];
 
-            const forwardHost = document.getElementById("forwardSectionContainer");
+        const forwardHost = document.getElementById("forwardSectionContainer");
 
-            if (forwardHost) {
-                forwardHost.innerHTML = forwarderRoles.includes(auth.role)
-                    ? renderForwardSection(doc.id)
-                    : "";
+        if (forwardHost) {
+            forwardHost.innerHTML = forwarderRoles.includes(auth.role)
+                ? renderForwardSection(doc.id)
+                : "";
 
-                if (forwarderRoles.includes(auth.role)) {
-                    const recipientSelect = document.getElementById("modalForwardAssigneeId");
+            if (forwarderRoles.includes(auth.role)) {
+                const recipientSelect = document.getElementById("modalForwardAssigneeId");
 
-                    try {
-                        const response = await window.apiFetch(
-                            `${getApiBaseUrl()}/forward-recipients`
-                        );
-                        const result = await response.json();
+                try {
+                    const response = await window.apiFetch(
+                        `${getApiBaseUrl()}/forward-recipients`
+                    );
+                    const result = await response.json();
 
-                        if (!response.ok) {
-                            throw new Error(result.error || "โหลดรายชื่อผู้รับไม่สำเร็จ");
-                        }
+                    if (!response.ok) {
+                        throw new Error(result.error || "โหลดรายชื่อผู้รับไม่สำเร็จ");
+                    }
 
                     recipientSelect.replaceChildren(
                         new Option("เลือกผู้รับผิดชอบ", "")
@@ -1380,5 +1398,5 @@ async function submitDocumentForward(documentId) {
             submitButton.disabled = false;
             submitButton.textContent = originalButtonText;
         }
-}
+    }
 }

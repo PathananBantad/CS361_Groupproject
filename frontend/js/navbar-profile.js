@@ -8,8 +8,7 @@
 
     const ROLE_LABELS = {
         admin: "ผู้ดูแลระบบ (Admin)",
-        document_officer: "เจ้าหน้าที่สารบรรณ",
-        officer: "เจ้าหน้าที่สารบรรณ",
+        document_officer: "เจ้าหน้าที่รับเอกสาร",
         faculty_staff: "อาจารย์ / บุคลากร",
         staff: "อาจารย์ / บุคลากร",
         executive: "ผู้บริหาร",
@@ -26,8 +25,7 @@
         const userRoleDropdownTitle = document.getElementById("userRoleDropdownTitle");
         const userRoleDropdownEmail = document.getElementById("userRoleDropdownEmail");
 
-        const storedRole = (localStorage.getItem("docuflow_role") || "guest").toLowerCase().trim();
-        const savedRole = storedRole === "documentreceiver" ? "document_officer" : storedRole;
+        const savedRole = (localStorage.getItem("docuflow_role") || "guest").toLowerCase().trim();
         const savedUser = localStorage.getItem("docuflow_user") || "";
         const token = localStorage.getItem("docuflow_access_token") || localStorage.getItem("access_token") || "";
 
@@ -40,7 +38,7 @@
             }
         }
 
-        const canRegister = ["admin", "document_officer", "officer"].includes(savedRole);
+        const canRegister = ["admin", "document_officer"].includes(savedRole);
         document.querySelectorAll('a[href="register.html"]').forEach(link => {
             link.hidden = !canRegister;
         });
@@ -65,7 +63,7 @@
                 userRoleDot.classList.add("role-admin");
             } else if (savedRole === "executive") {
                 userRoleDot.classList.add("role-executive");
-            } else if (savedRole === "document_officer" || savedRole === "officer") {
+            } else if (savedRole === "document_officer") {
                 userRoleDot.classList.add("role-officer");
             } else if (savedRole === "guest") {
                 userRoleDot.classList.add("role-guest");

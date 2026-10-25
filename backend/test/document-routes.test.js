@@ -132,6 +132,16 @@ test("document lists are scoped to each authenticated role's own related documen
     }
 });
 
+test("guest can view document tracking list without file access or keys", async () => {
+    const response = await request("/api/documents");
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.data.length, 5);
+    // Guest must not receive file keys or file download capability
+    assert.equal(body.data[0].file_key, null);
+    assert.equal(body.data[0].can_preview, false);
+});
+
 test("authorized related reads succeed while unrelated and conflicting group reads fail; admin, executive, officer can read any document", async () => {
     const own = await request("/api/documents/103", "officer");
     assert.equal(own.status, 200, JSON.stringify(own.body));

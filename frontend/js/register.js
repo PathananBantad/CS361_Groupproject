@@ -39,9 +39,8 @@ function renderAssignees() {
     });
 }
 async function loadAssignees() {
-    const storedRole = (localStorage.getItem("docuflow_role") || "guest").toLowerCase().trim();
-        const role = storedRole === "documentreceiver" ? "document_officer" : storedRole;
-    if (!["admin", "document_officer", "officer"].includes(role)) return;
+    const role = (localStorage.getItem("docuflow_role") || "guest").toLowerCase().trim();
+    if (!["admin", "document_officer"].includes(role)) return;
     try {
         const response = await window.apiFetch(`${getApiBaseUrl()}/assignees`);
         if (!response.ok) throw new Error("โหลดรายชื่อไม่สำเร็จ");
@@ -200,9 +199,8 @@ if (uploadBox) {
 registerForm.addEventListener("submit", async (event) => {
     event.preventDefault();
 
-    const storedRole = (localStorage.getItem("docuflow_role") || "guest").toLowerCase().trim();
-        const role = storedRole === "documentreceiver" ? "document_officer" : storedRole;
-    if (!["admin", "document_officer", "officer"].includes(role)) {
+    const role = (localStorage.getItem("docuflow_role") || "guest").toLowerCase().trim();
+    if (!["admin", "document_officer"].includes(role)) {
         window.location.replace(role === "guest" ? "login.html" : "dashboard.html");
         return;
     }

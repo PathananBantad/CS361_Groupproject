@@ -17,7 +17,7 @@ function check(role, page) {
     return { link, form, redirect };
 }
 test('admin and document officers can see and open registration', () => {
-    for (const role of ['admin', 'document_officer', 'officer', 'DocumentReceiver', 'documentreceiver']) {
+    for (const role of ['admin', 'document_officer']) {
         const result = check(role, 'register.html');
         assert.equal(result.link.hidden, false);
         assert.equal(result.form.hidden, false);

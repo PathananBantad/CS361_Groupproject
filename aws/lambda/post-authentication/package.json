@@ -1,0 +1,12 @@
+{
+  "name": "docuflow-post-authentication-trigger",
+  "version": "1.0.0",
+  "description": "Cognito Post Authentication Lambda trigger to auto-assign default Staff/Instructor or Admin group",
+  "main": "index.js",
+  "scripts": {
+    "test": "node index.js"
+  },
+  "dependencies": {
+    "@aws-sdk/client-cognito-identity-provider": "^3.500.0"
+  }
+}

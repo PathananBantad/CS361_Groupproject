@@ -14,7 +14,7 @@ const fs = require("fs");
 const sessionMiddleware = require("./session");
 const authRouter = require("./auth");
 const { requireCognitoAuth } = require("./cognito-auth");
-const { ROLES: DOCUMENT_ROLES, canAccessDocument } = require("./documentAuthorization");
+const { ROLES: DOCUMENT_ROLES, canAccessDocument, mapCognitoGroupsToRoles } = require("./documentAuthorization");
 
 const {
     AUDIT_EVENTS,
@@ -44,15 +44,56 @@ async function loadUserRole(req, res, next) {
              JOIN roles r ON r.id = ur.role_id
              WHERE (u.username = ? OR u.cognito_sub = ?) AND u.is_active = TRUE`, [username, req.auth.sub]
         );
-        const roles = [...new Set(rows.map((row) => String(row.role || "").trim().toLowerCase()).filter((role) => DOCUMENT_ROLES.includes(role)))];
-        if (rows.length === 0 || !roles.length || !rows[0].userId) {
+        let roles = [...new Set(rows.map((row) => String(row.role || "").trim().toLowerCase()).filter((role) => DOCUMENT_ROLES.includes(role)))];
+        let userId = rows[0]?.userId;
+        let dbUsername = rows[0]?.username;
+
+        // Auto-provision user from Cognito groups if authenticated via Cognito and not yet in database
+        if (rows.length === 0 || !roles.length || !userId) {
+            const mappedRoles = mapCognitoGroupsToRoles(req.auth.groups || []);
+            const cleanUser = String(username).toLowerCase().trim();
+            if (["pathanan.ban@dome.tu.ac.th", "pakhwan.jul@dome.tu.ac.th"].includes(cleanUser) && !mappedRoles.includes("admin")) {
+                mappedRoles.push("admin");
+            } else if (mappedRoles.length === 0) {
+                // ผู้ใช้ใหม่จาก TU API ที่ยังไม่มีกลุ่มใน Cognito -> กำหนดเป็น Staff (faculty_staff) เป็น Default อัตโนมัติ
+                mappedRoles.push("faculty_staff");
+            }
+
+            if (mappedRoles.length > 0) {
+                const assignedRole = mappedRoles[0];
+                try {
+                    await pool.query(
+                        `INSERT INTO users (username, password, role, cognito_sub, is_active, full_name)
+                         VALUES (?, 'COGNITO_AUTH', ?, ?, 1, ?)
+                         ON DUPLICATE KEY UPDATE cognito_sub = VALUES(cognito_sub), role = VALUES(role), is_active = 1`,
+                        [cleanUser, assignedRole, req.auth.sub, cleanUser]
+                    );
+                    const [newRows] = await pool.query(
+                        `SELECT u.id AS userId, u.username, r.name AS role
+                         FROM users u JOIN users_roles ur ON ur.user_id = u.id
+                         JOIN roles r ON r.id = ur.role_id
+                         WHERE u.username = ? AND u.is_active = TRUE`,
+                        [cleanUser]
+                    );
+                    if (newRows.length > 0) {
+                        userId = newRows[0].userId;
+                        dbUsername = newRows[0].username;
+                        roles = [...new Set(newRows.map((r) => String(r.role || "").trim().toLowerCase()).filter((r) => DOCUMENT_ROLES.includes(r)))];
+                    }
+                } catch (provisionErr) {
+                    console.warn("Auto-provision user failed:", provisionErr.message);
+                }
+            }
+        }
+
+        if (!userId || !roles.length) {
             return res.status(403).json({
                 error: "No authorized role found for this user"
             });
         }
 
-        req.userId = rows[0].userId;
-        req.dbUsername = rows[0].username;
+        req.userId = userId;
+        req.dbUsername = dbUsername || username;
         req.userRoles = roles;
         req.userRole = ["admin", "executive", "document_officer", "faculty_staff"].find((role) => roles.includes(role));
 
@@ -158,17 +199,31 @@ app.get("/api/health", async (req, res) => {
     }
 });
 
+// Middleware ตรวจสอบสิทธิ์สำหรับรายการเอกสาร (อนุญาตให้ Guest เข้าดูรายการติดตามเอกสารได้โดยไม่ต้องมี Token แต่จำกัดไม่ให้เข้าถึงไฟล์)
+async function authenticateDocumentListAccess(req, res, next) {
+    const authorization = req.headers.authorization;
+    if (!authorization || authorization === "Bearer guest" || authorization.trim() === "guest") {
+        req.userId = null;
+        req.userRole = "guest";
+        req.userRoles = ["guest"];
+        return next();
+    }
+    return requireCognitoAuth(req, res, (err) => {
+        if (err) return next(err);
+        return loadUserRole(req, res, next);
+    });
+}
+
 // ดึงรายการเอกสารพร้อม Metadata ของไฟล์
 app.get(
     "/api/documents",
-    requireCognitoAuth,
-    loadUserRole,
+    authenticateDocumentListAccess,
     async (req, res) => {
         try {
             const userId = req.userId;
             const role = String(req.userRole || "").trim().toLowerCase();
 
-            if (!userId || !DOCUMENT_ROLES.includes(role)) {
+            if (role !== "guest" && (!userId || !DOCUMENT_ROLES.includes(role))) {
                 return res.status(403).json({
                     error: "Invalid or unauthorized user role"
                 });
@@ -206,9 +261,10 @@ app.get(
             const params = [];
 
             // Admin, Executive, and Document Officer roles can view all documents and their files across the system.
+            // Guest role can view all documents in the tracking registry.
             // Faculty staff roles are scoped to documents they own or are assigned to.
             const userRoles = (req.userRoles || (role ? [role] : [])).map((r) => String(r || "").trim().toLowerCase());
-            const canViewAll = userRoles.some((r) => ["admin", "executive", "document_officer"].includes(r));
+            const canViewAll = userRoles.some((r) => ["admin", "executive", "document_officer", "guest"].includes(r));
             if (!canViewAll) {
                 sql += " AND (d.owner_id = ? OR d.assignee_id = ?)";
                 params.push(userId, userId);
@@ -294,18 +350,22 @@ app.get(
 
             const [rows] = await pool.query(sql, params);
 
-            // Enrich ข้อมูลไฟล์สำหรับ frontend
+            // Enrich ข้อมูลไฟล์สำหรับ frontend (Guest จะไม่ได้รับข้อมูล file_key และไม่สามารถ preview ไฟล์ได้)
+            const isGuest = userRoles.includes("guest");
             const enrichedRows = rows.map(doc => {
-                const finalFileName = doc.file_name || extractFileNameFromKey(doc.file_key);
+                const finalFileName = isGuest ? null : (doc.file_name || extractFileNameFromKey(doc.file_key));
                 const ext = finalFileName ? path.extname(finalFileName).toLowerCase() : "";
-                const canPreview = isPreviewable(finalFileName || doc.file_key);
+                const canPreview = isGuest ? false : isPreviewable(finalFileName || doc.file_key);
 
                 return {
                     ...doc,
+                    file_key: isGuest ? null : doc.file_key,
+                    file_name: isGuest ? null : doc.file_name,
+                    file_size: isGuest ? null : doc.file_size,
                     display_file_name: finalFileName,
                     file_extension: ext,
                     can_preview: canPreview,
-                    mime_type: doc.mime_type || getMimeTypeByExtension(finalFileName || doc.file_key)
+                    mime_type: isGuest ? null : (doc.mime_type || getMimeTypeByExtension(finalFileName || doc.file_key))
                 };
             });
 
@@ -401,7 +461,18 @@ app.get(
 });
 
 // Create document
-app.post("/api/documents", requireCognitoAuth, loadUserRole, async (req, res) => {    try {
+app.post("/api/documents", requireCognitoAuth, loadUserRole, async (req, res) => {
+    try {
+        // ตรวจสอบสิทธิ์: คนที่มีสิทธิ์เพิ่มเอกสาร คือ เจ้าหน้าที่รับเอกสาร และ Admin เท่านั้น
+        const allowedCreateRoles = ["document_officer", "admin"];
+        const userRoles = req.userRoles || (req.userRole ? [req.userRole] : []);
+        const canCreate = userRoles.some(r => allowedCreateRoles.includes(r));
+        if (!canCreate) {
+            return res.status(403).json({
+                error: "คุณไม่มีสิทธิ์เพิ่มเอกสาร (เฉพาะเจ้าหน้าที่รับเอกสารและผู้ดูแลระบบเท่านั้น)"
+            });
+        }
+
         let {
             reference_no,
             document_number,
@@ -467,25 +538,18 @@ app.post("/api/documents", requireCognitoAuth, loadUserRole, async (req, res) =>
         // 5. กำหนดและแปลงผู้รับผิดชอบเอกสาร (Assignee)
         let resolvedAssigneeId = (assignee_id && !isNaN(Number(assignee_id))) ? Number(assignee_id) : null;
 
-        // หากยังไม่ได้ระบุ assignee_id ให้ค้นหาจาก receiver_name อัตโนมัติ
+        // หากยังไม่ได้ระบุ assignee_id ให้ค้นหาจาก receiver_name อัตโนมัติจากฐานข้อมูล
         if (!resolvedAssigneeId && sanitizedReceiverName) {
-            const lowerRec = sanitizedReceiverName.toLowerCase();
             try {
-                if (lowerRec.includes("fac-a") || lowerRec.includes("วรินทร์")) {
-                    const [uRows] = await pool.query("SELECT id FROM users WHERE username = 'FAC-A' LIMIT 1");
-                    if (uRows.length > 0) resolvedAssigneeId = uRows[0].id;
-                } else if (lowerRec.includes("fac-b") || lowerRec.includes("ณัฐวุฒิ")) {
-                    const [uRows] = await pool.query("SELECT id FROM users WHERE username = 'FAC-B' LIMIT 1");
-                    if (uRows.length > 0) resolvedAssigneeId = uRows[0].id;
-                } else if (lowerRec.includes("head-1") || lowerRec.includes("ปกรณ์") || lowerRec.includes("หัวหน้าสาขา")) {
-                    const [uRows] = await pool.query("SELECT id FROM users WHERE username = 'HEAD-1' LIMIT 1");
-                    if (uRows.length > 0) resolvedAssigneeId = uRows[0].id;
-                } else if (lowerRec.includes("staff-1") || lowerRec.includes("ธารินี")) {
-                    const [uRows] = await pool.query("SELECT id FROM users WHERE username = 'STAFF-1' LIMIT 1");
-                    if (uRows.length > 0) resolvedAssigneeId = uRows[0].id;
-                } else if (lowerRec.includes("อาจารย์") || lowerRec.includes("faculty") || lowerRec.includes("staff")) {
-                    const [uRows] = await pool.query("SELECT id FROM users WHERE role = 'faculty_staff' ORDER BY id ASC LIMIT 1");
-                    if (uRows.length > 0) resolvedAssigneeId = uRows[0].id;
+                const [uRows] = await pool.query(
+                    `SELECT id FROM users 
+                     WHERE is_active = 1 
+                       AND (username = ? OR email = ? OR full_name LIKE ?) 
+                     ORDER BY id ASC LIMIT 1`,
+                    [sanitizedReceiverName, sanitizedReceiverName, `%${sanitizedReceiverName}%`]
+                );
+                if (uRows.length > 0) {
+                    resolvedAssigneeId = uRows[0].id;
                 }
             } catch (errResolve) {
                 console.warn("Auto-resolve assignee from receiver_name failed:", errResolve.message);
@@ -493,11 +557,11 @@ app.post("/api/documents", requireCognitoAuth, loadUserRole, async (req, res) =>
         }
 
         // เมื่อ Admin หรือ Document Officer เป็นผู้เพิ่มเอกสาร และยังไม่มีผู้รับมอบหมาย
-        // ให้กำหนดผู้รับมอบหมายไปยัง role อาจารย์ (faculty_staff เช่น FAC-A หรือ staff) โดยอัตโนมัติ
-        // เพื่อให้เอกสารไปปรากฏบนหน้า Dashboard ของ role อาจารย์ทันที
+        // ให้กำหนดผู้รับมอบหมายไปยัง role บุคลากร/อาจารย์ (faculty_staff) โดยอัตโนมัติ
+        // เพื่อให้เอกสารไปปรากฏบนหน้า Dashboard ของผู้รับมอบหมายทันที
         if (!resolvedAssigneeId && ["admin", "document_officer"].includes(req.userRole)) {
             try {
-                const [facRows] = await pool.query("SELECT id FROM users WHERE role = 'faculty_staff' ORDER BY id ASC LIMIT 1");
+                const [facRows] = await pool.query("SELECT id FROM users WHERE role = 'faculty_staff' AND is_active = 1 ORDER BY id ASC LIMIT 1");
                 if (facRows.length > 0) {
                     resolvedAssigneeId = facRows[0].id;
                 }
@@ -783,7 +847,7 @@ app.put("/api/documents/:id/status", requireCognitoAuth, loadUserRole, async (re
 
             const allowedLabels = allowedNextStatuses.map(s => `"${V3_STATUS_LABELS[s] || s}" (${s})`).join(", ") || "ไม่มี";
             return res.status(400).json({
-                error: `ไม่สามารถเปลี่ยนสถานะจาก "${V3_STATUS_LABELS[oldStatus] || oldStatus}" ไปเป็น "${V3_STATUS_LABELS[newStatus] || newStatus}" ได้ ตามเงื่อนไข Workflow V3 (สถานะถัดไปที่อนุญาตคือ: ${allowedLabels})`
+                error: `ไม่สามารถเปลี่ยนสถานะจาก "${V3_STATUS_LABELS[oldStatus] || oldStatus}" ไปเป็น "${V3_STATUS_LABELS[newStatus] || newStatus}" ได้ สำหรับบทบาทของคุณสามารถเลื่อนสถานะไปข้างหน้าได้อย่างเดียว (สถานะถัดไปที่อนุญาตคือ: ${allowedLabels})`
             });
         }
 
@@ -860,8 +924,8 @@ app.put("/api/documents/:id/status", requireCognitoAuth, loadUserRole, async (re
     }
 });
 
-// กติกาการมอบหมายเอกสาร (ปรับตาม Role Matrix)
-const ASSIGNER_ROLES = ["document_officer", "faculty_staff", "admin"]; // ตาม Role Matrix
+// กติกาการมอบหมายเอกสาร (เฉพาะเจ้าหน้าที่รับเอกสาร และ Admin)
+const ASSIGNER_ROLES = ["document_officer", "admin"];
 const ASSIGNEE_ROLES = ["faculty_staff"];   // รับมอบหมายได้
 
 class HttpError extends Error {
@@ -2184,110 +2248,6 @@ app.get(
     }
 );
 
-// ============================================================================
-// [CS361 V3 | Project 4] TEST DATASET APIS
-// ============================================================================
-app.get("/api/test-dataset", async (req, res) => {
-    try {
-        const [rows] = await pool.query(`
-            SELECT 
-                document_id,
-                incoming_no,
-                subject,
-                recipient,
-                assigned_to,
-                status,
-                attachment,
-                action_time
-            FROM test_documents
-            ORDER BY document_id ASC
-        `);
-
-        // ซิงค์สถานะและผู้ได้รับมอบหมายล่าสุดจากตาราง documents
-        const [liveDocs] = await pool.query(`
-            SELECT 
-                d.reference_no,
-                d.status,
-                u.username AS assigned_username,
-                u.full_name AS assigned_full_name
-            FROM documents d
-            LEFT JOIN users u ON u.id = d.assignee_id
-            WHERE d.reference_no IN ('D-401', 'D-402')
-        `);
-        const liveMap = {};
-        liveDocs.forEach(d => { liveMap[d.reference_no] = d; });
-
-        const enriched = rows.map(r => {
-            const live = liveMap[r.document_id];
-            const liveAssignee = (live && live.assigned_username)
-                ? `${live.assigned_username} (${live.assigned_full_name || ''})`.trim()
-                : r.assigned_to;
-            return {
-                document_id: r.document_id,
-                incoming_no: r.incoming_no,
-                subject: r.subject,
-                recipient: r.recipient,
-                assigned_to: liveAssignee,
-                status: (live && live.status) ? live.status : r.status,
-                attachment: r.attachment,
-                action_time: r.action_time
-            };
-        });
-
-        res.json({
-            ok: true,
-            count: enriched.length,
-            fields: [
-                "document_id",
-                "incoming_no",
-                "subject",
-                "recipient",
-                "assigned_to",
-                "status",
-                "attachment",
-                "action_time"
-            ],
-            data: enriched
-        });
-    } catch (error) {
-        console.error("Test dataset API error:", error);
-        try {
-            const jsonPath = path.join(__dirname, "../json/test_dataset.json");
-            if (fs.existsSync(jsonPath)) {
-                const fileData = JSON.parse(fs.readFileSync(jsonPath, "utf8"));
-                return res.json({
-                    ok: true,
-                    count: fileData.length,
-                    source: "file_fallback",
-                    data: fileData
-                });
-            }
-        } catch (_) {}
-        res.status(500).json({ ok: false, error: "Failed to fetch test dataset" });
-    }
-});
-
-// รีเซ็ต Test Dataset กลับสู่ค่าตั้งต้น Baseline (สำหรับ Live Challenge และการทดสอบ)
-app.all(["/api/test-dataset/reset", "/api/test-dataset/baseline"], async (req, res) => {
-    try {
-        const { execFile } = require("child_process");
-        const scriptPath = path.join(__dirname, "seed_test_dataset.js");
-        execFile(process.execPath, [scriptPath], (err, stdout, stderr) => {
-            if (err) {
-                console.error("Reset script error:", err, stderr);
-                return res.status(500).json({ ok: false, error: "Reset failed", details: stderr || err.message });
-            }
-            res.json({
-                ok: true,
-                message: "Test dataset reset back to baseline successfully",
-                output: stdout
-            });
-        });
-    } catch (error) {
-        console.error("Reset endpoint error:", error);
-        res.status(500).json({ ok: false, error: error.message });
-    }
-});
 
 // ดักจับกรณีส่ง Request เกิน 1MB
 app.use((err, req, res, next) => {

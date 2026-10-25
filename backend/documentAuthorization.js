@@ -6,7 +6,7 @@ const ACTION_ROLES = Object.freeze({
     read: ROLES,
     upload: ["document_officer", "admin"],
     status: ["document_officer", "admin", "faculty_staff"],
-    assign: ["document_officer", "faculty_staff", "admin"],
+    assign: ["document_officer", "admin"],
     forward: ["document_officer", "admin", "faculty_staff"]
 });
 
@@ -19,6 +19,7 @@ function mapCognitoGroupsToRoles(groups) {
 
     const groupToRole = {
         admin: "admin",
+        document_officer: "document_officer",
         documentreceiver: "document_officer",
         "staff/instructor": "faculty_staff",
         staff: "faculty_staff",

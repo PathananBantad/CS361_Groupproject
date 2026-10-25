@@ -10,13 +10,10 @@ const guestLoginBtn = document.getElementById("guestLoginBtn");
 
 const EMAIL_ROLE_MAP = {
     "pathanan.ban@dome.tu.ac.th": "admin",
-    "maneerat.aun@dome.tu.ac.th": "faculty_staff",
-    "achiraya.kha@dome.tu.ac.th": "document_officer",
-    "pakhwan.jul@dome.tu.ac.th": "executive",
-    "admin": "admin",
-    "staff-1": "document_officer",
-    "fac-a": "faculty_staff",
-    "fac-b": "faculty_staff",
+    "pakhwan.jul@dome.tu.ac.th": "admin",
+    "officer@dome.tu.ac.th": "document_officer",
+    "executive@dome.tu.ac.th": "executive",
+    "staff@dome.tu.ac.th": "faculty_staff",
     "staff": "faculty_staff"
 };
 
@@ -59,9 +56,11 @@ document.addEventListener("DOMContentLoaded", () => {
                     ⚡ Local Dev Quick Test (คลิกเข้าทดสอบได้ทันที)
                 </div>
                 <div style="display: flex; flex-wrap: wrap; gap: 6px; justify-content: center;">
-                    <button type="button" class="btn-dev-role" data-user="admin" data-role="admin" style="padding: 5px 10px; font-size: 12px; border: 1px solid #c7d2fe; border-radius: 4px; background: #ffffff; cursor: pointer;">👑 Admin</button>
-                    <button type="button" class="btn-dev-role" data-user="FAC-A" data-role="faculty_staff" style="padding: 5px 10px; font-size: 12px; border: 1px solid #c7d2fe; border-radius: 4px; background: #ffffff; cursor: pointer;">👨‍🏫 อาจารย์ (FAC-A)</button>
-                    <button type="button" class="btn-dev-role" data-user="STAFF-1" data-role="document_officer" style="padding: 5px 10px; font-size: 12px; border: 1px solid #c7d2fe; border-radius: 4px; background: #ffffff; cursor: pointer;">📋 สารบรรณ (STAFF-1)</button>
+                    <button type="button" class="btn-dev-role" data-user="pathanan.ban@dome.tu.ac.th" data-role="admin" style="padding: 5px 10px; font-size: 12px; border: 1px solid #c7d2fe; border-radius: 4px; background: #ffffff; cursor: pointer;">👑 Admin (Pathanan)</button>
+                    <button type="button" class="btn-dev-role" data-user="pakhwan.jul@dome.tu.ac.th" data-role="admin" style="padding: 5px 10px; font-size: 12px; border: 1px solid #c7d2fe; border-radius: 4px; background: #ffffff; cursor: pointer;">👑 Admin (Pakhwan)</button>
+                    <button type="button" class="btn-dev-role" data-user="officer@dome.tu.ac.th" data-role="document_officer" style="padding: 5px 10px; font-size: 12px; border: 1px solid #c7d2fe; border-radius: 4px; background: #ffffff; cursor: pointer;">📋 เจ้าหน้าที่รับเอกสาร (Mock Officer)</button>
+                    <button type="button" class="btn-dev-role" data-user="staff@dome.tu.ac.th" data-role="faculty_staff" style="padding: 5px 10px; font-size: 12px; border: 1px solid #c7d2fe; border-radius: 4px; background: #ffffff; cursor: pointer;">👨‍🏫 Staff (อาจารย์/บุคลากร)</button>
+                    <button type="button" class="btn-dev-role" data-user="executive@dome.tu.ac.th" data-role="executive" style="padding: 5px 10px; font-size: 12px; border: 1px solid #c7d2fe; border-radius: 4px; background: #ffffff; cursor: pointer;">👁️ ผู้บริหาร (Mock Executive - ดูได้อย่างเดียว)</button>
                 </div>
             `;
 
@@ -160,13 +159,10 @@ if (loginForm) {
                 // ตรวจสอบ Role จาก Email หรือ Cognito Groups
                 const EMAIL_ROLE_MAP = {
                     "pathanan.ban@dome.tu.ac.th": "admin",
-                    "maneerat.aun@dome.tu.ac.th": "faculty_staff",
-                    "achiraya.kha@dome.tu.ac.th": "document_officer",
-                    "pakhwan.jul@dome.tu.ac.th": "executive",
-                    "admin": "admin",
-                    "staff-1": "document_officer",
-                    "fac-a": "faculty_staff",
-                    "fac-b": "faculty_staff",
+                    "pakhwan.jul@dome.tu.ac.th": "admin",
+                    "officer@dome.tu.ac.th": "document_officer",
+                    "executive@dome.tu.ac.th": "executive",
+                    "staff@dome.tu.ac.th": "faculty_staff",
                     "staff": "faculty_staff"
                 };
 
@@ -183,7 +179,7 @@ if (loginForm) {
                         });
                         if (groups.includes("admin")) {
                             role = "admin";
-                        } else if (groups.includes("document_officer") || groups.includes("officer")) {
+                        } else if (groups.includes("document_officer")) {
                             role = "document_officer";
                         } else if (groups.includes("faculty_staff") || groups.includes("staff")) {
                             role = "faculty_staff";
@@ -200,12 +196,12 @@ if (loginForm) {
                 if (!role) {
                     if (cleanUser.includes("admin")) role = "admin";
                     else if (cleanUser.includes("officer")) role = "document_officer";
+                    else if (cleanUser.includes("staff")) role = "faculty_staff";
                     else if (cleanUser.includes("exec")) role = "executive";
                     else role = "faculty_staff";
                 }
 
                 localStorage.setItem("docuflow_role", role);
-
 
                 window.location.href = "dashboard.html";
             },
@@ -216,7 +212,7 @@ if (loginForm) {
                 // หากทดสอบบน Localhost ให้เข้าใช้งานผ่านสิทธิ์จำลองได้ทันที
                 const isLocal = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
                 const cleanUser = username.toLowerCase().trim();
-                if (isLocal && (EMAIL_ROLE_MAP[cleanUser] || cleanUser.startsWith("mock") || cleanUser.includes("fac") || cleanUser.includes("admin") || cleanUser.includes("staff"))) {
+                if (isLocal && (EMAIL_ROLE_MAP[cleanUser] || cleanUser.startsWith("mock") || cleanUser.includes("admin") || cleanUser.includes("officer") || cleanUser.includes("exec") || cleanUser.includes("staff"))) {
                     performLocalMockLogin(username, EMAIL_ROLE_MAP[cleanUser]);
                     return;
                 }
@@ -251,4 +247,3 @@ if (guestLoginBtn) {
         window.location.href = "dashboard.html";
     });
 }
-

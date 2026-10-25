@@ -9,6 +9,7 @@ function check(label, actual, expected) {
 
 // ---- ทดสอบ mapCognitoGroupsToRoles ----
 check('map Admin', JSON.stringify(mapCognitoGroupsToRoles(['Admin'])), JSON.stringify(['admin']));
+check('map document_officer', JSON.stringify(mapCognitoGroupsToRoles(['document_officer'])), JSON.stringify(['document_officer']));
 check('map DocumentReceiver', JSON.stringify(mapCognitoGroupsToRoles(['DocumentReceiver'])), JSON.stringify(['document_officer']));
 check('map Staff/Instructor', JSON.stringify(mapCognitoGroupsToRoles(['Staff/Instructor'])), JSON.stringify(['faculty_staff']));
 check('map Executive', JSON.stringify(mapCognitoGroupsToRoles(['Executive'])), JSON.stringify(['executive']));
@@ -22,13 +23,15 @@ const doc = { owner_id: 'user-1', assignee_id: 'user-2' };
 check('document_officer อ่านเอกสารที่ไม่เกี่ยวข้องได้ (system-wide)',
   canAccessDocument({ roles: ['document_officer'], userId: 'user-99', document: doc, action: 'read' }), true);
 
-// Staff/Instructor ที่เป็น assignee - forward ได้
-check('faculty_staff forward เอกสารที่ตัวเองเป็น assignee',
+// Staff/Instructor สามารถ forward เอกสารที่ตนเองได้รับมอบหมายได้ (แต่ forward เอกสารที่ไม่เกี่ยวข้องไม่ได้)
+check('faculty_staff forward เอกสารที่ตัวเองเป็น assignee ได้',
   canAccessDocument({ roles: ['faculty_staff'], userId: 'user-2', document: doc, action: 'forward' }), true);
-
-// Staff/Instructor ที่ไม่เกี่ยวข้องเลย - forward ไม่ได้
 check('faculty_staff forward เอกสารที่ไม่เกี่ยวข้อง ต้องถูกปฏิเสธ',
   canAccessDocument({ roles: ['faculty_staff'], userId: 'user-99', document: doc, action: 'forward' }), false);
+
+// Staff/Instructor เปลี่ยนสถานะเอกสารที่ได้รับมอบหมายได้
+check('faculty_staff เปลี่ยน status เอกสารที่ตัวเองเป็น assignee ได้',
+  canAccessDocument({ roles: ['faculty_staff'], userId: 'user-2', document: doc, action: 'status' }), true);
 
 // Executive - read ได้ทุกที่ แต่ upload ไม่ได้
 check('executive อ่านได้ทุกเอกสาร',
