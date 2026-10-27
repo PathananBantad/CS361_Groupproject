@@ -201,6 +201,15 @@
                         required>
                 </div>
 
+                <!-- ผู้รับมอบหมาย (Assignee - ส่งตรงไปยัง Role อาจารย์) -->
+                <div class="field">
+                    <label for="assigneeSearch">ส่งมอบหมายให้ <span aria-hidden="true">*</span></label>
+                    <input id="assigneeSearch" type="search" required placeholder="พิมพ์ชื่อหรือชื่อผู้ใช้เพื่อค้นหา..." autocomplete="off" aria-controls="assigneeResults" aria-describedby="assigneeHint">
+                    <input id="assigneeSelect" type="hidden" name="assigneeSelect">
+                    <div id="assigneeResults" class="assignee-results" hidden></div>
+                    <small id="assigneeHint" class="field-desc" role="status">กรุณาเลือกผู้รับมอบหมายจากผลการค้นหาก่อนบันทึกเอกสาร</small>
+                </div>
+
                 <!-- ข้อมูลผู้รับ -->
                 <div class="field">
                     <label for="recipient">หน่วยงานผู้รับ / ชื่อผู้รับ <span style="color: red;">*</span></label>
@@ -212,15 +221,6 @@
                         <option value="อาจารย์ประจำสาขา">อาจารย์ประจำสาขา</option>
                         <option value="เจ้าหน้าที่ประจำสาขา">เจ้าหน้าที่ประจำสาขา</option>
                     </datalist>
-                </div>
-
-                <!-- ผู้รับมอบหมาย (Assignee - ส่งตรงไปยัง Role อาจารย์) -->
-                <div class="field">
-                    <label for="assigneeSearch">ส่งมอบหมายให้ <span aria-hidden="true">*</span></label>
-                    <input id="assigneeSearch" type="search" required placeholder="พิมพ์ชื่อหรือชื่อผู้ใช้เพื่อค้นหา..." autocomplete="off" aria-controls="assigneeResults" aria-describedby="assigneeHint">
-                    <input id="assigneeSelect" type="hidden" name="assigneeSelect">
-                    <div id="assigneeResults" class="assignee-results" hidden></div>
-                    <small id="assigneeHint" class="field-desc" role="status">กรุณาเลือกผู้รับมอบหมายจากผลการค้นหาก่อนบันทึกเอกสาร</small>
                 </div>
 
                 <!-- วันที่ส่งเอกสาร -->
