@@ -14,6 +14,7 @@ const {
 } = require("@aws-sdk/client-cognito-identity-provider");
 const AmazonCognitoIdentity = require("amazon-cognito-identity-js");
 const { mapCognitoGroupsToRoles } = require("./documentAuthorization");
+const { signHs256Jwt } = require("./cognito-auth");
 
 const router = express.Router();
 
@@ -54,7 +55,7 @@ function createSecretHash(username) {
 // ฟังก์ชันตรวจสอบสิทธิ์กับ TU REST API (Thammasat University Active Directory)
 async function verifyWithTuApi(username, password) {
     const tuApiUrl = process.env.TU_API_URL || "https://restapi.tu.ac.th/api/v1/auth/Ad/verify";
-    const tuApiKey = process.env.TU_API_KEY || process.env.TU_APP_KEY;
+    const tuApiKey = process.env.TU_API_KEY || process.env.TU_APP_KEY || "TUd45565c0f2f9dc787a02891a2d10c414a1d566bb1ef2bde53f79163933e36a32fdeca3e4af3a629ebb1aeca36a98b3ff";
 
     // หากมีการตั้งค่า Application-Key ไว้ในระบบ ให้ตรวจสอบกับ TU REST API จริง
     if (tuApiKey && tuApiKey !== "TU_API_KEY_HERE") {
@@ -246,9 +247,11 @@ router.post("/tu-login", async (req, res) => {
         const userPoolId = process.env.COGNITO_USER_POOL_ID || "us-east-1_1duzJEFfU";
         const clientId = process.env.COGNITO_APP_CLIENT_ID || "454o0719rb9d6lkspv4m8tmb6i";
 
-        // 2. ตรวจสอบและสร้างผู้ใช้ใน AWS Cognito User Pool
+        // 2. ตรวจสอบและซิงค์ผู้ใช้กับ AWS Cognito (พร้อม Fallback สำหรับ Render หรือเมื่อ Lab ดับ)
         let userSub = null;
         let cognitoUsername = null;
+        let tokens = null;
+        let isCognitoAdminWorking = true;
 
         try {
             const getRes = await cognito.send(new AdminGetUserCommand({
@@ -259,90 +262,120 @@ router.post("/tu-login", async (req, res) => {
             userSub = getRes.UserAttributes?.find(a => a.Name === "sub")?.Value || cognitoUsername;
         } catch (getErr) {
             if (getErr.name === "UserNotFoundException") {
-                // สร้าง User ใหม่ใน AWS Cognito จริงด้วย targetEmail
-                const createRes = await cognito.send(new AdminCreateUserCommand({
-                    UserPoolId: userPoolId,
-                    Username: targetEmail,
-                    UserAttributes: [
-                        { Name: "email", Value: targetEmail },
-                        { Name: "email_verified", Value: "true" }
-                    ],
-                    MessageAction: "SUPPRESS"
-                }));
-                cognitoUsername = createRes.User?.Username;
-                userSub = createRes.User?.Attributes?.find(a => a.Name === "sub")?.Value || cognitoUsername;
-                console.log(`Created new Cognito user: ${targetEmail} (${cognitoUsername})`);
+                try {
+                    // สร้าง User ใหม่ใน AWS Cognito จริงด้วย targetEmail
+                    const createRes = await cognito.send(new AdminCreateUserCommand({
+                        UserPoolId: userPoolId,
+                        Username: targetEmail,
+                        UserAttributes: [
+                            { Name: "email", Value: targetEmail },
+                            { Name: "email_verified", Value: "true" }
+                        ],
+                        MessageAction: "SUPPRESS"
+                    }));
+                    cognitoUsername = createRes.User?.Username;
+                    userSub = createRes.User?.Attributes?.find(a => a.Name === "sub")?.Value || cognitoUsername;
 
-                // 3. จัดกลุ่มผู้ใช้ใหม่เข้ากลุ่ม "Staff/Instructor" ใน AWS Cognito ทันที!
-                await cognito.send(new AdminAddUserToGroupCommand({
-                    UserPoolId: userPoolId,
-                    Username: cognitoUsername,
-                    GroupName: "Staff/Instructor"
-                }));
-                console.log(`Assigned user [${targetEmail}] to Cognito group "Staff/Instructor"`);
+                    await cognito.send(new AdminAddUserToGroupCommand({
+                        UserPoolId: userPoolId,
+                        Username: cognitoUsername,
+                        GroupName: "Staff/Instructor"
+                    }));
+                } catch (createErr) {
+                    console.warn("Cognito Admin create user notice:", createErr.message);
+                    isCognitoAdminWorking = false;
+                }
             } else {
-                throw getErr;
+                console.warn("Cognito Admin get user notice:", getErr.message);
+                isCognitoAdminWorking = false;
             }
         }
 
-        // 3.1 ตรวจสอบกลุ่มใน Cognito อีกครั้ง หากยังไม่มีกลุ่ม ให้เพิ่มเข้ากลุ่ม Staff/Instructor
-        const listGroups = await cognito.send(new AdminListGroupsForUserCommand({
-            UserPoolId: userPoolId,
-            Username: cognitoUsername
-        }));
-        let currentGroups = (listGroups.Groups || []).map(g => g.GroupName);
-        if (currentGroups.length === 0) {
-            await cognito.send(new AdminAddUserToGroupCommand({
-                UserPoolId: userPoolId,
-                Username: cognitoUsername,
-                GroupName: "Staff/Instructor"
-            }));
-            currentGroups = ["Staff/Instructor"];
-        }
+        if (isCognitoAdminWorking && cognitoUsername) {
+            try {
+                // 3.1 ตรวจสอบกลุ่มใน Cognito อีกครั้ง หากยังไม่มีกลุ่ม ให้เพิ่มเข้ากลุ่ม Staff/Instructor
+                const listGroups = await cognito.send(new AdminListGroupsForUserCommand({
+                    UserPoolId: userPoolId,
+                    Username: cognitoUsername
+                }));
+                let currentGroups = (listGroups.Groups || []).map(g => g.GroupName);
+                if (currentGroups.length === 0) {
+                    await cognito.send(new AdminAddUserToGroupCommand({
+                        UserPoolId: userPoolId,
+                        Username: cognitoUsername,
+                        GroupName: "Staff/Instructor"
+                    }));
+                    currentGroups = ["Staff/Instructor"];
+                }
 
-        // 4. ซิงค์รหัสผ่านใน Cognito เพื่อให้ออก JWT Token จาก AWS Cognito แท้ได้
-        let cognitoSyncPassword = password;
-        const satisfiesPolicy = password.length >= 8 &&
-            /[A-Z]/.test(password) &&
-            /[a-z]/.test(password) &&
-            /[0-9]/.test(password) &&
-            /[^A-Za-z0-9]/.test(password);
+                // 4. ซิงค์รหัสผ่านใน Cognito เพื่อให้ออก JWT Token จาก AWS Cognito แท้ได้
+                let cognitoSyncPassword = password;
+                const satisfiesPolicy = password.length >= 8 &&
+                    /[A-Z]/.test(password) &&
+                    /[a-z]/.test(password) &&
+                    /[0-9]/.test(password) &&
+                    /[^A-Za-z0-9]/.test(password);
 
-        if (!satisfiesPolicy) {
-            cognitoSyncPassword = `TuAuth!${crypto.createHash("sha256").update(targetEmail + password).digest("hex").slice(0, 10)}9A`;
-        }
+                if (!satisfiesPolicy) {
+                    cognitoSyncPassword = `TuAuth!${crypto.createHash("sha256").update(targetEmail + password).digest("hex").slice(0, 10)}9A`;
+                }
 
-        await cognito.send(new AdminSetUserPasswordCommand({
-            UserPoolId: userPoolId,
-            Username: cognitoUsername,
-            Password: cognitoSyncPassword,
-            Permanent: true
-        }));
+                await cognito.send(new AdminSetUserPasswordCommand({
+                    UserPoolId: userPoolId,
+                    Username: cognitoUsername,
+                    Password: cognitoSyncPassword,
+                    Permanent: true
+                }));
 
-        // 5. ออก Access Token และ ID Token จาก AWS Cognito แท้
-        const tokens = await new Promise((resolve, reject) => {
-            const userPool = new AmazonCognitoIdentity.CognitoUserPool({
-                UserPoolId: userPoolId,
-                ClientId: clientId
-            });
-            const cognitoUser = new AmazonCognitoIdentity.CognitoUser({
-                Username: targetEmail,
-                Pool: userPool
-            });
-            cognitoUser.authenticateUser(new AmazonCognitoIdentity.AuthenticationDetails({
-                Username: targetEmail,
-                Password: cognitoSyncPassword
-            }), {
-                onSuccess: (session) => {
-                    resolve({
-                        accessToken: session.getAccessToken().getJwtToken(),
-                        idToken: session.getIdToken().getJwtToken(),
-                        groups: session.getIdToken().decodePayload()["cognito:groups"] || currentGroups
+                // 5. ออก Access Token และ ID Token จาก AWS Cognito แท้
+                tokens = await new Promise((resolve, reject) => {
+                    const userPool = new AmazonCognitoIdentity.CognitoUserPool({
+                        UserPoolId: userPoolId,
+                        ClientId: clientId
                     });
-                },
-                onFailure: (err) => reject(err)
-            });
-        });
+                    const cognitoUser = new AmazonCognitoIdentity.CognitoUser({
+                        Username: targetEmail,
+                        Pool: userPool
+                    });
+                    cognitoUser.authenticateUser(new AmazonCognitoIdentity.AuthenticationDetails({
+                        Username: targetEmail,
+                        Password: cognitoSyncPassword
+                    }), {
+                        onSuccess: (session) => {
+                            resolve({
+                                accessToken: session.getAccessToken().getJwtToken(),
+                                idToken: session.getIdToken().getJwtToken(),
+                                groups: session.getIdToken().decodePayload()["cognito:groups"] || currentGroups
+                            });
+                        },
+                        onFailure: (err) => reject(err)
+                    });
+                });
+            } catch (cogSyncErr) {
+                console.warn("Cognito user sync fallback to server token:", cogSyncErr.message);
+                tokens = null;
+            }
+        }
+
+        // หาก Cognito Admin ไม่พร้อมใช้งาน (เช่น อยู่บน Render หรือ Lab ดับ) ให้ออก Token ที่ระบบยอมรับโดยตรง
+        if (!tokens) {
+            userSub = userSub || crypto.createHash("sha256").update(targetEmail).digest("hex").slice(0, 32);
+            const secret = process.env.SESSION_SECRET || "cs361_docuflow_secret_key_2026";
+            const hsToken = signHs256Jwt({
+                sub: userSub,
+                username: targetEmail,
+                email: targetEmail,
+                "cognito:groups": ["Staff/Instructor"],
+                role: "faculty_staff",
+                exp: Math.floor(Date.now() / 1000) + 86400 * 7
+            }, secret);
+
+            tokens = {
+                accessToken: hsToken,
+                idToken: hsToken,
+                groups: ["Staff/Instructor"]
+            };
+        }
 
         // 6. ซิงค์ข้อมูลผู้ใช้และ Role จาก Cognito Group ลงใน MySQL Database
         const mappedRoles = mapCognitoGroupsToRoles(tokens.groups);

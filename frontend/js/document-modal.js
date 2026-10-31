@@ -1203,33 +1203,93 @@
             // เงื่อนไขที่ 1: PDF, JPG/JPEG, PNG (เปิดดูเนื้อหา + ดาวน์โหลดจากหน้าตัวอย่าง)
             if (canPreview && previewUrl) {
                 const finalPreviewUrl = previewUrl;
+                const isPresignedS3 = finalPreviewUrl.includes("X-Amz-Signature") || finalPreviewUrl.includes("AWSAccessKeyId");
 
-                if (modalOpenTabBtn) {
-                    modalOpenTabBtn.hidden = false;
-                    modalOpenTabBtn.onclick = () => window.open(finalPreviewUrl, "_blank");
-                }
+                if (isPresignedS3) {
+                    if (modalOpenTabBtn) {
+                        modalOpenTabBtn.hidden = false;
+                        modalOpenTabBtn.onclick = () => window.open(finalPreviewUrl, "_blank");
+                    }
 
-                if (fileExt === ".pdf") {
-                    previewViewport.innerHTML = `
-                        <iframe
-                            src="${escapeHtml(finalPreviewUrl)}#toolbar=1&navpanes=0"
-                            title="${escapeHtml(fileName)}"
-                            loading="lazy"
-                            style="width: 100%; height: 100%; border: none; min-height: 500px;"
-                        ></iframe>
-                    `;
-                } else if ([".jpg", ".jpeg", ".png"].includes(fileExt)) {
-                    previewViewport.innerHTML = `
-                        <div class="preview-image-wrap" style="display: flex; justify-content: center; align-items: center; width: 100%; height: 100%; min-height: 400px; background: #f8fafc; padding: 20px;">
-                            <img
-                                src="${escapeHtml(finalPreviewUrl)}"
-                                alt="${escapeHtml(fileName)}"
+                    if (fileExt === ".pdf") {
+                        previewViewport.innerHTML = `
+                            <iframe
+                                src="${escapeHtml(finalPreviewUrl)}#toolbar=1&navpanes=0"
+                                title="${escapeHtml(fileName)}"
                                 loading="lazy"
-                                style="max-width: 100%; max-height: 520px; object-fit: contain; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.08);"
-                                onerror="this.parentElement.innerHTML='<div class=\\'preview-error\\' style=\\'text-align:center;padding:40px 20px;color:#856404;background:#fff3cd;border:1px solid #ffeeba;border-radius:8px;\\'><h4>⚠️ ไม่สามารถแสดงตัวอย่างไฟล์ได้</h4><p style=\\'margin-top:8px;font-size:13px;\\'>สามารถคลิกปุ่มดาวน์โหลดไฟล์ด้านบนเพื่อดูเอกสาร</p></div>';"
-                            >
+                                style="width: 100%; height: 100%; border: none; min-height: 500px;"
+                            ></iframe>
+                        `;
+                    } else if ([".jpg", ".jpeg", ".png"].includes(fileExt)) {
+                        previewViewport.innerHTML = `
+                            <div class="preview-image-wrap" style="display: flex; justify-content: center; align-items: center; width: 100%; height: 100%; min-height: 400px; background: #f8fafc; padding: 20px;">
+                                <img
+                                    src="${escapeHtml(finalPreviewUrl)}"
+                                    alt="${escapeHtml(fileName)}"
+                                    loading="lazy"
+                                    style="max-width: 100%; max-height: 520px; object-fit: contain; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.08);"
+                                    onerror="this.parentElement.innerHTML='<div class=\\'preview-error\\' style=\\'text-align:center;padding:40px 20px;color:#856404;background:#fff3cd;border:1px solid #ffeeba;border-radius:8px;\\'><h4>⚠️ ไม่สามารถแสดงตัวอย่างไฟล์ได้</h4><p style=\\'margin-top:8px;font-size:13px;\\'>สามารถคลิกปุ่มดาวน์โหลดไฟล์ด้านบนเพื่อดูเอกสาร</p></div>';"
+                                >
+                            </div>
+                        `;
+                    }
+                } else {
+                    // API Route (เช่น /api/documents/:id/preview-file): ดึงผ่าน window.apiFetch เพื่อแนบ Cognito Token และรองรับ Failover
+                    previewViewport.innerHTML = `
+                        <div class="preview-loader" style="text-align: center; padding: 60px 20px;">
+                            <div class="spinner" style="width: 32px; height: 32px; border: 3px solid #f3f3f3; border-top: 3px solid #800020; border-radius: 50%; margin: 0 auto 12px; animation: spin 1s linear infinite;"></div>
+                            <p style="color: #666; font-size: 14px;">กำลังโหลดเอกสารตัวอย่าง...</p>
                         </div>
                     `;
+
+                    window.apiFetch(finalPreviewUrl)
+                        .then(async res => {
+                            if (!res.ok) {
+                                const errData = await res.json().catch(() => ({}));
+                                const errMsg = errData.message || errData.error || `รหัสข้อผิดพลาด: ${res.status}`;
+                                throw new Error(errMsg);
+                            }
+                            const blob = await res.blob();
+                            const blobUrl = URL.createObjectURL(blob);
+
+                            if (modalOpenTabBtn) {
+                                modalOpenTabBtn.hidden = false;
+                                modalOpenTabBtn.onclick = () => window.open(blobUrl, "_blank");
+                            }
+
+                            if (fileExt === ".pdf") {
+                                previewViewport.innerHTML = `
+                                    <iframe
+                                        src="${blobUrl}#toolbar=1&navpanes=0"
+                                        title="${escapeHtml(fileName)}"
+                                        style="width: 100%; height: 100%; border: none; min-height: 500px;"
+                                    ></iframe>
+                                `;
+                            } else {
+                                previewViewport.innerHTML = `
+                                    <div class="preview-image-wrap" style="display: flex; justify-content: center; align-items: center; width: 100%; height: 100%; min-height: 400px; background: #f8fafc; padding: 20px;">
+                                        <img
+                                            src="${blobUrl}"
+                                            alt="${escapeHtml(fileName)}"
+                                            style="max-width: 100%; max-height: 520px; object-fit: contain; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.08);"
+                                        >
+                                    </div>
+                                `;
+                            }
+                        })
+                        .catch(err => {
+                            console.warn("Preview load error:", err);
+                            const isS3Denied = /S3|voc-cancel-cred|AccessDenied|storage/i.test(err.message);
+                            previewViewport.innerHTML = `
+                                <div class="preview-error" style="text-align: center; padding: 48px 24px; color: #856404; background: #fff3cd; border: 1px solid #ffeeba; border-radius: 8px;">
+                                    <h4 style="margin: 0 0 10px; font-size: 16px;">⚠️ ไม่สามารถโหลดตัวอย่างเอกสารได้ในขณะนี้</h4>
+                                    <p style="margin: 0 0 12px; font-size: 13px; color: #664d03;">${escapeHtml(err.message)}</p>
+                                    <p style="margin: 0; font-size: 12px; color: #856404;">
+                                        ${isS3Denied ? "เนื่องจากไฟล์ต้นฉบับถูกจัดเก็บบน AWS S3 กรุณากด Start Lab ใน AWS Learner Lab เพื่อเปิดสิทธิ์การอ่านไฟล์" : "หากต้องการเปิดดูเอกสาร กรุณาตรวจสอบสถานะ AWS Learner Lab หรือคลิกปุ่มดาวน์โหลดด้านบน"}
+                                    </p>
+                                </div>
+                            `;
+                        });
                 }
                 return;
             }

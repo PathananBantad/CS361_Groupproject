@@ -106,6 +106,27 @@ if (loginForm) {
             // ไม่นำรหัส 500 (Server Error จาก AWS Lab ดับ) มาทับข้อความ เพื่อให้ผู้ใช้ล็อกอินผ่าน Cognito ตรงได้
             if (!tuResp.ok && tuData && tuData.message && tuResp.status < 500) {
                 var apiErrorMessage = tuData.message;
+
+                // หากเป็นบัญชีนักศึกษา/บุคลากร มธ. (10 หลัก หรือ @dome.tu.ac.th หรือ @tu.ac.th)
+                // เมื่อ TU API ตรวจสอบแล้วพบว่ารหัสผ่านไม่ถูกต้อง ให้แสดงข้อความแจ้งเตือนและหยุดทันที
+                // ไม่ต้องส่งไปลองใน AWS Cognito ซ้ำอีก เพื่อป้องกันการติดล็อค "Password attempts exceeded" ของ Cognito!
+                const isTuAccount = /^\d{10}$/.test(username) || username.includes("@dome.tu.ac.th") || username.includes("@tu.ac.th");
+                if (isTuAccount) {
+                    loginMessage.textContent = tuData.message;
+                    loginButton.disabled = false;
+                    loginButtonText.textContent = "SIGN IN";
+                    return;
+                }
+            }
+
+            if (!tuResp.ok && tuResp.status >= 500) {
+                const isTuAccount = /^\d{10}$/.test(username) || username.includes("@dome.tu.ac.th") || username.includes("@tu.ac.th");
+                if (isTuAccount) {
+                    loginMessage.textContent = "ระบบยืนยันตัวตน TU API กำลังเชื่อมต่อหรือขัดข้องชั่วคราว กรุณาลองใหม่อีกครั้ง";
+                    loginButton.disabled = false;
+                    loginButtonText.textContent = "SIGN IN";
+                    return;
+                }
             }
         } catch (tuErr) {
             console.warn("Login endpoint notice:", tuErr.message);

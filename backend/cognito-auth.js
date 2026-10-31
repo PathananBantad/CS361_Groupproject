@@ -25,6 +25,31 @@ const EMBEDDED_JWKS = {
 
 const cachedPublicKeys = new Map();
 
+// Helper ฟังก์ชันสำหรับสร้างและตรวจสอบ HS256 Token (สำหรับ TU Auth Fallback เมื่อ AWS Learner Lab ถูกระงับหรือรันบน Render)
+function signHs256Jwt(payload, secret) {
+    const sec = secret || process.env.SESSION_SECRET || "cs361_docuflow_secret_key_2026";
+    const header = Buffer.from(JSON.stringify({ alg: "HS256", typ: "JWT" })).toString("base64url");
+    const body = Buffer.from(JSON.stringify(payload)).toString("base64url");
+    const sig = crypto.createHmac("sha256", sec).update(`${header}.${body}`).digest("base64url");
+    return `${header}.${body}.${sig}`;
+}
+
+function verifyHs256Jwt(token, secret) {
+    const sec = secret || process.env.SESSION_SECRET || "cs361_docuflow_secret_key_2026";
+    const parts = (token || "").split(".");
+    if (parts.length !== 3) return null;
+    try {
+        const expectedSig = crypto.createHmac("sha256", sec).update(`${parts[0]}.${parts[1]}`).digest("base64url");
+        if (parts[2] !== expectedSig) return null;
+        const payload = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8"));
+        const now = Math.floor(Date.now() / 1000);
+        if (payload.exp && payload.exp < now) return null;
+        return payload;
+    } catch (_) {
+        return null;
+    }
+}
+
 function verifyWithEmbeddedJwks(token) {
     const parts = token.split(".");
     if (parts.length !== 3) throw new Error("Invalid JWT token format");
@@ -105,7 +130,11 @@ function getVerifier() {
 }
 
 async function requireCognitoAuth(req, res, next) {
-    const authorization = req.headers.authorization;
+    // รองรับทั้ง Authorization Header และ Token ผ่าน Query Parameter (สำหรับ iframe/img preview)
+    let authorization = req.headers.authorization;
+    if (!authorization && req.query?.token) {
+        authorization = `Bearer ${req.query.token}`;
+    }
 
     // ต้องมี Bearer Access Token เท่านั้น
     if (
@@ -121,6 +150,18 @@ async function requireCognitoAuth(req, res, next) {
     const token = authorization.replace(/^Bearer\s+/i, "").trim();
 
     try {
+        // 1. ตรวจสอบ HS256 Token (กรณีล็อกอินผ่าน TU AD สำเร็จในขณะที่ Cognito Admin ไม่พร้อมใช้งาน)
+        const fallbackPayload = verifyHs256Jwt(token);
+        if (fallbackPayload) {
+            req.auth = {
+                sub: fallbackPayload.sub,
+                username: fallbackPayload.username,
+                groups: fallbackPayload["cognito:groups"] || []
+            };
+            return next();
+        }
+
+        // 2. ตรวจสอบ AWS Cognito RSA JWT Token แท้
         let payload;
         try {
             payload = verifyWithEmbeddedJwks(token);
@@ -171,4 +212,8 @@ async function requireCognitoAuth(req, res, next) {
     }
 }
 
-module.exports = { requireCognitoAuth };
+module.exports = {
+    requireCognitoAuth,
+    signHs256Jwt,
+    verifyHs256Jwt
+};
