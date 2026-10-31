@@ -70,8 +70,11 @@ if (loginForm) {
 
         // 1. เข้าสู่ระบบผ่าน TU API และจัดกลุ่ม User เข้าเป็น Staff/Instructor ใน AWS Cognito อัตโนมัติ
         try {
-            const apiBase = window.API_BASE_URL || (window.location.port === "3000" ? window.location.origin : "");
-            const tuResp = await fetch(`${apiBase}/api/auth/tu-login`, {
+            // ใช้ฟังก์ชันกลางเพื่อให้ทำงานถูกทั้งบน Local (ทุก port) และ Production
+            const apiBase = typeof window.resolveApiBaseUrl === "function"
+                ? window.resolveApiBaseUrl()
+                : (window.API_BASE_URL + "/api");
+            const tuResp = await fetch(`${apiBase}/auth/tu-login`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ username, password })
@@ -88,7 +91,18 @@ if (loginForm) {
 
                 window.location.href = "dashboard.html";
                 return;
-            } else if (!tuResp.ok && tuData.message) {
+            }
+
+            // กรณี AWS credentials ของเซิร์ฟเวอร์หมดอายุ: บัญชีผู้ใช้ถูกต้องแล้ว ไม่ต้องไปลอง Cognito ต่อ
+            // (เพราะจะ fail ด้วย NotAuthorizedException และทำให้ข้อความสับสน) แสดงข้อความแล้วหยุด
+            if (tuData && tuData.code === "AWS_CREDENTIALS_EXPIRED") {
+                loginMessage.textContent = tuData.message;
+                loginButton.disabled = false;
+                loginButtonText.textContent = "SIGN IN";
+                return;
+            }
+
+            if (!tuResp.ok && tuData.message) {
                 var apiErrorMessage = tuData.message;
             }
         } catch (tuErr) {
@@ -187,8 +201,11 @@ if (guestLoginBtn) {
         event.preventDefault();
         localStorage.setItem("docuflow_role", "guest");
         localStorage.setItem("docuflow_user", "Guest");
+        // ล้าง Token ทุกคีย์ที่อาจค้างจากการล็อกอินครั้งก่อน เพื่อไม่ให้ Guest ส่ง Token เก่าที่หมดอายุ (ป้องกัน 401)
         localStorage.removeItem("docuflow_access_token");
         localStorage.removeItem("docuflow_id_token");
+        localStorage.removeItem("access_token");
+        localStorage.removeItem("id_token");
         window.location.href = "dashboard.html";
     });
 }

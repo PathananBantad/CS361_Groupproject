@@ -26,11 +26,11 @@ let currentUsername = null;
 
 // Helper เพื่อหา API Base URL
 function getApiBaseUrl() {
-    const base = window.API_BASE_URL || "https://utvhg6d6o3.execute-api.us-east-1.amazonaws.com";
-    if (window.location.port === "3000") {
-        return "/api";
+    // ใช้ฟังก์ชันกลางจาก cognito-config.js (ตรวจ Local จาก hostname ไม่ใช่แค่ port 3000)
+    if (typeof window.resolveApiBaseUrl === "function") {
+        return window.resolveApiBaseUrl();
     }
-
+    const base = window.API_BASE_URL || "https://utvhg6d6o3.execute-api.us-east-1.amazonaws.com";
     return base.endsWith("/api") ? base : `${base}/api`;
 }
 
@@ -133,7 +133,9 @@ async function fetchDocuments() {
     const params = new URLSearchParams();
 
     const apiBase = getApiBaseUrl();
-    const token = localStorage.getItem("docuflow_access_token") || localStorage.getItem("access_token") || localStorage.getItem("docuflow_id_token") || localStorage.getItem("id_token") || "";
+    // Guest ต้องไม่แนบ Token ใด ๆ เพื่อให้ backend ปล่อยผ่านในฐานะ Guest (ป้องกัน 401 จาก Token เก่าที่ค้างอยู่)
+    const isGuest = currentRole === "guest";
+    const token = isGuest ? "" : (localStorage.getItem("docuflow_access_token") || localStorage.getItem("access_token") || localStorage.getItem("docuflow_id_token") || localStorage.getItem("id_token") || "");
 
     try {
         const headers = {};
@@ -636,8 +638,9 @@ function initializeDashboard() {
         return;
     }
 
-    currentRole = savedRole || "staff";
-    currentUsername = savedUser || "staff01";
+    // ค่าเริ่มต้นเป็น guest เมื่อไม่มีบทบาทที่บันทึกไว้ เพื่อให้การ์ดสิทธิ์ฝั่ง Client ทำงานถูกต้อง
+    currentRole = savedRole || "guest";
+    currentUsername = savedUser || "Guest";
 
     // รองรับการส่งคำค้นหาข้ามหน้า (เช่น มาจาก register.html หรือ guide.html)
     const urlParams = new URLSearchParams(window.location.search);

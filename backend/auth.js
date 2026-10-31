@@ -26,6 +26,22 @@ const cognito = new CognitoIdentityProviderClient({
     }
 });
 
+// ตรวจว่า error เกิดจาก AWS credentials ของเซิร์ฟเวอร์หมดอายุ/ไม่ถูกต้อง (ไม่ใช่ความผิดของผู้ใช้)
+function isAwsCredentialError(error) {
+    if (!error) return false;
+    const name = error.name || "";
+    const msg = String(error.message || "");
+    return (
+        name === "ExpiredTokenException" ||
+        name === "ExpiredToken" ||
+        name === "InvalidClientTokenId" ||
+        name === "UnrecognizedClientException" ||
+        name === "CredentialsProviderError" ||
+        /security token.*expired/i.test(msg) ||
+        /expired/i.test(msg) && /token/i.test(msg)
+    );
+}
+
 // สร้าง SECRET_HASH สำหรับ Cognito App client ที่มี Client secret
 function createSecretHash(username) {
     if (!process.env.COGNITO_CLIENT_SECRET) return null;
@@ -356,6 +372,16 @@ router.post("/tu-login", async (req, res) => {
 
     } catch (error) {
         console.error("TU Login error:", error);
+
+        // AWS credentials ของเซิร์ฟเวอร์หมดอายุ -> ไม่ใช่ความผิดของผู้ใช้ แจ้งให้ผู้ดูแลระบบอัปเดต credential
+        if (isAwsCredentialError(error)) {
+            return res.status(503).json({
+                ok: false,
+                code: "AWS_CREDENTIALS_EXPIRED",
+                message: "ระบบยืนยันตัวตน (AWS) ไม่พร้อมใช้งานชั่วคราว เนื่องจากข้อมูลรับรองของเซิร์ฟเวอร์หมดอายุ กรุณาแจ้งผู้ดูแลระบบให้อัปเดต AWS credentials (บัญชีและรหัสผ่านของคุณถูกต้องแล้ว)"
+            });
+        }
+
         return res.status(500).json({
             ok: false,
             message: "เกิดข้อผิดพลาดในการเข้าสู่ระบบผ่าน TU API: " + error.message

@@ -4,9 +4,31 @@ window.COGNITO_CONFIG = {
     region: "us-east-1"
 };
 
-window.API_BASE_URL = window.location.port === "3000"
+// ตรวจว่ากำลังรันบนเครื่อง Local หรือไม่ (เช็คจาก hostname ไม่ใช่แค่ port 3000)
+// รองรับทั้ง localhost, 127.0.0.1 และ Live Server (เช่น port 5500) ที่ไม่ได้ใช้ port 3000
+window.IS_LOCAL = ["localhost", "127.0.0.1", "0.0.0.0", "::1"].includes(window.location.hostname);
+
+// URL ของ Backend API Gateway บน Production (AWS)
+window.API_GATEWAY_URL = "https://utvhg6d6o3.execute-api.us-east-1.amazonaws.com";
+
+// Origin ของ API:
+// - Local: ยิงไปที่ origin เดียวกับหน้าเว็บ (dev server มี proxy /api ไปยัง backend)
+// - Production (Amplify): ยิงไปที่ API Gateway โดยตรง
+window.API_BASE_URL = window.IS_LOCAL
     ? window.location.origin
-    : "https://utvhg6d6o3.execute-api.us-east-1.amazonaws.com";
+    : window.API_GATEWAY_URL;
+
+// ฟังก์ชันกลางสำหรับหา Base URL ที่มี /api ต่อท้าย ใช้ร่วมกันทุกไฟล์
+// (ป้องกันการเขียนตรรกะซ้ำที่ยึดติดกับ port 3000 ในหลายไฟล์)
+// ใช้ชื่อ resolveApiBaseUrl เพื่อไม่ชนกับฟังก์ชัน getApiBaseUrl ที่ประกาศในไฟล์อื่น
+window.resolveApiBaseUrl = function () {
+    if (window.IS_LOCAL) {
+        // dev server ตั้ง proxy ให้ /api ชี้ไป backend อยู่แล้ว ใช้ path แบบ relative
+        return "/api";
+    }
+    const base = window.API_BASE_URL || window.API_GATEWAY_URL;
+    return base.endsWith("/api") ? base : `${base}/api`;
+};
 
 let cognitoRefreshPromise;
 
@@ -60,14 +82,17 @@ window.apiFetch = function (input, options = {}) {
     const headers = new Headers(options.headers || (input instanceof Request ? input.headers : undefined));
     const createInput = () => input instanceof Request ? input.clone() : input;
 
-    if (isProtectedApiRequest) {
+    // Guest ไม่แนบ Token และไม่พยายาม refresh เมื่อเจอ 401 (ป้องกัน Token เก่าค้างและลูป refresh ที่ไม่จำเป็น)
+    const isGuest = (localStorage.getItem("docuflow_role") || "").toLowerCase().trim() === "guest";
+
+    if (isProtectedApiRequest && !isGuest) {
         const token = localStorage.getItem("docuflow_access_token") ||
             localStorage.getItem("access_token") || "";
         if (token) headers.set("Authorization", `Bearer ${token}`);
     }
 
     return fetch(createInput(), { ...options, headers }).then(async response => {
-        if (response.status !== 401 || !isProtectedApiRequest) return response;
+        if (response.status !== 401 || !isProtectedApiRequest || isGuest) return response;
 
         try {
             const refreshedAccessToken = await refreshCognitoSession();

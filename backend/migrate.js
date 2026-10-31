@@ -159,7 +159,8 @@ async function runMigration() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
 
-    // 11. Trigger ป้องกันการแก้ไข (UPDATE) บนตาราง document_audit_trails เพื่อความน่าเชื่อถือและป้องกันการแก้ไข (Tamper Protection)
+    // 11. Trigger ป้องกันการแก้ไข (UPDATE) และการลบ (DELETE) บนตาราง document_audit_trails
+    // เพื่อให้ประวัติเป็น Append-Only อย่างแท้จริง (Immutability & Tamper Protection)
     try {
       await pool.query("DROP TRIGGER IF EXISTS prevent_audit_trail_update");
       await pool.query(`
@@ -171,7 +172,17 @@ async function runMigration() {
             SET MESSAGE_TEXT = 'Audit trail records are immutable and cannot be updated.';
         END;
       `);
-      console.log("  + Immutability trigger on document_audit_trails active");
+      await pool.query("DROP TRIGGER IF EXISTS prevent_audit_trail_delete");
+      await pool.query(`
+        CREATE TRIGGER prevent_audit_trail_delete
+        BEFORE DELETE ON document_audit_trails
+        FOR EACH ROW
+        BEGIN
+            SIGNAL SQLSTATE '45000'
+            SET MESSAGE_TEXT = 'Audit trail records are immutable and cannot be deleted.';
+        END;
+      `);
+      console.log("  + Immutability triggers (UPDATE + DELETE) on document_audit_trails active");
     } catch (trigErr) {
       console.warn("  ! Note on trigger creation:", trigErr.message);
     }

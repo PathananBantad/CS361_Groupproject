@@ -1,0 +1,18 @@
+[
+  {
+    "id": 40,
+    "username": "staff@dome.tu.ac.th",
+    "full_name": "อาจารย์ / บุคลากร (Mock Staff)",
+    "cognito_sub": "staff-mock-sub",
+    "role": "faculty_staff",
+    "is_active": 1
+  },
+  {
+    "id": 72,
+    "username": "v3test.staffb@example.com",
+    "full_name": "v3test.staffb@example.com",
+    "cognito_sub": "mock-sub-v3test.staffb@example.com",
+    "role": "faculty_staff",
+    "is_active": 1
+  }
+]

@@ -944,6 +944,20 @@ app.post("/api/documents/:id/assign", requireCognitoAuth, loadUserRole, async (r
         return res.status(403).json({ error: "คุณไม่มีสิทธิ์มอบหมายเอกสาร" });
     }
 
+    // ดึงชื่อเต็มของผู้มอบหมาย (Assigned By) จากฐานข้อมูลจริง เพื่อแสดงใน Audit Trail
+    let actorFullName = req.dbUsername || actorUsername;
+    try {
+        const [actorRows] = await pool.query(
+            "SELECT full_name, username FROM users WHERE id = ? LIMIT 1",
+            [actorId]
+        );
+        if (actorRows.length) {
+            actorFullName = actorRows[0].full_name || actorRows[0].username || actorFullName;
+        }
+    } catch (e) {
+        console.warn("Lookup assigner name failed:", e.message);
+    }
+
     const documentId = Number(req.params.id);
     const assigneeId = Number(req.body?.assignee_id);
     if (!Number.isInteger(documentId) || documentId <= 0) {
@@ -1034,7 +1048,15 @@ app.post("/api/documents/:id/assign", requireCognitoAuth, loadUserRole, async (r
             beforeState: { assignee_id: doc.assignee_id, status: oldStatus },
             afterState: { assignee_id: assigneeId, status: newStatus },
             details: {
-                assignee_name: assignee.username,   // ชื่อจากฐานข้อมูล ไม่ใช่ที่ Frontend ส่งมา
+                // ผู้มอบหมาย (Assigned By) - ดึงจากข้อมูลผู้ใช้จริงฝั่ง Server
+                assigned_by_id: actorId,
+                assigned_by_username: actorUsername,
+                assigned_by_name: actorFullName,
+                // ผู้ถูกมอบหมาย (Assigned To) - ดึงจากฐานข้อมูลจริง ไม่ใช่ค่าที่ Frontend ส่งมา
+                assigned_to_id: assigneeId,
+                assigned_to_username: assignee.username,
+                assigned_to_name: assignee.full_name || assignee.username,
+                assignee_name: assignee.full_name || assignee.username,   // คงไว้เพื่อ Backward Compatibility
                 previous_assignee_id: doc.assignee_id || null,
                 new_assignee_id: assigneeId,
                 remarks: remarks || null
@@ -1259,12 +1281,31 @@ app.post("/api/documents/:id/forward", requireCognitoAuth, loadUserRole, async (
                 });
             }
 
+            // ชื่อผู้ถูกมอบหมาย (Assigned To) จะถูกดึงจากฐานข้อมูลจริง (ไม่พึ่งค่าที่ Frontend ส่งมา)
+            let targetAssigneeUsername = null;
+            let targetAssigneeFullName = null;
             if (sanitizedNewAssigneeId) {
                 const [targetRows] = await connection.query(
-                    `SELECT u.id FROM users u JOIN users_roles ur ON ur.user_id=u.id JOIN roles r ON r.id=ur.role_id
+                    `SELECT u.id, u.username, u.full_name FROM users u JOIN users_roles ur ON ur.user_id=u.id JOIN roles r ON r.id=ur.role_id
                      WHERE u.id=? AND u.is_active=1 AND r.name COLLATE utf8mb4_general_ci IN (?)`, [sanitizedNewAssigneeId, ASSIGNEE_ROLES]
                 );
                 if (!targetRows.length) { await connection.rollback(); return res.status(400).json({ error: "Invalid assignee" }); }
+                targetAssigneeUsername = targetRows[0].username;
+                targetAssigneeFullName = targetRows[0].full_name || targetRows[0].username;
+            }
+
+            // ดึงชื่อเต็มของผู้ส่งต่อ/ผู้มอบหมาย (Assigned By) จากฐานข้อมูลจริง
+            let forwarderFullName = actor.actorUsername;
+            try {
+                const [fwdRows] = await connection.query(
+                    "SELECT full_name, username FROM users WHERE id = ? LIMIT 1",
+                    [actor.actorUserId]
+                );
+                if (fwdRows.length) {
+                    forwarderFullName = fwdRows[0].full_name || fwdRows[0].username || forwarderFullName;
+                }
+            } catch (e) {
+                console.warn("Lookup forwarder name failed:", e.message);
             }
 
             // อัปเดตเอกสาร
@@ -1311,7 +1352,15 @@ app.post("/api/documents/:id/forward", requireCognitoAuth, loadUserRole, async (
                     status: doc.status
                 },
                 details: {
-                    new_assignee_name: sanitizedAssigneeName || null,
+                    // ผู้ส่งต่อ/ผู้มอบหมาย (Assigned By) - ดึงจากข้อมูลผู้ใช้จริงฝั่ง Server
+                    assigned_by_id: actor.actorUserId,
+                    assigned_by_username: actor.actorUsername,
+                    assigned_by_name: forwarderFullName,
+                    // ผู้ถูกมอบหมาย (Assigned To) - ดึงจากฐานข้อมูลจริง (ถ้าส่งต่อให้บุคคล)
+                    assigned_to_id: sanitizedNewAssigneeId || null,
+                    assigned_to_username: targetAssigneeUsername,
+                    assigned_to_name: targetAssigneeFullName || sanitizedReceiverName || sanitizedAssigneeName || null,
+                    new_assignee_name: targetAssigneeFullName || sanitizedAssigneeName || null,   // คงไว้เพื่อ Backward Compatibility
                     previous_assignee_id: doc.assignee_id || null,
                     new_assignee_id: sanitizedNewAssigneeId || null,
                     receiver_name: sanitizedReceiverName || null,

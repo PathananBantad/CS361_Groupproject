@@ -57,7 +57,7 @@ CREATE TABLE IF NOT EXISTS document_audit_trails (
     CONSTRAINT fk_audit_document FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- 4. Trigger เพื่อป้องกันการแก้ไข (UPDATE) บนตาราง document_audit_trails (Immutability / Tamper Protection)
+-- 4. Trigger เพื่อป้องกันการแก้ไข (UPDATE) และลบ (DELETE) บนตาราง document_audit_trails (Immutability / Tamper Protection)
 DROP TRIGGER IF EXISTS prevent_audit_trail_update;
 DELIMITER //
 CREATE TRIGGER prevent_audit_trail_update
@@ -66,6 +66,18 @@ FOR EACH ROW
 BEGIN
     SIGNAL SQLSTATE '45000'
     SET MESSAGE_TEXT = 'Audit trail records are immutable and cannot be updated.';
+END;
+//
+DELIMITER ;
+
+DROP TRIGGER IF EXISTS prevent_audit_trail_delete;
+DELIMITER //
+CREATE TRIGGER prevent_audit_trail_delete
+BEFORE DELETE ON document_audit_trails
+FOR EACH ROW
+BEGIN
+    SIGNAL SQLSTATE '45000'
+    SET MESSAGE_TEXT = 'Audit trail records are immutable and cannot be deleted.';
 END;
 //
 DELIMITER ;

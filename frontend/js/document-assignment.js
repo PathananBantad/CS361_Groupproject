@@ -6,10 +6,10 @@
     const ASSIGNER_ROLES = ["document_officer", "admin"];
 
     function apiBase() {
-        const base = window.API_BASE_URL || "https://utvhg6d6o3.execute-api.us-east-1.amazonaws.com";
-        if (window.location.port === "3000") {
-            return "/api";
+        if (typeof window.resolveApiBaseUrl === "function") {
+            return window.resolveApiBaseUrl();
         }
+        const base = window.API_BASE_URL || "https://utvhg6d6o3.execute-api.us-east-1.amazonaws.com";
         return base.endsWith("/api") ? base : `${base}/api`;
     }
 

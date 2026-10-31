@@ -388,11 +388,10 @@
 
     // Helper หา API Base URL
     function getApiBaseUrl() {
-        const base = window.API_BASE_URL || "https://utvhg6d6o3.execute-api.us-east-1.amazonaws.com";
-        if (window.location.port === "3000") {
-            return "/api";
+        if (typeof window.resolveApiBaseUrl === "function") {
+            return window.resolveApiBaseUrl();
         }
-
+        const base = window.API_BASE_URL || "https://utvhg6d6o3.execute-api.us-east-1.amazonaws.com";
         return base.endsWith("/api") ? base : `${base}/api`;
     }
 
@@ -777,7 +776,7 @@
                         </span>
                     `;
                 } else if (eventType === "ASSIGN") {
-                    const assignee = details.assignee_name || details.new_assignee_id || "ผู้รับมอบหมาย";
+                    const assignee = details.assigned_to_name || details.assignee_name || details.new_assignee_id || "ผู้รับมอบหมาย";
                     headerHtml = `
                         <span class="history-step-change">
                             <span class="status-badge status-assigned inline">👤 มอบหมายเอกสาร</span>
@@ -786,7 +785,7 @@
                         </span>
                     `;
                 } else if (eventType === "FORWARD") {
-                    const receiver = details.receiver_name || details.new_assignee_name || "หน่วยงานปลายทาง";
+                    const receiver = details.assigned_to_name || details.receiver_name || details.new_assignee_name || "หน่วยงานปลายทาง";
                     headerHtml = `
                         <span class="history-step-change">
                             <span class="status-badge inline" style="background:#f3e8ff; color:#7e22ce;">⏩ ส่งต่อเอกสาร</span>
@@ -810,6 +809,20 @@
 
                 // ข้อมูลเพิ่มเติม เช่น เหตุผลการส่งต่อ
                 let extraHtml = "";
+
+                // แสดงคู่ ผู้มอบหมาย (Assigned By) / ผู้ถูกมอบหมาย (Assigned To) สำหรับการมอบหมายและการส่งต่อ
+                if (eventType === "ASSIGN" || eventType === "FORWARD") {
+                    const assignedByName = details.assigned_by_name || details.assigned_by_username || actorName;
+                    const assignedToName = details.assigned_to_name || details.assignee_name
+                        || details.new_assignee_name || details.receiver_name || "-";
+                    extraHtml += `
+                        <div class="history-assignment" style="font-size:11.5px; color:#334155; margin-top:2px;">
+                            <div> ผู้มอบหมาย (Assigned By): <strong>${escapeHtml(assignedByName)}</strong></div>
+                            <div> ผู้ถูกมอบหมาย (Assigned To): <strong>${escapeHtml(assignedToName)}</strong></div>
+                        </div>
+                    `;
+                }
+
                 if (details.reason) {
                     extraHtml += `<div class="history-reason" style="font-size:11.5px; color:#4338ca; margin-top:2px;">📌 เหตุผล: ${escapeHtml(details.reason)}</div>`;
                 }
