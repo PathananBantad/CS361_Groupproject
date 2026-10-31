@@ -1,9 +1,6 @@
-// ส่วน "มอบหมายเอกสาร" ในหน้าต่างรายละเอียดเอกสาร
+// ส่วน "ผู้รับผิดชอบเอกสาร" ในหน้าต่างรายละเอียดเอกสาร
 (function () {
     "use strict";
-
-    // มี 2 บทบาทที่มีสิทธิ์มอบหมายเอกสาร: เจ้าหน้าที่รับเอกสาร และ ผู้ดูแลระบบ
-    const ASSIGNER_ROLES = ["document_officer", "admin"];
 
     function apiBase() {
         if (typeof window.resolveApiBaseUrl === "function") {
@@ -13,49 +10,41 @@
         return base.endsWith("/api") ? base : `${base}/api`;
     }
 
-
-    // รวมการอ่าน token ไว้ที่เดียว (backend ตรวจ access token)
-    function getAuthToken() {
-        try {
-            const directToken = localStorage.getItem("docuflow_access_token") ||
-                localStorage.getItem("access_token") ||
-                localStorage.getItem("docuflow_id_token") ||
-                localStorage.getItem("id_token");
-            if (directToken) return directToken;
-
-            const prefix = "CognitoIdentityServiceProvider.";
-            for (let i = 0; i < localStorage.length; i++) {
-                const key = localStorage.key(i);
-                if (key && key.startsWith(prefix) && key.endsWith(".LastAuthUser")) {
-                    const clientId = key.split(".")[1];
-                    const user = localStorage.getItem(key);
-                    const token = localStorage.getItem(prefix + clientId + "." + user + ".accessToken");
-                    if (token) return token;
-                }
-            }
-            return "";
-        } catch (e) {
-            return "";
-        }
-    }
-
-    async function api(path, options) {
-        const res = await window.apiFetch(apiBase() + path, {
-            ...options,
-            headers: {
-                "Content-Type": "application/json",
-                ...(options && options.headers ? options.headers : {}),
-            },
-        });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(data.error || data.message || "เกิดข้อผิดพลาด (" + res.status + ")");
-        return data;
-    }
-
     function esc(s) {
         const d = document.createElement("div");
         d.textContent = s == null ? "" : String(s);
         return d.innerHTML;
+    }
+
+    // แคชรายชื่อผู้ใช้เพื่อลดการเรียก API ซ้ำ
+    let usersCache = null;
+
+    async function fetchUsersList() {
+        if (usersCache) return usersCache;
+        try {
+            let res = await window.apiFetch(apiBase() + "/forward-recipients");
+            if (!res.ok) {
+                res = await window.apiFetch(apiBase() + "/assignees");
+            }
+            if (res.ok) {
+                const data = await res.json();
+                usersCache = data.data || data.assignees || [];
+                return usersCache;
+            }
+        } catch (e) {
+            console.warn("Could not fetch users list:", e);
+        }
+        return [];
+    }
+
+    async function resolveUserName(userId) {
+        if (!userId) return null;
+        const users = await fetchUsersList();
+        const found = users.find((u) => String(u.id) === String(userId));
+        if (found) {
+            return found.full_name || found.username;
+        }
+        return null;
     }
 
     // สร้างกล่อง section ถ้ายังไม่มี (วางก่อนการ์ดประวัติ)
@@ -71,78 +60,84 @@
         return el;
     }
 
+    function cleanPersonName(name) {
+        if (!name) return "-";
+        const str = String(name).trim();
+        if (!str.includes("@")) return str;
+        const usernamePart = str.split("@")[0];
+        const segments = usernamePart.split(/[._-]/).filter(Boolean);
+        if (segments.length > 0) {
+            return segments.map(s => s.charAt(0).toUpperCase() + s.slice(1).toLowerCase()).join(" ");
+        }
+        return usernamePart;
+    }
+
+    function getResponsiblePersonInfo(doc) {
+        if (!doc) return { name: "-", isCreator: false };
+
+        // 1. ตรวจสอบว่ามีผู้รับมอบหมาย (Assignee) หรือไม่
+        const rawAssigneeId = doc.assignee_id != null ? String(doc.assignee_id).trim() : "";
+        const hasAssignee = rawAssigneeId && rawAssigneeId !== "null" && rawAssigneeId !== "undefined" && rawAssigneeId !== "0";
+
+        if (hasAssignee) {
+            const assigneeName = doc.assignee_full_name ||
+                (doc.raw && doc.raw.assignee_full_name) ||
+                doc.assignee_username ||
+                (doc.raw && doc.raw.assignee_username);
+
+            if (assigneeName) {
+                return { name: cleanPersonName(assigneeName), isCreator: false, userId: rawAssigneeId, rawName: assigneeName };
+            }
+            // มี ID แต่ยังไม่ทราบชื่อ
+            return { name: "ผู้ใช้ #" + rawAssigneeId, isCreator: false, userId: rawAssigneeId };
+        }
+
+        // 2. ถ้ายังไม่ถูกมอบหมาย ให้เป็นชื่อคนที่เพิ่มเอกสาร (Creator / Owner)
+        const creatorName = doc.owner_full_name ||
+            (doc.raw && doc.raw.owner_full_name) ||
+            doc.owner_username ||
+            doc.creator_username ||
+            doc.created_by_name ||
+            doc.created_by ||
+            (doc.raw && (doc.raw.owner_username || doc.raw.creator_username));
+
+        if (creatorName) {
+            return { name: cleanPersonName(creatorName), isCreator: true, userId: doc.owner_id || (doc.raw && doc.raw.owner_id), rawName: creatorName };
+        }
+
+        const rawOwnerId = doc.owner_id != null ? String(doc.owner_id).trim() : "";
+        if (rawOwnerId && rawOwnerId !== "null" && rawOwnerId !== "undefined" && rawOwnerId !== "0") {
+            return { name: "ผู้ใช้ #" + rawOwnerId, isCreator: true, userId: rawOwnerId };
+        }
+
+        return { name: "ยังไม่มีการมอบหมาย", isCreator: false };
+    }
+
     async function mount(doc, opts) {
         const section = ensureSection();
         if (!section || !doc) return;
-        const onDone = (opts && opts.onDone) || function () {};
-        const role = (localStorage.getItem("docuflow_role") || "").toLowerCase().trim();
-        const canAssign = ASSIGNER_ROLES.includes(role);
+
+        const info = getResponsiblePersonInfo(doc);
 
         section.innerHTML =
             '<div class="details-section-title"><span aria-hidden="true">👤</span> ผู้รับผิดชอบเอกสาร</div>' +
             '<div class="meta-item"><span class="meta-label">ผู้รับผิดชอบปัจจุบัน</span>' +
             '<span class="meta-value" id="assignCurrent">' +
-            (doc.assignee_id
-                ? esc(doc.assignee_full_name || doc.assignee_username || ("ผู้ใช้ #" + doc.assignee_id))
-                : "ยังไม่มีการมอบหมาย") +
-            "</span></div>" +
-            (canAssign
-                ? '<div id="assignForm" style="margin-top:12px;display:grid;gap:8px">' +
-                  '<select id="assignSelect" disabled><option>กำลังโหลดรายชื่อ...</option></select>' +
-                  '<input type="text" id="assignRemarks" maxlength="500" placeholder="หมายเหตุ (ไม่บังคับ)">' +
-                  '<button type="button" id="assignBtn" class="btn-workflow-primary" disabled>มอบหมาย</button>' +
-                  '<div id="assignMsg" role="status"></div></div>'
-                : "");
+            esc(info.name) +
+            (info.isCreator ? ' <small style="font-size:12px;font-weight:normal;color:#6b7280;">(ผู้เพิ่มเอกสาร)</small>' : '') +
+            '</span></div>';
 
-        if (!canAssign) return;
-
-        const select = section.querySelector("#assignSelect");
-        const btn = section.querySelector("#assignBtn");
-        const msg = section.querySelector("#assignMsg");
-        const remarks = section.querySelector("#assignRemarks");
-        const show = (text, ok) => {
-            msg.textContent = text;
-            msg.style.color = ok ? "#15803d" : "#b91c1c";
-        };
-
-        try {
-            const list = await api("/assignees");
-            const users = list.data || list.assignees || [];
-            select.innerHTML =
-                '<option value="">-- เลือกผู้รับผิดชอบ --</option>' +
-                users
-                    .map((u) => '<option value="' + esc(u.id) + '">' + esc(u.full_name || u.username) + " (" + esc(u.role) + ")</option>")
-                    .join("");
-            select.disabled = false;
-            btn.disabled = false;
-        } catch (err) {
-            select.innerHTML = "<option>โหลดรายชื่อไม่สำเร็จ</option>";
-            show(err.message, false);
-            return;
+        // กรณีที่ชื่อยังเป็น "ผู้ใช้ #..." หรือมีข้อมูล userId ให้ลองดึงชื่อจริงภาษาไทยจากระบบมาอัปเดตอัตโนมัติ
+        if (info.userId) {
+            const assignCurrentEl = section.querySelector("#assignCurrent");
+            resolveUserName(info.userId).then((resolved) => {
+                if (resolved && assignCurrentEl && !resolved.includes("@")) {
+                    assignCurrentEl.innerHTML = esc(resolved) +
+                        (info.isCreator ? ' <small style="font-size:12px;font-weight:normal;color:#6b7280;">(ผู้เพิ่มเอกสาร)</small>' : '');
+                }
+            }).catch(() => {});
         }
-
-        btn.addEventListener("click", async () => {
-            if (btn.disabled) return;
-            if (!select.value) return show("กรุณาเลือกผู้รับผิดชอบ", false);
-            btn.disabled = true; // กันกดซ้ำ
-            btn.textContent = "กำลังบันทึก...";
-            try {
-                const result = await api("/documents/" + encodeURIComponent(doc.id) + "/assign", {
-                    method: "POST",
-                    body: JSON.stringify({ assignee_id: Number(select.value), remarks: remarks.value.trim() }),
-                });
-                show(result.message || "มอบหมายสำเร็จ", true);
-                const selected = select.options[select.selectedIndex];
-                section.querySelector("#assignCurrent").textContent = selected.textContent.replace(/\s*\([^)]*\)$/, "");
-                onDone(result);
-            } catch (err) {
-                show(err.message, false);
-            } finally {
-                btn.disabled = false;
-                btn.textContent = "มอบหมาย";
-            }
-        });
     }
+
     window.DocuFlowAssignment = { mount };
 })();
-

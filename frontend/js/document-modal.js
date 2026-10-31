@@ -352,6 +352,12 @@
                             </div>
                         </section>
 
+                        <!-- ผู้รับผิดชอบเอกสาร -->
+                        <section class="modal-details-card" id="assignSection">
+                            <div class="details-section-title"><span aria-hidden="true">👤</span> ผู้รับผิดชอบเอกสาร</div>
+                            <div class="meta-item"><span class="meta-label">ผู้รับผิดชอบปัจจุบัน</span><span class="meta-value" id="assignCurrent">-</span></div>
+                        </section>
+
                         <!-- ประวัติการเปลี่ยนสถานะ (Task 6 & 7) -->
                         <section class="modal-history-card">
                             <div class="details-section-title"><span aria-hidden="true">⏱️</span> ประวัติการเปลี่ยนสถานะ (Workflow Audit Trail)</div>
@@ -452,6 +458,10 @@
             if (trimmed === "-" || trimmed.toLowerCase() === "invalid date") return "-";
             if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(trimmed)) {
                 return trimmed;
+            }
+            if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+                const [y, m, d] = trimmed.split("-").map(Number);
+                return new Date(y, m - 1, d).toLocaleDateString("th-TH");
             }
         }
         const d = new Date(val);
@@ -720,6 +730,46 @@
         }
     }
 
+    function formatPersonName(raw) {
+        let str = String(raw || "").trim();
+        if (!str || str === "-" || str.toLowerCase() === "system") {
+            return str === "-" ? "-" : "ระบบ";
+        }
+
+        // 1. ถ้าแคชรายชื่อผู้ใช้มีข้อมูล (window.docuflowUsersList หรือ window.docuflowAssignees)
+        // ลองเทียบกับ ID, Username, Email หรือ Full Name
+        const users = window.docuflowUsersList || window.docuflowAssignees || [];
+        if (Array.isArray(users) && users.length > 0) {
+            const found = users.find((u) =>
+                String(u.id) === str ||
+                (u.username && u.username.toLowerCase() === str.toLowerCase()) ||
+                (u.email && u.email.toLowerCase() === str.toLowerCase()) ||
+                (u.full_name && u.full_name.toLowerCase() === str.toLowerCase())
+            );
+            if (found && found.full_name && !found.full_name.includes("@")) {
+                return found.full_name;
+            }
+        }
+
+        // 2. ถ้าเป็นชื่อจริงภาษาไทย หรือชื่อที่มีช่องว่างและไม่มี @ ให้คืนค่าได้เลย
+        if (/[ก-๙]/.test(str) || (!str.includes("@") && str.includes(" "))) {
+            return str;
+        }
+
+        // 3. ถ้าไม่มี @ ให้คืนค่าได้เลย
+        if (!str.includes("@")) {
+            return str;
+        }
+
+        // 4. กรณีเป็นอีเมล เช่น achiraya.kha@dome.tu.ac.th ให้แปลงเป็นชื่อที่อ่านง่ายแทน
+        const usernamePart = str.split("@")[0]; // "achiraya.kha"
+        const segments = usernamePart.split(/[._-]/).filter(Boolean);
+        if (segments.length > 0) {
+            return segments.map((s) => s.charAt(0).toUpperCase() + s.slice(1).toLowerCase()).join(" ");
+        }
+        return usernamePart;
+    }
+
     // Load and render document status change history & Audit Trail (Task 6, 7 & 8)
     async function loadStatusHistory(docId) {
         if (!statusHistoryTimeline) return;
@@ -728,6 +778,17 @@
         const apiBase = getApiBaseUrl();
 
         try {
+            // โหลดแคชรายชื่อผู้ใช้เตรียมไว้สำหรับแปลง Email เป็นชื่อจริง
+            if (!window.docuflowUsersList || !window.docuflowUsersList.length) {
+                try {
+                    const uRes = await window.apiFetch(`${apiBase}/forward-recipients`);
+                    if (uRes.ok) {
+                        const uData = await uRes.json();
+                        if (uData.data) window.docuflowUsersList = uData.data;
+                    }
+                } catch (_) {}
+            }
+
             // ลองดึงจาก Audit Trail API ส่วนกลางก่อน (Task 8)
             let res = await window.apiFetch(`${apiBase}/documents/${docId}/audit-trail`);
 
@@ -737,7 +798,7 @@
             }
 
             if (!res.ok) {
-                statusHistoryTimeline.innerHTML = `<div class="history-empty">ไม่มีประวัติการดำเนินการก่อนหน้านี้</div>`;
+                statusHistoryTimeline.innerHTML = `<div class="history-error">ไม่สามารถดึงข้อมูลประวัติการดำเนินการได้ (${res.status})</div>`;
                 return;
             }
 
@@ -754,11 +815,21 @@
                 return;
             }
 
+            const roleLabels = {
+                admin: "ผู้ดูแลระบบ",
+                document_officer: "เจ้าหน้าที่รับเอกสาร",
+                faculty_staff: "อาจารย์ / บุคลากร",
+                staff: "อาจารย์ / บุคลากร",
+                executive: "ผู้บริหาร",
+                guest: "ผู้ใช้ทั่วไป"
+            };
+
             statusHistoryTimeline.innerHTML = logs.map((log) => {
                 const timeStr = (log.timestamp || log.changed_at)
                     ? new Date(log.timestamp || log.changed_at).toLocaleString("th-TH")
                     : "-";
-                const actorName = log.actor_username || log.changed_by || log.actor_user_id || "ระบบ";
+                const actorName = formatPersonName(log.actor_name || log.actor_username || log.changed_by || log.actor_user_id);
+                const roleDisplay = (log.actor_role && roleLabels[String(log.actor_role).toLowerCase()]) || log.actor_role || "";
                 const eventType = log.event_type || (log.old_status && log.new_status ? "STATUS_CHANGE" : "EVENT");
                 const details = log.details || {};
                 const remarks = details.remarks || log.remarks || "";
@@ -785,7 +856,7 @@
                         <span class="history-step-change">
                             <span class="status-badge status-assigned inline">👤 มอบหมายเอกสาร</span>
                             <span class="arrow">➔</span>
-                            <strong>${escapeHtml(assignee)}</strong>
+                            <strong>${escapeHtml(formatPersonName(assignee))}</strong>
                         </span>
                     `;
                 } else if (eventType === "FORWARD") {
@@ -794,7 +865,7 @@
                         <span class="history-step-change">
                             <span class="status-badge inline" style="background:#f3e8ff; color:#7e22ce;">⏩ ส่งต่อเอกสาร</span>
                             <span class="arrow">➔</span>
-                            <strong>${escapeHtml(receiver)}</strong>
+                            <strong>${escapeHtml(formatPersonName(receiver))}</strong>
                         </span>
                     `;
                 } else if (eventType === "DOCUMENT_CREATE") {
@@ -816,13 +887,34 @@
 
                 // แสดงคู่ ผู้มอบหมาย (Assigned By) / ผู้ถูกมอบหมาย (Assigned To) สำหรับการมอบหมายและการส่งต่อ
                 if (eventType === "ASSIGN" || eventType === "FORWARD") {
-                    const assignedByName = details.assigned_by_name || details.assigned_by_username || actorName;
-                    const assignedToName = details.assigned_to_name || details.assignee_name
-                        || details.new_assignee_name || details.receiver_name || "-";
+                    const assignedByName = formatPersonName(
+                        details.assigned_by_name ||
+                        details.assigned_by_full_name ||
+                        details.assigned_by_username ||
+                        log.actor_name ||
+                        log.actor_username ||
+                        log.changed_by
+                    );
+                    const assignedToName = formatPersonName(
+                        details.assigned_to_name ||
+                        details.assigned_to_full_name ||
+                        details.new_assignee_name ||
+                        details.new_assignee_full_name ||
+                        details.assignee_name ||
+                        details.receiver_name ||
+                        details.assigned_to_username ||
+                        details.new_assignee_username ||
+                        details.assigned_to_id ||
+                        details.new_assignee_id ||
+                        "-"
+                    );
+                    const byLabel = eventType === "FORWARD" ? "ผู้ส่งต่อ (Forwarded By)" : "ผู้มอบหมาย (Assigned By)";
+                    const toLabel = "ผู้ถูกมอบหมาย (Assigned To)";
+
                     extraHtml += `
                         <div class="history-assignment" style="font-size:11.5px; color:#334155; margin-top:2px;">
-                            <div> ผู้มอบหมาย (Assigned By): <strong>${escapeHtml(assignedByName)}</strong></div>
-                            <div> ผู้ถูกมอบหมาย (Assigned To): <strong>${escapeHtml(assignedToName)}</strong></div>
+                            <div> ${byLabel}: <strong>${escapeHtml(assignedByName)}</strong></div>
+                            <div> ${toLabel}: <strong>${escapeHtml(assignedToName)}</strong></div>
                         </div>
                     `;
                 }
@@ -840,7 +932,7 @@
                                 <span class="history-time">${escapeHtml(timeStr)}</span>
                             </div>
                             <div class="history-meta">
-                                <span class="history-actor">👤 ดำเนินการโดย: <strong>${escapeHtml(actorName)}</strong> ${log.actor_role ? `<small>(${escapeHtml(log.actor_role)})</small>` : ""}</span>
+                                <span class="history-actor">👤 ดำเนินการโดย: <strong>${escapeHtml(actorName)}</strong> ${roleDisplay ? `<small>(${escapeHtml(roleDisplay)})</small>` : ""}</span>
                                 ${extraHtml}
                                 ${remarks ? `<div class="history-remarks">💬 หมายเหตุ: ${escapeHtml(remarks)}</div>` : ""}
                             </div>

@@ -110,6 +110,7 @@ function sanitizeAuditData(data, depth = 0) {
 function extractServerActor(req) {
     const actorUserId = req.userId == null ? "system" : String(req.userId);
     const actorUsername = req.dbUsername || "system";
+    const actorFullName = req.userFullName || req.dbUsername || "system";
     const actorRole = req.userRole || "unknown";
 
     // IP Address จาก Request ของ Server
@@ -121,6 +122,7 @@ function extractServerActor(req) {
     return {
         actorUserId,
         actorUsername,
+        actorFullName,
         actorRole,
         ipAddress
     };
@@ -220,38 +222,44 @@ async function recordAuditEvent({
 async function getAuditTrailByDocumentId(documentId, filters = {}, poolOrConn = defaultPool) {
     let sql = `
         SELECT 
-            id AS audit_id,
-            document_id,
-            actor_user_id,
-            actor_username,
-            actor_role,
-            event_type,
-            before_state,
-            after_state,
-            details,
-            ip_address,
-            created_at AS timestamp
-        FROM document_audit_trails
-        WHERE document_id = ?
+            at.id AS audit_id,
+            at.document_id,
+            at.actor_user_id,
+            at.actor_username,
+            COALESCE(u.full_name, at.actor_username) AS actor_name,
+            u.full_name AS actor_full_name,
+            at.actor_role,
+            at.event_type,
+            at.before_state,
+            at.after_state,
+            at.details,
+            at.ip_address,
+            at.created_at AS timestamp
+        FROM document_audit_trails at
+        LEFT JOIN users u ON (
+            (at.actor_user_id REGEXP '^[0-9]+$' AND u.id = CAST(at.actor_user_id AS UNSIGNED))
+            OR (u.username COLLATE utf8mb4_unicode_ci = at.actor_username COLLATE utf8mb4_unicode_ci)
+        )
+        WHERE at.document_id = ?
     `;
     const params = [documentId];
 
     if (filters.eventType && AUDIT_EVENTS[filters.eventType]) {
-        sql += " AND event_type = ?";
+        sql += " AND at.event_type = ?";
         params.push(filters.eventType);
     }
 
     if (filters.startDate) {
-        sql += " AND created_at >= ?";
+        sql += " AND at.created_at >= ?";
         params.push(filters.startDate);
     }
 
     if (filters.endDate) {
-        sql += " AND created_at <= ?";
+        sql += " AND at.created_at <= ?";
         params.push(`${filters.endDate} 23:59:59`);
     }
 
-    sql += " ORDER BY created_at ASC, id ASC";
+    sql += " ORDER BY at.created_at ASC, at.id ASC";
 
     const [rows] = await poolOrConn.query(sql, params);
 
@@ -345,6 +353,8 @@ async function queryAuditTrails(options = {}, poolOrConn = defaultPool) {
             d.subject,
             a.actor_user_id,
             a.actor_username,
+            COALESCE(u.full_name, a.actor_username) AS actor_name,
+            u.full_name AS actor_full_name,
             a.actor_role,
             a.event_type,
             a.before_state,
@@ -354,6 +364,10 @@ async function queryAuditTrails(options = {}, poolOrConn = defaultPool) {
             a.created_at AS timestamp
         FROM document_audit_trails a
         LEFT JOIN documents d ON a.document_id = d.id
+        LEFT JOIN users u ON (
+            (a.actor_user_id REGEXP '^[0-9]+$' AND u.id = CAST(a.actor_user_id AS UNSIGNED))
+            OR (u.username COLLATE utf8mb4_unicode_ci = a.actor_username COLLATE utf8mb4_unicode_ci)
+        )
         ${whereClause}
         ORDER BY a.created_at DESC, a.id DESC
         LIMIT ? OFFSET ?

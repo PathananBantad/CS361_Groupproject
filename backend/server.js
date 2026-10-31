@@ -37,7 +37,7 @@ async function loadUserRole(req, res, next) {
         const username = req.auth.username;
         if (!username) return res.status(403).json({ error: "No authorized role found for this user" });
         const [rows] = await pool.execute(
-            `SELECT u.id AS userId, u.username, r.name AS role
+            `SELECT u.id AS userId, u.username, u.full_name, r.name AS role
              FROM users u JOIN users_roles ur ON ur.user_id = u.id
              JOIN roles r ON r.id = ur.role_id
              WHERE (u.username = ? OR u.cognito_sub = ?) AND u.is_active = TRUE`, [username, req.auth.sub]
@@ -45,6 +45,7 @@ async function loadUserRole(req, res, next) {
         let roles = [...new Set(rows.map((row) => String(row.role || "").trim().toLowerCase()).filter((role) => DOCUMENT_ROLES.includes(role)))];
         let userId = rows[0]?.userId;
         let dbUsername = rows[0]?.username;
+        let userFullName = rows[0]?.full_name;
 
         // Auto-provision user from Cognito groups if authenticated via Cognito and not yet in database
         if (rows.length === 0 || !roles.length || !userId) {
@@ -65,7 +66,7 @@ async function loadUserRole(req, res, next) {
                         [cleanUser, assignedRole, req.auth.sub, cleanUser]
                     );
                     const [newRows] = await pool.query(
-                        `SELECT u.id AS userId, u.username, r.name AS role
+                        `SELECT u.id AS userId, u.username, u.full_name, r.name AS role
                          FROM users u JOIN users_roles ur ON ur.user_id = u.id
                          JOIN roles r ON r.id = ur.role_id
                          WHERE u.username = ? AND u.is_active = TRUE`,
@@ -74,6 +75,7 @@ async function loadUserRole(req, res, next) {
                     if (newRows.length > 0) {
                         userId = newRows[0].userId;
                         dbUsername = newRows[0].username;
+                        userFullName = newRows[0].full_name;
                         roles = [...new Set(newRows.map((r) => String(r.role || "").trim().toLowerCase()).filter((r) => DOCUMENT_ROLES.includes(r)))];
                     }
                 } catch (provisionErr) {
@@ -90,6 +92,7 @@ async function loadUserRole(req, res, next) {
 
         req.userId = userId;
         req.dbUsername = dbUsername || username;
+        req.userFullName = userFullName || dbUsername || username;
         req.userRoles = roles;
         req.userRole = ["admin", "executive", "document_officer", "faculty_staff"].find((role) => roles.includes(role));
 
@@ -243,6 +246,8 @@ app.get(
                 d.*,
                 assignee.username AS assignee_username,
                 assignee.full_name AS assignee_full_name,
+                owner.username AS owner_username,
+                owner.full_name AS owner_full_name,
                 f.file_name,
                 f.file_size,
                 f.mime_type,
@@ -250,6 +255,7 @@ app.get(
             FROM documents d
             LEFT JOIN document_files f ON d.id = f.document_id
             LEFT JOIN users assignee ON assignee.id = d.assignee_id
+            LEFT JOIN users owner ON owner.id = d.owner_id
             WHERE 1 = 1
         `;
 
@@ -388,12 +394,19 @@ app.get(
             `
             SELECT 
                 d.*,
+                assignee.username AS assignee_username,
+                assignee.full_name AS assignee_full_name,
+                owner.username AS owner_username,
+                owner.full_name AS owner_full_name,
+                (SELECT at.actor_username FROM document_audit_trails at WHERE at.document_id = d.id AND at.event_type = 'DOCUMENT_CREATE' ORDER BY at.id ASC LIMIT 1) AS creator_username,
                 f.file_name,
                 f.file_size,
                 f.mime_type,
                 f.uploaded_at AS file_uploaded_at
             FROM documents d
             LEFT JOIN document_files f ON d.id = f.document_id
+            LEFT JOIN users assignee ON assignee.id = d.assignee_id
+            LEFT JOIN users owner ON owner.id = d.owner_id
             WHERE d.id = ?
             `,
             [req.params.id]
@@ -674,7 +687,18 @@ app.post("/api/documents", requireCognitoAuth, loadUserRole, async (req, res) =>
 
             await connection.commit();
 
-            const [rows] = await pool.query("SELECT * FROM documents WHERE id = ?", [newDocId]);
+            const [rows] = await pool.query(
+                `SELECT d.*,
+                        assignee.username AS assignee_username,
+                        assignee.full_name AS assignee_full_name,
+                        owner.username AS owner_username,
+                        owner.full_name AS owner_full_name
+                 FROM documents d
+                 LEFT JOIN users assignee ON assignee.id = d.assignee_id
+                 LEFT JOIN users owner ON owner.id = d.owner_id
+                 WHERE d.id = ?`,
+                [newDocId]
+            );
             createdDoc = rows[0];
         } catch (txError) {
             await connection.rollback();
@@ -756,10 +780,18 @@ app.get(
         if (!checkDocumentAccess(req, docRows[0], "read").allowed) return res.status(403).json({ error: "Forbidden" });
 
         const [logs] = await pool.query(
-            `SELECT id, document_id, old_status, new_status, changed_by, changed_by_user_id, remarks, changed_at
-             FROM document_status_logs
-             WHERE document_id = ?
-             ORDER BY changed_at ASC, id ASC`,
+            `SELECT l.id, l.document_id, l.old_status, l.new_status,
+                    l.changed_by,
+                    COALESCE(u.full_name, l.changed_by) AS actor_name,
+                    u.full_name AS actor_full_name,
+                    l.changed_by_user_id, l.remarks, l.changed_at
+             FROM document_status_logs l
+             LEFT JOIN users u ON (
+                 (l.changed_by_user_id IS NOT NULL AND u.id = l.changed_by_user_id)
+                 OR (u.username COLLATE utf8mb4_unicode_ci = l.changed_by COLLATE utf8mb4_unicode_ci)
+             )
+             WHERE l.document_id = ?
+             ORDER BY l.changed_at ASC, l.id ASC`,
             [id]
         );
 
@@ -896,7 +928,18 @@ app.put("/api/documents/:id/status", requireCognitoAuth, loadUserRole, async (re
         }
 
         // 8. ดึงข้อมูลเอกสารและประวัติล่าสุดส่งกลับไปให้ Frontend
-        const [updatedRows] = await pool.query("SELECT * FROM documents WHERE id = ?", [id]);
+        const [updatedRows] = await pool.query(
+            `SELECT d.*,
+                    assignee.username AS assignee_username,
+                    assignee.full_name AS assignee_full_name,
+                    owner.username AS owner_username,
+                    owner.full_name AS owner_full_name
+             FROM documents d
+             LEFT JOIN users assignee ON assignee.id = d.assignee_id
+             LEFT JOIN users owner ON owner.id = d.owner_id
+             WHERE d.id = ?`,
+            [id]
+        );
         const [historyRows] = await pool.query(
             `SELECT id, old_status, new_status, changed_by, remarks, changed_at
              FROM document_status_logs
@@ -1065,9 +1108,14 @@ app.post("/api/documents/:id/assign", requireCognitoAuth, loadUserRole, async (r
         await connection.commit();
 
         const [rows] = await pool.query(
-            `SELECT d.*, u.username AS assignee_username, u.full_name AS assignee_full_name
+            `SELECT d.*,
+                    u.username AS assignee_username,
+                    u.full_name AS assignee_full_name,
+                    owner.username AS owner_username,
+                    owner.full_name AS owner_full_name
              FROM documents d
              LEFT JOIN users u ON u.id = d.assignee_id
+             LEFT JOIN users owner ON owner.id = d.owner_id
              WHERE d.id = ?`,
             [documentId]
         );
@@ -1180,10 +1228,12 @@ app.get("/api/documents/:id/assignments", requireCognitoAuth, loadUserRole, asyn
             `SELECT a.id, a.assigned_by_user_id, a.assigned_by_username,
                     a.previous_assignee_id, a.new_assignee_id, a.action_type, a.remarks, a.assigned_at,
                     pu.username AS previous_assignee_name,
-                    nu.username AS new_assignee_name
+                    pu.full_name AS previous_assignee_full_name,
+                    nu.username AS new_assignee_name,
+                    nu.full_name AS new_assignee_full_name
              FROM document_assignments a
-             LEFT JOIN users pu ON pu.id = CAST(a.previous_assignee_id AS UNSIGNED)
-             LEFT JOIN users nu ON nu.id = CAST(a.new_assignee_id AS UNSIGNED)
+             LEFT JOIN users pu ON (a.previous_assignee_id REGEXP '^[0-9]+$' AND pu.id = CAST(a.previous_assignee_id AS UNSIGNED))
+             LEFT JOIN users nu ON (a.new_assignee_id REGEXP '^[0-9]+$' AND nu.id = CAST(a.new_assignee_id AS UNSIGNED))
              WHERE a.document_id = ?
              ORDER BY a.assigned_at ASC, a.id ASC`,
             [documentId]
@@ -1370,7 +1420,18 @@ app.post("/api/documents/:id/forward", requireCognitoAuth, loadUserRole, async (
 
             await connection.commit();
 
-            const [rows] = await pool.query("SELECT * FROM documents WHERE id = ?", [id]);
+            const [rows] = await pool.query(
+                `SELECT d.*,
+                        assignee.username AS assignee_username,
+                        assignee.full_name AS assignee_full_name,
+                        owner.username AS owner_username,
+                        owner.full_name AS owner_full_name
+                 FROM documents d
+                 LEFT JOIN users assignee ON assignee.id = d.assignee_id
+                 LEFT JOIN users owner ON owner.id = d.owner_id
+                 WHERE d.id = ?`,
+                [id]
+            );
             updatedDoc = rows[0];
 
         } catch (txErr) {

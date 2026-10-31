@@ -122,8 +122,12 @@ function updateRoleUI() {
         userRoleDot.classList.add("role-staff");
     }
 
-    userRoleDisplay.textContent =
-        `${roleLabel} (${currentUsername || "-"})`;
+    const displayText = `${roleLabel} (${currentUsername || "-"})`;
+    userRoleDisplay.textContent = displayText;
+    userRoleDisplay.title = displayText;
+    if (roleMenuBtn) {
+        roleMenuBtn.title = `${displayText} (คลิกเพื่อดูข้อมูลผู้ใช้และออกจากระบบ)`;
+    }
 }
 
 /* =====================================================
@@ -168,18 +172,35 @@ async function fetchDocuments() {
                 step: 1
             };
 
-            const dateValue = row.receive_date || row.received_at || row.created_at;
+            // วันที่รับ: แสดงวันที่ลงรับ (receive_date) หรือวันที่สร้างเอกสาร (created_at)
             let receivedDate = "-";
-            let receivedTime = "-";
-
+            const dateValue = row.receive_date || row.created_at || row.received_at;
             if (dateValue) {
-                const date = new Date(dateValue);
-                if (!isNaN(date.getTime())) {
-                    receivedDate = date.toLocaleDateString("th-TH");
-                    receivedTime = date.toLocaleTimeString("th-TH", {
-                        hour: "2-digit",
-                        minute: "2-digit"
-                    });
+                if (typeof dateValue === "string" && /^\d{4}-\d{2}-\d{2}$/.test(dateValue.trim())) {
+                    const [y, m, d] = dateValue.trim().split("-").map(Number);
+                    receivedDate = new Date(y, m - 1, d).toLocaleDateString("th-TH");
+                } else {
+                    const date = new Date(dateValue);
+                    if (!isNaN(date.getTime())) {
+                        receivedDate = date.toLocaleDateString("th-TH");
+                    }
+                }
+            }
+
+            // เวลาที่ลงทะเบียน: ดึงจาก created_at ซึ่งเป็นเวลาจริงที่บันทึกเอกสารลงระบบ (ไม่ใช้ receive_date เพราะเป็นแค่วันที่ไม่มีเวลา ป้องกันการเพี้ยนเป็น 07:00)
+            let receivedTime = "-";
+            const timeValue = row.created_at || row.registered_at;
+            if (timeValue) {
+                const timeStr = String(timeValue).trim();
+                // ถ้าเป็น date-only string (ไม่มีเวลา) จะไม่นำมาคำนวณเวลาเพื่อกันการเพี้ยนเป็น 07:00
+                if (!/^\d{4}-\d{2}-\d{2}$/.test(timeStr)) {
+                    const timeDate = new Date(timeStr.includes(" ") && !timeStr.includes("T") ? timeStr.replace(" ", "T") : timeStr);
+                    if (!isNaN(timeDate.getTime())) {
+                        receivedTime = timeDate.toLocaleTimeString("th-TH", {
+                            hour: "2-digit",
+                            minute: "2-digit"
+                        });
+                    }
                 }
             }
 
@@ -194,6 +215,10 @@ async function fetchDocuments() {
 
             function safeFormatDate(val) {
                 if (!val) return "-";
+                if (typeof val === "string" && /^\d{4}-\d{2}-\d{2}$/.test(val.trim())) {
+                    const [y, m, d] = val.trim().split("-").map(Number);
+                    return new Date(y, m - 1, d).toLocaleDateString("th-TH");
+                }
                 const d = new Date(val);
                 if (isNaN(d.getTime())) return "-";
                 return d.toLocaleDateString("th-TH");
@@ -212,6 +237,10 @@ async function fetchDocuments() {
                 assignee_id: row.assignee_id || null,
                 assignee_username: row.assignee_username || null,
                 assignee_full_name: row.assignee_full_name || null,
+                owner_id: row.owner_id || null,
+                owner_username: row.owner_username || null,
+                owner_full_name: row.owner_full_name || null,
+                creator_username: row.creator_username || null,
                 send_date: safeFormatDate(row.sent_date),
                 receive_date: safeFormatDate(row.receive_date),
                 deadline: safeFormatDate(row.deadline),

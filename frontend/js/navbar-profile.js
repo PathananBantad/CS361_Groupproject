@@ -53,7 +53,12 @@
 
         // Update profile button display
         if (userRoleDisplay) {
-            userRoleDisplay.textContent = `${roleLabel} (${savedUser || "-"})`;
+            const displayText = `${roleLabel} (${savedUser || "-"})`;
+            userRoleDisplay.textContent = displayText;
+            userRoleDisplay.title = displayText;
+            if (roleMenuBtn) {
+                roleMenuBtn.title = `${displayText} (คลิกเพื่อดูข้อมูลผู้ใช้และออกจากระบบ)`;
+            }
         }
 
         // Update dot color based on role
