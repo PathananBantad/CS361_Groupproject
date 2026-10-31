@@ -74,13 +74,13 @@ if (loginForm) {
             const apiBase = typeof window.resolveApiBaseUrl === "function"
                 ? window.resolveApiBaseUrl()
                 : (window.API_BASE_URL + "/api");
-            const tuResp = await fetch(`${apiBase}/auth/tu-login`, {
+            const tuResp = await (window.apiFetch || fetch)(`${apiBase}/auth/tu-login`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ username, password })
             });
 
-            const tuData = await tuResp.json();
+            const tuData = await tuResp.json().catch(() => ({}));
             if (tuResp.ok && tuData.ok && tuData.access_token) {
                 localStorage.setItem("docuflow_access_token", tuData.access_token);
                 localStorage.setItem("docuflow_id_token", tuData.id_token);
@@ -102,7 +102,9 @@ if (loginForm) {
                 return;
             }
 
-            if (!tuResp.ok && tuData.message) {
+            // บันทึกข้อความข้อผิดพลาดเฉพาะกรณีที่เป็นข้อผิดพลาดจากธุรกิจ (เช่น รหัสผ่านผิด 401/400)
+            // ไม่นำรหัส 500 (Server Error จาก AWS Lab ดับ) มาทับข้อความ เพื่อให้ผู้ใช้ล็อกอินผ่าน Cognito ตรงได้
+            if (!tuResp.ok && tuData && tuData.message && tuResp.status < 500) {
                 var apiErrorMessage = tuData.message;
             }
         } catch (tuErr) {

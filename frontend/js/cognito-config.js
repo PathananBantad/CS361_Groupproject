@@ -8,15 +8,52 @@ window.COGNITO_CONFIG = {
 // รองรับทั้ง localhost, 127.0.0.1 และ Live Server (เช่น port 5500) ที่ไม่ได้ใช้ port 3000
 window.IS_LOCAL = ["localhost", "127.0.0.1", "0.0.0.0", "::1"].includes(window.location.hostname);
 
-// URL ของ Backend API Gateway บน Production (AWS)
-window.API_GATEWAY_URL = "https://utvhg6d6o3.execute-api.us-east-1.amazonaws.com";
+// URLs ของ Backend:
+// - Primary: AWS API Gateway + Lambda (Learner Lab)
+// - Fallback: Render Web Service (รัน 24/7 เชื่อมต่อ TiDB Cloud ชุดเดียวกัน)
+window.AWS_API_GATEWAY_URL = "https://utvhg6d6o3.execute-api.us-east-1.amazonaws.com";
+window.RENDER_API_URL = "https://docuflow-backend-z2md.onrender.com";
 
-// Origin ของ API:
-// - Local: ยิงไปที่ origin เดียวกับหน้าเว็บ (dev server มี proxy /api ไปยัง backend)
-// - Production (Amplify): ยิงไปที่ API Gateway โดยตรง
-window.API_BASE_URL = window.IS_LOCAL
+window.PRIMARY_API_URL = window.AWS_API_GATEWAY_URL;
+window.FALLBACK_API_URL = window.RENDER_API_URL;
+window.API_GATEWAY_URL = window.PRIMARY_API_URL;
+
+// ตรวจสอบ endpoint ที่จำไว้ในเซสชัน เพื่อไม่ให้ต้องรอ timeout ซ้ำในหน้านั้นๆ
+let savedActiveApi = null;
+try {
+    savedActiveApi = sessionStorage.getItem("docuflow_active_api");
+} catch (_) {}
+
+window.ACTIVE_API_URL = window.IS_LOCAL
     ? window.location.origin
-    : window.API_GATEWAY_URL;
+    : (savedActiveApi || window.PRIMARY_API_URL);
+
+// Origin ของ API
+window.API_BASE_URL = window.ACTIVE_API_URL;
+
+// ฟังก์ชันสลับไปใช้ Render สำรองเมื่อ AWS มีปัญหา
+window.switchToFallbackApi = function () {
+    if (window.ACTIVE_API_URL !== window.FALLBACK_API_URL) {
+        console.warn("[DocuFlow] Primary AWS API unavailable. Switching to 24/7 Render Failover:", window.FALLBACK_API_URL);
+        window.ACTIVE_API_URL = window.FALLBACK_API_URL;
+        window.API_BASE_URL = window.FALLBACK_API_URL;
+        try {
+            sessionStorage.setItem("docuflow_active_api", window.FALLBACK_API_URL);
+        } catch (_) {}
+    }
+};
+
+// ฟังก์ชันสลับกลับมาใช้ AWS เมื่อเปิด Lab กลับมาใช้งานได้ตามปกติ
+window.switchToPrimaryApi = function () {
+    if (window.ACTIVE_API_URL !== window.PRIMARY_API_URL) {
+        console.info("[DocuFlow] AWS API is active. Switching back to AWS Primary API:", window.PRIMARY_API_URL);
+        window.ACTIVE_API_URL = window.PRIMARY_API_URL;
+        window.API_BASE_URL = window.PRIMARY_API_URL;
+        try {
+            sessionStorage.removeItem("docuflow_active_api");
+        } catch (_) {}
+    }
+};
 
 // ฟังก์ชันกลางสำหรับหา Base URL ที่มี /api ต่อท้าย ใช้ร่วมกันทุกไฟล์
 // (ป้องกันการเขียนตรรกะซ้ำที่ยึดติดกับ port 3000 ในหลายไฟล์)
@@ -26,7 +63,7 @@ window.resolveApiBaseUrl = function () {
         // dev server ตั้ง proxy ให้ /api ชี้ไป backend อยู่แล้ว ใช้ path แบบ relative
         return "/api";
     }
-    const base = window.API_BASE_URL || window.API_GATEWAY_URL;
+    const base = window.ACTIVE_API_URL || window.API_BASE_URL || window.PRIMARY_API_URL;
     return base.endsWith("/api") ? base : `${base}/api`;
 };
 
@@ -83,37 +120,119 @@ function refreshCognitoSession() {
     return cognitoRefreshPromise;
 }
 
+// ปรับเปลี่ยน URL ให้เป็น Render หาก Active API กำลังชี้ไปที่ Render
+function rewriteApiUrl(rawUrl) {
+    if (typeof rawUrl !== "string" || window.IS_LOCAL) return rawUrl;
+    if (window.ACTIVE_API_URL === window.FALLBACK_API_URL) {
+        if (rawUrl.startsWith(window.PRIMARY_API_URL)) {
+            return rawUrl.replace(window.PRIMARY_API_URL, window.FALLBACK_API_URL);
+        }
+    }
+    return rawUrl;
+}
+
 // Add the Cognito access token to protected API requests. The server remains
 // the authority for identity, role, and document-level permissions.
-window.apiFetch = function (input, options = {}) {
-    const requestUrl = input instanceof Request ? input.url : input;
-    const url = new URL(requestUrl, window.location.href);
-    const apiOrigin = new URL(window.API_BASE_URL).origin;
-    const isProtectedApiRequest = url.origin === apiOrigin && url.pathname.includes("/api/");
+// พร้อมระบบ Smart Auto-Fallback: เมื่อ AWS API Gateway ล่ม/ส่ง 500 (เช่น Lab ดับ) จะสลับไปยิง Render อัตโนมัติทันที
+window.apiFetch = async function (input, options = {}) {
+    let rawUrl = input instanceof Request ? input.url : input;
+    rawUrl = rewriteApiUrl(rawUrl);
+
     const headers = new Headers(options.headers || (input instanceof Request ? input.headers : undefined));
-    const createInput = () => input instanceof Request ? input.clone() : input;
 
     // Guest ไม่แนบ Token และไม่พยายาม refresh เมื่อเจอ 401 (ป้องกัน Token เก่าค้างและลูป refresh ที่ไม่จำเป็น)
     const isGuest = (localStorage.getItem("docuflow_role") || "").toLowerCase().trim() === "guest";
 
-    if (isProtectedApiRequest && !isGuest) {
+    const isProtectedApi = typeof rawUrl === "string" && rawUrl.includes("/api/") && !isGuest;
+    if (isProtectedApi && !headers.has("Authorization")) {
         const token = localStorage.getItem("docuflow_access_token") ||
             localStorage.getItem("access_token") || "";
         if (token) headers.set("Authorization", `Bearer ${token}`);
     }
 
-    return fetch(createInput(), { ...options, headers }).then(async response => {
-        if (response.status !== 401 || !isProtectedApiRequest || isGuest) return response;
+    const requestOptions = { ...options, headers };
 
+    const executeFetch = async (targetUrl) => {
+        const reqInput = input instanceof Request ? new Request(targetUrl, requestOptions) : targetUrl;
+        return fetch(reqInput, requestOptions);
+    };
+
+    let response;
+    let primaryFailed = false;
+
+    try {
+        response = await executeFetch(rawUrl);
+
+        // ตรวจสอบกรณีเซิร์ฟเวอร์หลัก (AWS) ส่ง Error 500/502/503/504
+        if (
+            !window.IS_LOCAL &&
+            response.status >= 500 &&
+            typeof rawUrl === "string" &&
+            rawUrl.startsWith(window.PRIMARY_API_URL)
+        ) {
+            console.warn(`[DocuFlow] Primary API returned HTTP ${response.status}. Initiating seamless failover to Render...`);
+            primaryFailed = true;
+        }
+    } catch (networkErr) {
+        // กรณีเชื่อมต่อไม่ได้ (เช่น Network error, CORS error เมื่อ API Gateway ปิดตัวลง)
+        if (
+            !window.IS_LOCAL &&
+            typeof rawUrl === "string" &&
+            rawUrl.startsWith(window.PRIMARY_API_URL)
+        ) {
+            console.warn("[DocuFlow] Primary API connection error. Initiating seamless failover to Render...", networkErr.message);
+            primaryFailed = true;
+        } else {
+            throw networkErr;
+        }
+    }
+
+    // หาก Primary ล้มเหลว ให้ Failover ไปยัง Render สำรองทันที
+    if (primaryFailed) {
+        window.switchToFallbackApi();
+        const fallbackUrl = rawUrl.replace(window.PRIMARY_API_URL, window.FALLBACK_API_URL);
+        try {
+            response = await executeFetch(fallbackUrl);
+            console.info("[DocuFlow] Failover to Render successful (Status:", response.status, ")");
+        } catch (fallbackErr) {
+            console.error("[DocuFlow] Both Primary AWS and Render fallback failed:", fallbackErr);
+            throw fallbackErr;
+        }
+    }
+
+    // จัดการกรณี 401 Token หมดอายุ (Cognito Token Refresh)
+    if (response && response.status === 401 && isProtectedApi) {
         try {
             const refreshedAccessToken = await refreshCognitoSession();
-            const retryHeaders = new Headers(options.headers || (input instanceof Request ? input.headers : undefined));
+            const retryHeaders = new Headers(requestOptions.headers);
             retryHeaders.set("Authorization", `Bearer ${refreshedAccessToken}`);
-            return fetch(createInput(), { ...options, headers: retryHeaders });
-        } catch (error) {
-            // Keep the original 401 response; never log or expose token material.
+            const currentUrl = window.ACTIVE_API_URL === window.FALLBACK_API_URL
+                ? rawUrl.replace(window.PRIMARY_API_URL, window.FALLBACK_API_URL)
+                : rawUrl;
+            return fetch(currentUrl, { ...requestOptions, headers: retryHeaders });
+        } catch (_) {
             return response;
         }
-    });
+    }
+
+    return response;
 };
 
+// ตรวจสอบสถานะ AWS ในเบื้องหลังเป็นระยะ หาก AWS Learner Lab ถูกเปิดใช้งานอีกครั้ง จะสลับกลับมาใช้ AWS อัตโนมัติ
+if (!window.IS_LOCAL && typeof window !== "undefined") {
+    const probePrimaryApi = async () => {
+        if (window.ACTIVE_API_URL === window.FALLBACK_API_URL) {
+            try {
+                const testRes = await fetch(`${window.PRIMARY_API_URL}/api/health`, {
+                    signal: AbortSignal.timeout ? AbortSignal.timeout(3000) : undefined
+                });
+                if (testRes.ok) {
+                    window.switchToPrimaryApi();
+                }
+            } catch (_) {}
+        }
+    };
+
+    setTimeout(probePrimaryApi, 30000);
+    setInterval(probePrimaryApi, 120000);
+}
