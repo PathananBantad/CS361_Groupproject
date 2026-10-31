@@ -421,6 +421,10 @@
 
     // Helper ป้องกัน XSS
     function escapeHtml(value) {
+        // ใช้ฟังก์ชันกลางจาก cognito-config.js (มี fallback เผื่อโหลดไม่ทัน)
+        if (typeof window.escapeHtmlSafe === "function") {
+            return window.escapeHtmlSafe(value);
+        }
         return String(value ?? "")
             .replace(/&/g, "&amp;")
             .replace(/</g, "&lt;")

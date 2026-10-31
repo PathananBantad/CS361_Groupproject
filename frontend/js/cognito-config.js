@@ -30,6 +30,17 @@ window.resolveApiBaseUrl = function () {
     return base.endsWith("/api") ? base : `${base}/api`;
 };
 
+// ฟังก์ชันกลางป้องกัน XSS ใช้ร่วมกันหลายไฟล์ (รวม escapeHtml ที่เดิมเขียนซ้ำใน dashboard.js และ document-modal.js)
+// ใช้ชื่อ escapeHtmlSafe เพื่อไม่ชนกับ function declaration ชื่อ escapeHtml ในไฟล์อื่น (กัน recursion)
+window.escapeHtmlSafe = function (value) {
+    return String(value ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+};
+
 let cognitoRefreshPromise;
 
 function refreshCognitoSession() {

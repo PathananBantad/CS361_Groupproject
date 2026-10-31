@@ -42,13 +42,6 @@ function getMimeTypeByExtension(fileNameOrKey) {
     return mimeMap[ext] || "application/octet-stream";
 }
 
-// สร้าง Public URL ตรงของ S3 Bucket (ป้องกันปัญหา AWSCompromisedKeyQuarantineV3 บน GetObject)
-function getPublicUrl(fileKey) {
-    if (!fileKey) return null;
-    const encodedKey = fileKey.split("/").map(encodeURIComponent).join("/");
-    return `https://${bucketName}.s3.${s3Region}.amazonaws.com/${encodedKey}`;
-}
-
 // Create upload URL (PUT)
 async function createUploadUrl(fileKey, contentType) {
     const finalContentType = contentType || getMimeTypeByExtension(fileKey);
@@ -140,7 +133,6 @@ module.exports = {
     createDownloadUrl,
     getS3Object,
     getObjectMetadata,
-    getPublicUrl,
     getMimeTypeByExtension,
     getObjectBuffer,
     uploadObjectBuffer,

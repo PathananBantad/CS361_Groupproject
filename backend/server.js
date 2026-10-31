@@ -18,8 +18,6 @@ const { ROLES: DOCUMENT_ROLES, canAccessDocument, mapCognitoGroupsToRoles } = re
 
 const {
     AUDIT_EVENTS,
-    AUDIT_EVENT_METADATA,
-    sanitizeAuditData,
     extractServerActor,
     recordAuditEvent,
     getAuditTrailByDocumentId,
@@ -110,7 +108,6 @@ const {
     createDownloadUrl,
     getS3Object,
     getObjectMetadata,
-    getPublicUrl,
     getMimeTypeByExtension,
     getObjectBuffer,
     uploadObjectBuffer
