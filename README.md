@@ -1,7 +1,4 @@
-Mailbox & Document Flow System(G6)
-
-## Demo link
-https://drive.google.com/file/d/1R_aK4wGe_OutfZ1EYv8MoW61mMjnNwqG/view?usp=sharing
+## Mailbox & Document Flow System(G6)
 
 ## Project Vision
 พัฒนาระบบรับและกระจายเอกสารอิเล็กทรอนิกส์ให้เป็นแพลตฟอร์มกลางที่ช่วยจัดการเอกสารตั้งแต่การรับ ลงทะเบียน จัดเก็บ และส่งต่ออย่างเป็นระบบ ผู้ใช้สามารถติดตามสถานะและตรวจสอบการดำเนินงานย้อนหลังได้ ช่วยลดปัญหาเอกสารสูญหาย งานล่าช้า และความไม่ชัดเจนในการส่งต่องานระหว่างฝ่าย
@@ -98,30 +95,3 @@ https://main.ds9q6gagifqjo.amplifyapp.com/html/index.html
 
 ## Architecture V4
 <img width="1752" height="897" alt="Architecture diagram V4" src="https://github.com/user-attachments/assets/58283b41-e446-47ae-a805-74d31e2f3307" />
-
-
-## 📜 ระบบ Audit Trail (ประวัติการดำเนินการเอกสาร)
-ระบบ DocuFlow มีระบบ Audit Trail สำหรับบันทึกและตรวจสอบประวัติการดำเนินการที่สำคัญ ได้แก่:
-- **การลงทะเบียนเอกสารใหม่ (`DOCUMENT_CREATE`)**
-- **การมอบหมายเอกสาร (`ASSIGN`)**
-- **การส่งต่อเอกสาร (`FORWARD`)**
-- **การเปลี่ยนสถานะเอกสารตาม Workflow (`STATUS_CHANGE`)**
-
-### คุณสมบัติด้านความปลอดภัยและความน่าเชื่อถือ:
-- บันทึกข้อมูลผู้ดำเนินการ (Actor User ID, Username, Role) และวันเวลา (Timestamp) จากฝั่ง Server เท่านั้น
-- มีการจัดเก็บสถานะก่อนและหลังการเปลี่ยนแปลง (`before_state`, `after_state`) ในรูปแบบ JSON
-- ป้องกันการแก้ไขหรือลบประวัติ (Immutable & Append-Only Record คืนค่า HTTP 405)
-- ระบบกรองและตัดข้อมูลลับอัตโนมัติ (Sanitization: Password, Token, JWT, API Key)
-- จัดการข้อผิดพลาดด้วย Database Transaction ป้องกันข้อมูลไม่สอดคล้องกัน
-- ตรวจสอบสิทธิ์การเรียกดูตาม Role/Permission Matrix (Admin, Executive, Officer, Staff)
-
-📖 ดูรายละเอียดโครงสร้างฐานข้อมูล ข้อกำหนด API และแนวทางการตรวจสอบย้อนหลังฉบับเต็มได้ที่ [docs/AUDIT_TRAIL.md](docs/AUDIT_TRAIL.md)
-
-
-
-
-
-
-
-
-
