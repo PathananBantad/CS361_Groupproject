@@ -96,8 +96,9 @@ V1 มุ่งเน้นการพัฒนา Information Service เพ�
 ## Deploy link
 https://main.ds9q6gagifqjo.amplifyapp.com/html/index.html
 
-## Architecture V3
-<img width="1204" height="727" alt="image" src="https://github.com/user-attachments/assets/e660a57c-ea9a-4bec-867b-546786d2b304" />
+## Architecture V4
+<img width="1752" height="897" alt="Architecture diagram V4" src="https://github.com/user-attachments/assets/58283b41-e446-47ae-a805-74d31e2f3307" />
+
 
 ## 📜 ระบบ Audit Trail (ประวัติการดำเนินการเอกสาร)
 ระบบ DocuFlow มีระบบ Audit Trail สำหรับบันทึกและตรวจสอบประวัติการดำเนินการที่สำคัญ ได้แก่:
