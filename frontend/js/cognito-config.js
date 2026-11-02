@@ -11,7 +11,7 @@ window.IS_LOCAL = ["localhost", "127.0.0.1", "0.0.0.0", "::1"].includes(window.l
 // URLs ของ Backend:
 // - Primary: AWS API Gateway + Lambda (Learner Lab)
 // - Fallback: Render Web Service (รัน 24/7 เชื่อมต่อ TiDB Cloud ชุดเดียวกัน)
-window.AWS_API_GATEWAY_URL = "https://utvhg6d6o3.execute-api.us-east-1.amazonaws.com";
+window.AWS_API_GATEWAY_URL = "https://fpdo65dftiw2trv7w6ms4ulh5y0sfact.lambda-url.us-east-1.on.aws";
 window.RENDER_API_URL = "https://docuflow-backend-z2md.onrender.com";
 
 window.PRIMARY_API_URL = window.AWS_API_GATEWAY_URL;
@@ -63,7 +63,8 @@ window.resolveApiBaseUrl = function () {
         // dev server ตั้ง proxy ให้ /api ชี้ไป backend อยู่แล้ว ใช้ path แบบ relative
         return "/api";
     }
-    const base = window.ACTIVE_API_URL || window.API_BASE_URL || window.PRIMARY_API_URL;
+    const rawBase = window.ACTIVE_API_URL || window.API_BASE_URL || window.PRIMARY_API_URL;
+    const base = String(rawBase || "").replace(/\/+$/, "");
     return base.endsWith("/api") ? base : `${base}/api`;
 };
 

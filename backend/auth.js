@@ -18,14 +18,19 @@ const { signHs256Jwt } = require("./cognito-auth");
 
 const router = express.Router();
 
-const cognito = new CognitoIdentityProviderClient({
-    region: process.env.COGNITO_REGION || "us-east-1",
-    credentials: {
-        accessKeyId: process.env.aws_access_key_id || process.env.AWS_ACCESS_KEY_ID,
-        secretAccessKey: process.env.aws_secret_access_key || process.env.AWS_SECRET_ACCESS_KEY,
+const cognitoConfig = {
+    region: process.env.COGNITO_REGION || "us-east-1"
+};
+const envAccessKey = process.env.aws_access_key_id || process.env.AWS_ACCESS_KEY_ID;
+const envSecretKey = process.env.aws_secret_access_key || process.env.AWS_SECRET_ACCESS_KEY;
+if (envAccessKey && envSecretKey) {
+    cognitoConfig.credentials = {
+        accessKeyId: envAccessKey,
+        secretAccessKey: envSecretKey,
         sessionToken: process.env.aws_session_token || process.env.AWS_SESSION_TOKEN
-    }
-});
+    };
+}
+const cognito = new CognitoIdentityProviderClient(cognitoConfig);
 
 // ตรวจว่า error เกิดจาก AWS credentials ของเซิร์ฟเวอร์หมดอายุ/ไม่ถูกต้อง (ไม่ใช่ความผิดของผู้ใช้)
 function isAwsCredentialError(error) {
