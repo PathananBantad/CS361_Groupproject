@@ -54,6 +54,21 @@ module.exports.handler = async (event, context) => {
     if (event && event.triggerSource && event.triggerSource.startsWith("PostAuthentication_")) {
         return await handleCognitoPostAuth(event);
     }
-    // หากถูกเรียกจาก API Gateway (HTTP Web App)
-    return await serverlessHandler(event, context);
+    // หากถูกเรียกจาก API Gateway / Function URL
+    const response = await serverlessHandler(event, context);
+    if (response) {
+        if (response.headers) {
+            delete response.headers['access-control-allow-origin'];
+            delete response.headers['Access-Control-Allow-Origin'];
+            delete response.headers['access-control-allow-credentials'];
+            delete response.headers['Access-Control-Allow-Credentials'];
+        }
+        if (response.multiValueHeaders) {
+            delete response.multiValueHeaders['access-control-allow-origin'];
+            delete response.multiValueHeaders['Access-Control-Allow-Origin'];
+            delete response.multiValueHeaders['access-control-allow-credentials'];
+            delete response.multiValueHeaders['Access-Control-Allow-Credentials'];
+        }
+    }
+    return response;
 };
