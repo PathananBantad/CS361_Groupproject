@@ -33,76 +33,191 @@ async function loadUserRole(req, res, next) {
         });
     }
 
+    const connection = await pool.getConnection();
+
     try {
-        const username = req.auth.username;
-        if (!username) return res.status(403).json({ error: "No authorized role found for this user" });
-        const [rows] = await pool.execute(
-            `SELECT u.id AS userId, u.username, u.full_name, r.name AS role
-             FROM users u JOIN users_roles ur ON ur.user_id = u.id
-             JOIN roles r ON r.id = ur.role_id
-             WHERE (u.username = ? OR u.cognito_sub = ?) AND u.is_active = TRUE`, [username, req.auth.sub]
-        );
-        let roles = [...new Set(rows.map((row) => String(row.role || "").trim().toLowerCase()).filter((role) => DOCUMENT_ROLES.includes(role)))];
-        let userId = rows[0]?.userId;
-        let dbUsername = rows[0]?.username;
-        let userFullName = rows[0]?.full_name;
+        const cognitoSub = String(req.auth.sub).trim();
+        const username = String(req.auth.username || "").trim().toLowerCase();
 
-        // Auto-provision user from Cognito groups if authenticated via Cognito and not yet in database
-        if (rows.length === 0 || !roles.length || !userId) {
-            const mappedRoles = mapCognitoGroupsToRoles(req.auth.groups || []);
-            const cleanUser = String(username).toLowerCase().trim();
-            if (mappedRoles.length === 0) {
-                // ผู้ใช้ใหม่ที่ยังไม่มีกลุ่มใน Cognito -> กำหนดเป็น Staff (faculty_staff) เป็น Default อัตโนมัติ
-                mappedRoles.push("faculty_staff");
-            }
-
-            if (mappedRoles.length > 0) {
-                const assignedRole = mappedRoles[0];
-                try {
-                    await pool.query(
-                        `INSERT INTO users (username, password, role, cognito_sub, is_active, full_name)
-                         VALUES (?, 'COGNITO_AUTH', ?, ?, 1, ?)
-                         ON DUPLICATE KEY UPDATE cognito_sub = VALUES(cognito_sub), role = VALUES(role), is_active = 1`,
-                        [cleanUser, assignedRole, req.auth.sub, cleanUser]
-                    );
-                    const [newRows] = await pool.query(
-                        `SELECT u.id AS userId, u.username, u.full_name, r.name AS role
-                         FROM users u JOIN users_roles ur ON ur.user_id = u.id
-                         JOIN roles r ON r.id = ur.role_id
-                         WHERE u.username = ? AND u.is_active = TRUE`,
-                        [cleanUser]
-                    );
-                    if (newRows.length > 0) {
-                        userId = newRows[0].userId;
-                        dbUsername = newRows[0].username;
-                        userFullName = newRows[0].full_name;
-                        roles = [...new Set(newRows.map((r) => String(r.role || "").trim().toLowerCase()).filter((r) => DOCUMENT_ROLES.includes(r)))];
-                    }
-                } catch (provisionErr) {
-                    console.warn("Auto-provision user failed:", provisionErr.message);
-                }
-            }
-        }
-
-        if (!userId || !roles.length) {
+        if (!username) {
             return res.status(403).json({
                 error: "No authorized role found for this user"
             });
         }
 
-        req.userId = userId;
-        req.dbUsername = dbUsername || username;
-        req.userFullName = userFullName || dbUsername || username;
+        await connection.beginTransaction();
+
+        let user = null;
+
+        // 1. ค้นหาด้วย Cognito Sub ก่อน
+        // ถ้าพบหลายบัญชี ให้เลือกบัญชีที่ username ไม่ใช่ Cognito Sub
+        const [subRows] = await connection.execute(
+            `SELECT id, username, full_name, cognito_sub, role
+             FROM users
+             WHERE cognito_sub = ?
+               AND is_active = 1
+             ORDER BY (username = ?) ASC, id ASC
+             LIMIT 1
+             FOR UPDATE`,
+            [cognitoSub, cognitoSub]
+        );
+
+        if (subRows.length > 0) {
+            user = subRows[0];
+        }
+
+        // 2. ถ้าไม่พบ Cognito Sub ให้ค้นหาจาก Username
+        if (!user) {
+            const [usernameRows] = await connection.execute(
+                `SELECT id, username, full_name, cognito_sub, role
+                 FROM users
+                 WHERE username = ?
+                   AND is_active = 1
+                 LIMIT 1
+                 FOR UPDATE`,
+                [username]
+            );
+
+            if (usernameRows.length > 0) {
+                user = usernameRows[0];
+
+                // ป้องกันการนำ Cognito Sub ไปผูกกับบัญชีที่มี Sub คนละค่า
+                if (user.cognito_sub && user.cognito_sub !== cognitoSub) {
+                    await connection.rollback();
+                    return res.status(409).json({
+                        error: "This username is already linked to another Cognito account"
+                    });
+                }
+
+                await connection.execute(
+                    `UPDATE users
+                     SET cognito_sub = ?
+                     WHERE id = ?`,
+                    [cognitoSub, user.id]
+                );
+
+                user.cognito_sub = cognitoSub;
+            }
+        }
+
+        // 3. ถ้าไม่มีบัญชีเดิมจริง ๆ จึงสร้างบัญชีใหม่
+        if (!user) {
+            const mappedRoles = mapCognitoGroupsToRoles(
+                req.auth.groups || []
+            );
+
+            const assignedRole = mappedRoles[0] || "faculty_staff";
+
+            const [roleRows] = await connection.execute(
+                `SELECT id, name
+                 FROM roles
+                 WHERE name = ?
+                 LIMIT 1`,
+                [assignedRole]
+            );
+
+            if (roleRows.length === 0) {
+                await connection.rollback();
+                return res.status(403).json({
+                    error: "Configured role does not exist"
+                });
+            }
+
+            const [insertResult] = await connection.execute(
+                `INSERT INTO users
+                    (username, password, role, cognito_sub, is_active, full_name)
+                 VALUES (?, 'COGNITO_AUTH', ?, ?, 1, ?)`,
+                [username, assignedRole, cognitoSub, username]
+            );
+
+            user = {
+                id: insertResult.insertId,
+                username,
+                full_name: username,
+                cognito_sub: cognitoSub,
+                role: assignedRole
+            };
+        }
+
+        // 4. ตรวจสอบ Role Mapping ของ User ที่เลือก
+        const [existingRoleRows] = await connection.execute(
+            `SELECT r.id, r.name
+             FROM users_roles ur
+             JOIN roles r ON r.id = ur.role_id
+             WHERE ur.user_id = ?`,
+            [user.id]
+        );
+
+        let roles = [
+            ...new Set(
+                existingRoleRows
+                    .map(row => String(row.name || "").trim().toLowerCase())
+                    .filter(role => DOCUMENT_ROLES.includes(role))
+            )
+        ];
+
+        // 5. ถ้ายังไม่มี Mapping ให้เพิ่ม Role ที่เหมาะสม
+        if (roles.length === 0) {
+            const mappedRoles = mapCognitoGroupsToRoles(
+                req.auth.groups || []
+            );
+
+            const assignedRole =
+                mappedRoles[0] ||
+                user.role ||
+                "faculty_staff";
+
+            const [roleRows] = await connection.execute(
+                `SELECT id, name
+                 FROM roles
+                 WHERE name = ?
+                 LIMIT 1`,
+                [assignedRole]
+            );
+
+            if (roleRows.length === 0) {
+                await connection.rollback();
+                return res.status(403).json({
+                    error: "No valid role mapping found"
+                });
+            }
+
+            await connection.execute(
+                `INSERT IGNORE INTO users_roles (user_id, role_id)
+                 VALUES (?, ?)`,
+                [user.id, roleRows[0].id]
+            );
+
+            roles = [String(roleRows[0].name).toLowerCase()];
+        }
+
+        await connection.commit();
+
+        // 6. ส่งข้อมูล User ที่เลือกไปยัง Middleware ถัดไป
+        req.userId = user.id;
+        req.dbUsername = user.username;
+        req.userFullName = user.full_name || user.username;
         req.userRoles = roles;
-        req.userRole = ["admin", "executive", "document_officer", "faculty_staff"].find((role) => roles.includes(role));
+        req.userRole = [
+            "admin",
+            "executive",
+            "document_officer",
+            "faculty_staff"
+        ].find(role => roles.includes(role));
 
         return next();
+
     } catch (error) {
+        await connection.rollback();
+
         console.error("Failed to verify user role:", error);
 
         return res.status(500).json({
             error: "Unable to verify user authorization"
         });
+
+    } finally {
+        connection.release();
     }
 }
 
@@ -389,9 +504,9 @@ app.get(
     requireCognitoAuth,
     loadUserRole,
     async (req, res) => {
-            try {
-        const [rows] = await pool.query(
-            `
+        try {
+            const [rows] = await pool.query(
+                `
             SELECT 
                 d.*,
                 assignee.username AS assignee_username,
@@ -409,64 +524,64 @@ app.get(
             LEFT JOIN users owner ON owner.id = d.owner_id
             WHERE d.id = ?
             `,
-            [req.params.id]
-        );
+                [req.params.id]
+            );
 
-        if (rows.length === 0) {
-            return res.status(404).json({
-                error: "Document not found"
-            });
-        }
+            if (rows.length === 0) {
+                return res.status(404).json({
+                    error: "Document not found"
+                });
+            }
 
-        const doc = rows[0];
-        const access = checkDocumentAccess(req, doc, "read");
-        if (!access.allowed) {
-            return res.status(403).json({ error: access.reason || "Permission Denied" });
-        }
+            const doc = rows[0];
+            const access = checkDocumentAccess(req, doc, "read");
+            if (!access.allowed) {
+                return res.status(403).json({ error: access.reason || "Permission Denied" });
+            }
 
-        const finalFileName = doc.file_name || extractFileNameFromKey(doc.file_key);
-        const ext = finalFileName ? path.extname(finalFileName).toLowerCase() : "";
-        const canPreview = isPreviewable(finalFileName || doc.file_key);
-        const resolvedMime = doc.mime_type || getMimeTypeByExtension(finalFileName || doc.file_key);
+            const finalFileName = doc.file_name || extractFileNameFromKey(doc.file_key);
+            const ext = finalFileName ? path.extname(finalFileName).toLowerCase() : "";
+            const canPreview = isPreviewable(finalFileName || doc.file_key);
+            const resolvedMime = doc.mime_type || getMimeTypeByExtension(finalFileName || doc.file_key);
 
-        let previewUrl = null;
-        let downloadUrl = null;
-        if (doc.file_key) {
-            try {
-                if (canPreview) {
-                    previewUrl = await createDownloadUrl(doc.file_key, {
-                        disposition: "inline",
+            let previewUrl = null;
+            let downloadUrl = null;
+            if (doc.file_key) {
+                try {
+                    if (canPreview) {
+                        previewUrl = await createDownloadUrl(doc.file_key, {
+                            disposition: "inline",
+                            fileName: finalFileName,
+                            contentType: resolvedMime
+                        });
+                    }
+                    downloadUrl = await createDownloadUrl(doc.file_key, {
+                        disposition: "attachment",
                         fileName: finalFileName,
                         contentType: resolvedMime
                     });
+                } catch (err) {
+                    console.warn("createDownloadUrl error in GET /api/documents/:id:", err.message);
                 }
-                downloadUrl = await createDownloadUrl(doc.file_key, {
-                    disposition: "attachment",
-                    fileName: finalFileName,
-                    contentType: resolvedMime
-                });
-            } catch (err) {
-                console.warn("createDownloadUrl error in GET /api/documents/:id:", err.message);
             }
+
+            res.json({
+                ...doc,
+                display_file_name: finalFileName,
+                file_extension: ext,
+                can_preview: canPreview,
+                mime_type: resolvedMime,
+                preview_url: previewUrl,
+                download_url: downloadUrl
+            });
+
+        } catch (error) {
+            console.error(error);
+            res.status(500).json({
+                error: "Failed to fetch document"
+            });
         }
-
-        res.json({
-            ...doc,
-            display_file_name: finalFileName,
-            file_extension: ext,
-            can_preview: canPreview,
-            mime_type: resolvedMime,
-            preview_url: previewUrl,
-            download_url: downloadUrl
-        });
-
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({
-            error: "Failed to fetch document"
-        });
-    }
-});
+    });
 
 // Create document
 app.post("/api/documents", requireCognitoAuth, loadUserRole, async (req, res) => {
@@ -770,17 +885,17 @@ app.get(
     requireCognitoAuth,
     loadUserRole,
     async (req, res) => {
-            try {
-        const { id } = req.params;
+        try {
+            const { id } = req.params;
 
-        const [docRows] = await pool.query("SELECT * FROM documents WHERE id = ?", [id]);
-        if (docRows.length === 0) {
-            return res.status(404).json({ error: "ไม่พบข้อมูลเอกสารในระบบ" });
-        }
-        if (!checkDocumentAccess(req, docRows[0], "read").allowed) return res.status(403).json({ error: "Forbidden" });
+            const [docRows] = await pool.query("SELECT * FROM documents WHERE id = ?", [id]);
+            if (docRows.length === 0) {
+                return res.status(404).json({ error: "ไม่พบข้อมูลเอกสารในระบบ" });
+            }
+            if (!checkDocumentAccess(req, docRows[0], "read").allowed) return res.status(403).json({ error: "Forbidden" });
 
-        const [logs] = await pool.query(
-            `SELECT l.id, l.document_id, l.old_status, l.new_status,
+            const [logs] = await pool.query(
+                `SELECT l.id, l.document_id, l.old_status, l.new_status,
                     l.changed_by,
                     COALESCE(u.full_name, l.changed_by) AS actor_name,
                     u.full_name AS actor_full_name,
@@ -792,20 +907,20 @@ app.get(
              )
              WHERE l.document_id = ?
              ORDER BY l.changed_at ASC, l.id ASC`,
-            [id]
-        );
+                [id]
+            );
 
-        res.json({
-            document_id: id,
-            reference_no: docRows[0].reference_no,
-            current_status: docRows[0].status,
-            history: logs
-        });
-    } catch (error) {
-        console.error("Fetch status history error:", error);
-        res.status(500).json({ error: "ไม่สามารถดึงข้อมูลประวัติการเปลี่ยนสถานะเอกสารได้" });
-    }
-});
+            res.json({
+                document_id: id,
+                reference_no: docRows[0].reference_no,
+                current_status: docRows[0].status,
+                history: logs
+            });
+        } catch (error) {
+            console.error("Fetch status history error:", error);
+            res.status(500).json({ error: "ไม่สามารถดึงข้อมูลประวัติการเปลี่ยนสถานะเอกสารได้" });
+        }
+    });
 
 // PUT /api/documents/:id/status - เปลี่ยนสถานะเอกสารตาม Workflow V3 พร้อมตรวจสอบสิทธิ์และเงื่อนไข (เชื่อมต่อ Audit Trail)
 app.put("/api/documents/:id/status", requireCognitoAuth, loadUserRole, async (req, res) => {
@@ -1323,7 +1438,7 @@ app.post("/api/documents/:id/forward", requireCognitoAuth, loadUserRole, async (
 
             if (!forwardableStatuses.includes(currentStatus)) {
                 await connection.rollback();
-                    return res.status(409).json({
+                return res.status(409).json({
                     error: `ไม่สามารถส่งต่อเอกสารในสถานะ ${currentStatus} ได้`
                 });
             }
@@ -1587,153 +1702,153 @@ app.get(
     requireCognitoAuth,
     loadUserRole,
     async (req, res) => {
-   try {
-        const { id } = req.params;
-        const { fileName, contentType, fileSize } = req.query;
+        try {
+            const { id } = req.params;
+            const { fileName, contentType, fileSize } = req.query;
 
-        if (!fileName) {
-            return res.status(400).json({
-                error: "fileName is required"
-            });
-        }
+            if (!fileName) {
+                return res.status(400).json({
+                    error: "fileName is required"
+                });
+            }
 
-        // ตรวจสอบเอกสารว่ามีอยู่จริงไหมก่อน
-        const [docRows] = await pool.query("SELECT * FROM documents WHERE id = ?", [id]);
-        if (docRows.length === 0) {
-            return res.status(404).json({ error: "Document not found" });
-        }
+            // ตรวจสอบเอกสารว่ามีอยู่จริงไหมก่อน
+            const [docRows] = await pool.query("SELECT * FROM documents WHERE id = ?", [id]);
+            if (docRows.length === 0) {
+                return res.status(404).json({ error: "Document not found" });
+            }
 
-        const access = checkDocumentAccess(req, docRows[0], "upload");
-        if (!access.allowed) {
-            return res.status(403).json({ error: access.reason || "Permission Denied: ไม่มีสิทธิ์อัปโหลดไฟล์" });
-        }
+            const access = checkDocumentAccess(req, docRows[0], "upload");
+            if (!access.allowed) {
+                return res.status(403).json({ error: access.reason || "Permission Denied: ไม่มีสิทธิ์อัปโหลดไฟล์" });
+            }
 
-        // รายการประเภทไฟล์ที่ระบบรองรับ (Upload: PDF, DOCX, JPG/JPEG, PNG, XLSX, PPTX)
-        const allowedTypes = {
-            ".pdf": "application/pdf",
-            ".jpg": "image/jpeg",
-            ".jpeg": "image/jpeg",
-            ".png": "image/png",
-            ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-            // backwards compatibility
-            ".doc": "application/msword",
-            ".xls": "application/vnd.ms-excel",
-            ".ppt": "application/vnd.ms-powerpoint"
-        };
+            // รายการประเภทไฟล์ที่ระบบรองรับ (Upload: PDF, DOCX, JPG/JPEG, PNG, XLSX, PPTX)
+            const allowedTypes = {
+                ".pdf": "application/pdf",
+                ".jpg": "image/jpeg",
+                ".jpeg": "image/jpeg",
+                ".png": "image/png",
+                ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                // backwards compatibility
+                ".doc": "application/msword",
+                ".xls": "application/vnd.ms-excel",
+                ".ppt": "application/vnd.ms-powerpoint"
+            };
 
-        const extension = path.extname(fileName).toLowerCase();
-        const requestedSize = Number(fileSize);
-        if (!Number.isInteger(requestedSize) || requestedSize <= 0 || requestedSize > 10 * 1024 * 1024) {
-            return res.status(400).json({ error: "File size must be between 1 byte and 10 MB" });
-        }
+            const extension = path.extname(fileName).toLowerCase();
+            const requestedSize = Number(fileSize);
+            if (!Number.isInteger(requestedSize) || requestedSize <= 0 || requestedSize > 10 * 1024 * 1024) {
+                return res.status(400).json({ error: "File size must be between 1 byte and 10 MB" });
+            }
 
-        if (!allowedTypes[extension]) {
-            return res.status(400).json({
-                error: "Unsupported file type. Allowed: PDF, DOCX, JPG/JPEG, PNG, XLSX, PPTX"
-            });
-        }
+            if (!allowedTypes[extension]) {
+                return res.status(400).json({
+                    error: "Unsupported file type. Allowed: PDF, DOCX, JPG/JPEG, PNG, XLSX, PPTX"
+                });
+            }
 
-        // จัดการ Content Type ให้ถูกต้อง (หากเบราว์เซอร์ส่ง generic มา ให้ใช้ค่าที่ถูกต้องตาม extension)
-        const expectedType = allowedTypes[extension];
-        if (contentType && !["application/octet-stream", "application/x-zip-compressed", expectedType].includes(contentType)) {
-            return res.status(400).json({ error: "File MIME type does not match its extension" });
-        }
-        const finalContentType = expectedType;
+            // จัดการ Content Type ให้ถูกต้อง (หากเบราว์เซอร์ส่ง generic มา ให้ใช้ค่าที่ถูกต้องตาม extension)
+            const expectedType = allowedTypes[extension];
+            if (contentType && !["application/octet-stream", "application/x-zip-compressed", expectedType].includes(contentType)) {
+                return res.status(400).json({ error: "File MIME type does not match its extension" });
+            }
+            const finalContentType = expectedType;
 
-        // Prevent path traversal
-        if (fileName.includes("/") || fileName.includes("\\")) {
-            return res.status(400).json({
-                error: "Invalid file name"
-            });
-        }
+            // Prevent path traversal
+            if (fileName.includes("/") || fileName.includes("\\")) {
+                return res.status(400).json({
+                    error: "Invalid file name"
+                });
+            }
 
-        // Remove control characters but keep Thai characters
-        const safeFileName = fileName
-            .replace(/[\u0000-\u001F\u007F]/g, "")
-            .trim();
+            // Remove control characters but keep Thai characters
+            const safeFileName = fileName
+                .replace(/[\u0000-\u001F\u007F]/g, "")
+                .trim();
 
-        if (!safeFileName) {
-            return res.status(400).json({
-                error: "Invalid file name"
-            });
-        }
+            if (!safeFileName) {
+                return res.status(400).json({
+                    error: "Invalid file name"
+                });
+            }
 
-        // Check document exists
-        const [rows] = await pool.query(
-            "SELECT * FROM documents WHERE id = ?",
-            [id]
-        );
+            // Check document exists
+            const [rows] = await pool.query(
+                "SELECT * FROM documents WHERE id = ?",
+                [id]
+            );
 
-        if (rows.length === 0) {
-            return res.status(404).json({
-                error: "Document not found"
-            });
-        }
+            if (rows.length === 0) {
+                return res.status(404).json({
+                    error: "Document not found"
+                });
+            }
 
-        // Create unique file key
-        const fileKey = `documents/${id}/${Date.now()}-${safeFileName}`;
+            // Create unique file key
+            const fileKey = `documents/${id}/${Date.now()}-${safeFileName}`;
 
-        // Generate presigned upload URL
-        const uploadUrl = await createUploadUrl(
-            fileKey,
-            finalContentType
-        );
+            // Generate presigned upload URL
+            const uploadUrl = await createUploadUrl(
+                fileKey,
+                finalContentType
+            );
 
-        // บันทึก file_key ใน documents
-        await pool.query(
-            `
+            // บันทึก file_key ใน documents
+            await pool.query(
+                `
             UPDATE documents
             SET file_key = ?
             WHERE id = ?
             `,
-            [fileKey, id]
-        );
+                [fileKey, id]
+            );
 
-        // บันทึกหรืออัปเดต Metadata ในตาราง document_files
-        const [existingFiles] = await pool.query(
-            "SELECT id FROM document_files WHERE document_id = ?",
-            [id]
-        );
+            // บันทึกหรืออัปเดต Metadata ในตาราง document_files
+            const [existingFiles] = await pool.query(
+                "SELECT id FROM document_files WHERE document_id = ?",
+                [id]
+            );
 
-        const parsedSize = requestedSize;
+            const parsedSize = requestedSize;
 
-        if (existingFiles.length > 0) {
-            await pool.query(
-                `
+            if (existingFiles.length > 0) {
+                await pool.query(
+                    `
                 UPDATE document_files
                 SET file_name = ?, file_path = ?, file_size = ?, mime_type = ?, uploaded_at = CURRENT_TIMESTAMP
                 WHERE document_id = ?
                 `,
-                [safeFileName, fileKey, parsedSize, finalContentType, id]
-            );
-        } else {
-            await pool.query(
-                `
+                    [safeFileName, fileKey, parsedSize, finalContentType, id]
+                );
+            } else {
+                await pool.query(
+                    `
                 INSERT INTO document_files (document_id, file_name, file_path, file_size, mime_type, uploaded_at)
                 VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
                 `,
-                [id, safeFileName, fileKey, parsedSize, finalContentType]
-            );
+                    [id, safeFileName, fileKey, parsedSize, finalContentType]
+                );
+            }
+
+            res.json({
+                document_id: id,
+                file_name: safeFileName,
+                file_size: parsedSize,
+                mime_type: finalContentType,
+                upload_url: uploadUrl,
+                file_key: fileKey
+            });
+
+        } catch (error) {
+            console.error(error);
+            res.status(500).json({
+                error: "Failed to create upload URL"
+            });
         }
-
-        res.json({
-            document_id: id,
-            file_name: safeFileName,
-            file_size: parsedSize,
-            mime_type: finalContentType,
-            upload_url: uploadUrl,
-            file_key: fileKey
-        });
-
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({
-            error: "Failed to create upload URL"
-        });
-    }
-});
+    });
 
 // Endpoint สำหรับ Direct Upload ไฟล์ขึ้น S3 ผ่าน Backend โดยตรง (Bypass Browser CORS 100%)
 
@@ -1745,62 +1860,62 @@ app.post(
     async (req, res) => {
 
         try {
-        const { id } = req.params;
-        const fileName = req.query.fileName || req.headers["x-filename"] || `file-${Date.now()}`;
-        const contentType = req.query.contentType || req.headers["content-type"] || "application/octet-stream";
+            const { id } = req.params;
+            const fileName = req.query.fileName || req.headers["x-filename"] || `file-${Date.now()}`;
+            const contentType = req.query.contentType || req.headers["content-type"] || "application/octet-stream";
 
-        const [docRows] = await pool.query("SELECT * FROM documents WHERE id = ?", [id]);
-        if (docRows.length === 0) {
-            return res.status(404).json({ error: "Document not found" });
-        }
-
-        if (!checkDocumentAccess(req, docRows[0], "upload").allowed) return res.status(403).json({ error: "Forbidden" });
-        if (!Buffer.isBuffer(req.body) || req.body.length === 0 || req.body.length > 10 * 1024 * 1024) return res.status(400).json({ error: "Invalid file size" });
-
-        const safeFileName = decodeURIComponent(fileName).replace(/[\u0000-\u001F\u007F]/g, "").trim();
-        if (!safeFileName || /[\\/]/.test(safeFileName)) return res.status(400).json({ error: "Invalid file name" });
-        const finalContentType = getMimeTypeByExtension(safeFileName);
-        if (finalContentType === "application/octet-stream" || (contentType !== finalContentType && contentType !== "application/octet-stream")) return res.status(400).json({ error: "Unsupported or mismatched file type" });
-        const fileKey = `documents/${id}/${Date.now()}-${safeFileName}`;
-
-        try {
-            await uploadObjectBuffer(fileKey, req.body, finalContentType);
-        } catch (s3Err) {
-            console.warn("Direct upload S3 warning (saving to local storage fallback):", s3Err.message);
-            const localDir = path.join(__dirname, "uploads", String(id));
-            if (!fs.existsSync(localDir)) {
-                fs.mkdirSync(localDir, { recursive: true });
+            const [docRows] = await pool.query("SELECT * FROM documents WHERE id = ?", [id]);
+            if (docRows.length === 0) {
+                return res.status(404).json({ error: "Document not found" });
             }
-            fs.writeFileSync(path.join(localDir, safeFileName), req.body);
+
+            if (!checkDocumentAccess(req, docRows[0], "upload").allowed) return res.status(403).json({ error: "Forbidden" });
+            if (!Buffer.isBuffer(req.body) || req.body.length === 0 || req.body.length > 10 * 1024 * 1024) return res.status(400).json({ error: "Invalid file size" });
+
+            const safeFileName = decodeURIComponent(fileName).replace(/[\u0000-\u001F\u007F]/g, "").trim();
+            if (!safeFileName || /[\\/]/.test(safeFileName)) return res.status(400).json({ error: "Invalid file name" });
+            const finalContentType = getMimeTypeByExtension(safeFileName);
+            if (finalContentType === "application/octet-stream" || (contentType !== finalContentType && contentType !== "application/octet-stream")) return res.status(400).json({ error: "Unsupported or mismatched file type" });
+            const fileKey = `documents/${id}/${Date.now()}-${safeFileName}`;
+
+            try {
+                await uploadObjectBuffer(fileKey, req.body, finalContentType);
+            } catch (s3Err) {
+                console.warn("Direct upload S3 warning (saving to local storage fallback):", s3Err.message);
+                const localDir = path.join(__dirname, "uploads", String(id));
+                if (!fs.existsSync(localDir)) {
+                    fs.mkdirSync(localDir, { recursive: true });
+                }
+                fs.writeFileSync(path.join(localDir, safeFileName), req.body);
+            }
+
+            await pool.query("UPDATE documents SET file_key = ? WHERE id = ?", [fileKey, id]);
+
+            const [existingFiles] = await pool.query("SELECT id FROM document_files WHERE document_id = ?", [id]);
+            if (existingFiles.length > 0) {
+                await pool.query(
+                    "UPDATE document_files SET file_name = ?, file_path = ?, file_size = ?, mime_type = ?, uploaded_at = CURRENT_TIMESTAMP WHERE document_id = ?",
+                    [safeFileName, fileKey, req.body.length, finalContentType, id]
+                );
+            } else {
+                await pool.query(
+                    "INSERT INTO document_files (document_id, file_name, file_path, file_size, mime_type, uploaded_at) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)",
+                    [id, safeFileName, fileKey, req.body.length, finalContentType]
+                );
+            }
+
+            res.json({
+                ok: true,
+                document_id: id,
+                file_key: fileKey,
+                file_name: safeFileName,
+                file_size: req.body.length
+            });
+        } catch (error) {
+            console.error("Direct upload error:", error);
+            res.status(500).json({ error: "Failed to upload file" });
         }
-
-        await pool.query("UPDATE documents SET file_key = ? WHERE id = ?", [fileKey, id]);
-
-        const [existingFiles] = await pool.query("SELECT id FROM document_files WHERE document_id = ?", [id]);
-        if (existingFiles.length > 0) {
-            await pool.query(
-                "UPDATE document_files SET file_name = ?, file_path = ?, file_size = ?, mime_type = ?, uploaded_at = CURRENT_TIMESTAMP WHERE document_id = ?",
-                [safeFileName, fileKey, req.body.length, finalContentType, id]
-            );
-        } else {
-            await pool.query(
-                "INSERT INTO document_files (document_id, file_name, file_path, file_size, mime_type, uploaded_at) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)",
-                [id, safeFileName, fileKey, req.body.length, finalContentType]
-            );
-        }
-
-        res.json({
-            ok: true,
-            document_id: id,
-            file_key: fileKey,
-            file_name: safeFileName,
-            file_size: req.body.length
-        });
-    } catch (error) {
-        console.error("Direct upload error:", error);
-        res.status(500).json({ error: "Failed to upload file" });
-    }
-});
+    });
 
 // Endpoint สำหรับบันทึก/ยืนยัน Metadata ไฟล์หลังการ Upload สำเร็จ
 app.post(
@@ -1808,70 +1923,70 @@ app.post(
     requireCognitoAuth,
     loadUserRole,
     async (req, res) => {
-    try {
-        const { id } = req.params;
-        const { fileName, fileSize, mimeType, fileKey } = req.body;
+        try {
+            const { id } = req.params;
+            const { fileName, fileSize, mimeType, fileKey } = req.body;
 
-        if (!fileName) {
-            return res.status(400).json({ error: "fileName is required" });
-        }
+            if (!fileName) {
+                return res.status(400).json({ error: "fileName is required" });
+            }
 
-        const [docRows] = await pool.query("SELECT * FROM documents WHERE id = ?", [id]);
-        if (docRows.length === 0) {
-            return res.status(404).json({ error: "Document not found" });
-        }
+            const [docRows] = await pool.query("SELECT * FROM documents WHERE id = ?", [id]);
+            if (docRows.length === 0) {
+                return res.status(404).json({ error: "Document not found" });
+            }
 
-        // [เพิ่มใหม่] ตรวจสอบสิทธิ์ก่อนยอมให้บันทึก Metadata ไฟล์
-        const access = checkDocumentAccess(req, docRows[0], "upload");
-        if (!access.allowed) {
-            return res.status(403).json({ error: access.reason || "Permission Denied" });
-        }
+            // [เพิ่มใหม่] ตรวจสอบสิทธิ์ก่อนยอมให้บันทึก Metadata ไฟล์
+            const access = checkDocumentAccess(req, docRows[0], "upload");
+            if (!access.allowed) {
+                return res.status(403).json({ error: access.reason || "Permission Denied" });
+            }
 
-        const safeFileName = fileName.replace(/[\u0000-\u001F\u007F]/g, "").trim();
-        const finalKey = fileKey;
-        if (!finalKey || finalKey !== docRows[0].file_key || !finalKey.startsWith(`documents/${id}/`)) return res.status(400).json({ error: "Invalid file key" });
-        const finalMime = mimeType || getMimeTypeByExtension(safeFileName);
-        const parsedSize = fileSize ? Number(fileSize) : null;
+            const safeFileName = fileName.replace(/[\u0000-\u001F\u007F]/g, "").trim();
+            const finalKey = fileKey;
+            if (!finalKey || finalKey !== docRows[0].file_key || !finalKey.startsWith(`documents/${id}/`)) return res.status(400).json({ error: "Invalid file key" });
+            const finalMime = mimeType || getMimeTypeByExtension(safeFileName);
+            const parsedSize = fileSize ? Number(fileSize) : null;
 
-        if (!Number.isInteger(parsedSize) || parsedSize <= 0 || parsedSize > 10 * 1024 * 1024 || finalMime !== getMimeTypeByExtension(safeFileName)) return res.status(400).json({ error: "Invalid file metadata" });
-        const storedObject = await getObjectMetadata(finalKey);
-        if (storedObject.ContentLength !== parsedSize || (storedObject.ContentType && storedObject.ContentType !== finalMime)) return res.status(400).json({ error: "Uploaded file metadata does not match" });
+            if (!Number.isInteger(parsedSize) || parsedSize <= 0 || parsedSize > 10 * 1024 * 1024 || finalMime !== getMimeTypeByExtension(safeFileName)) return res.status(400).json({ error: "Invalid file metadata" });
+            const storedObject = await getObjectMetadata(finalKey);
+            if (storedObject.ContentLength !== parsedSize || (storedObject.ContentType && storedObject.ContentType !== finalMime)) return res.status(400).json({ error: "Uploaded file metadata does not match" });
 
-        // Update or Insert into document_files
-        const [existing] = await pool.query("SELECT id FROM document_files WHERE document_id = ?", [id]);
-        if (existing.length > 0) {
-            await pool.query(
-                `
+            // Update or Insert into document_files
+            const [existing] = await pool.query("SELECT id FROM document_files WHERE document_id = ?", [id]);
+            if (existing.length > 0) {
+                await pool.query(
+                    `
                 UPDATE document_files
                 SET file_name = ?, file_path = ?, file_size = ?, mime_type = ?, uploaded_at = CURRENT_TIMESTAMP
                 WHERE document_id = ?
                 `,
-                [safeFileName, finalKey, parsedSize, finalMime, id]
-            );
-        } else {
-            await pool.query(
-                `
+                    [safeFileName, finalKey, parsedSize, finalMime, id]
+                );
+            } else {
+                await pool.query(
+                    `
                 INSERT INTO document_files (document_id, file_name, file_path, file_size, mime_type, uploaded_at)
                 VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
                 `,
-                [id, safeFileName, finalKey, parsedSize, finalMime]
-            );
+                    [id, safeFileName, finalKey, parsedSize, finalMime]
+                );
+            }
+
+            res.json({
+                ok: true,
+                document_id: id,
+                file_name: safeFileName,
+                file_key: finalKey,
+                file_size: parsedSize,
+                mime_type: finalMime
+            });
+
+        } catch (error) {
+            console.error("Save metadata error:", error);
+            res.status(500).json({ error: "Failed to save file metadata" });
         }
-
-        res.json({
-            ok: true,
-            document_id: id,
-            file_name: safeFileName,
-            file_key: finalKey,
-            file_size: parsedSize,
-            mime_type: finalMime
-        });
-
-    } catch (error) {
-        console.error("Save metadata error:", error);
-        res.status(500).json({ error: "Failed to save file metadata" });
-    }
-});
+    });
 
 // Create S3 preview URL พร้อมตรวจสอบสิทธิ์
 // เฉพาะ PDF, JPG/JPEG และ PNG สามารถแสดงตัวอย่างได้
