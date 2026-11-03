@@ -47,6 +47,7 @@ async function loadUserRole(req, res, next) {
 
         await connection.beginTransaction();
 
+
         let user = null;
 
         // 1. ค้นหาด้วย Cognito Sub ก่อน
@@ -248,6 +249,11 @@ const PORT = Number(process.env.PORT || 3000);
 function sanitizeInput(str) {
     if (typeof str !== 'string') return str;
     return str.replace(/</g, "&lt;").replace(/>/g, "&gt;").trim();
+}
+
+// ตอบ error รูปแบบเดียวกันทุกจุด: คง "error" ไว้ให้ frontend เดิม และเพิ่ม "code"
+function sendError(res, status, code, message) {
+    return res.status(status).json({ error: message, code });
 }
 
 // Helper ฟังก์ชันตรวจรูปแบบวันที่ YYYY-MM-DD
@@ -658,6 +664,36 @@ app.post("/api/documents", requireCognitoAuth, loadUserRole, async (req, res) =>
             });
         }
 
+        // 4.1 ตรวจเลขที่เอกสารซ้ำทั้งระบบ (ห้ามยืนยันเพื่อข้าม)
+        const normalizedDocumentNumber =
+            typeof document_number === "string"
+                ? document_number.trim()
+                : "";
+
+        const documentNumberToSave =
+            normalizedDocumentNumber || null;
+
+        if (normalizedDocumentNumber) {
+            const [duplicates] = await pool.query(
+                `SELECT id, reference_no, document_number, subject, sender_name
+         FROM documents
+         WHERE TRIM(document_number) = ?
+         ORDER BY id DESC
+         LIMIT 5`,
+                [normalizedDocumentNumber]
+            );
+
+            if (duplicates.length > 0) {
+                return res.status(409).json({
+                    error: "เลขที่เอกสารนี้มีอยู่ในระบบแล้ว",
+                    code: "DUPLICATE_DOCUMENT_NUMBER",
+                    similar: duplicates
+                });
+            }
+        }
+
+
+
         // 5. กำหนดและแปลงผู้รับผิดชอบเอกสาร (Assignee)
         let resolvedAssigneeId = (assignee_id && !isNaN(Number(assignee_id))) ? Number(assignee_id) : null;
 
@@ -737,7 +773,7 @@ app.post("/api/documents", requireCognitoAuth, loadUserRole, async (req, res) =>
                 `,
                 [
                     reference_no || newRefNo,
-                    document_number || null,
+                    documentNumberToSave,
                     sanitizedSubject,
                     document_type,
                     sanitizedSenderName,
@@ -784,7 +820,7 @@ app.post("/api/documents", requireCognitoAuth, loadUserRole, async (req, res) =>
                 beforeState: null,
                 afterState: {
                     reference_no: reference_no || newRefNo,
-                    document_number: document_number || null,
+                    document_number: documentNumberToSave,
                     subject: sanitizedSubject,
                     document_type: document_type,
                     sender_name: sanitizedSenderName,
@@ -824,17 +860,27 @@ app.post("/api/documents", requireCognitoAuth, loadUserRole, async (req, res) =>
 
         res.status(201).json(createdDoc);
 
-    } catch (error) {
+      } catch (error) {
         console.error(error);
 
         if (error.code === "ER_DUP_ENTRY") {
+            const errorMessage = String(error.message || "");
+
+            if (errorMessage.includes("uq_documents_document_number")) {
+                return res.status(409).json({
+                    error: "เลขที่เอกสารนี้มีอยู่ในระบบแล้ว",
+                    code: "DUPLICATE_DOCUMENT_NUMBER"
+                });
+            }
+
             return res.status(409).json({
-                error: "reference_no already exists"
+                error: "เลขอ้างอิงเอกสารนี้มีอยู่ในระบบแล้ว",
+                code: "DUPLICATE_REFERENCE_NUMBER"
             });
         }
 
-        res.status(500).json({
-            error: "Failed to create document"
+        return res.status(500).json({
+            error: "เกิดข้อผิดพลาดในการลงทะเบียนเอกสาร"
         });
     }
 });
@@ -842,7 +888,6 @@ app.post("/api/documents", requireCognitoAuth, loadUserRole, async (req, res) =>
 // ============================================================================
 // [V3] WORKFLOW STATUS MANAGEMENT APIS
 // ============================================================================
-
 // V3 Workflow Constants
 const V3_STATUSES = ["Received", "Assigned", "Processing", "Completed"];
 
@@ -955,67 +1000,65 @@ app.put("/api/documents/:id/status", requireCognitoAuth, loadUserRole, async (re
             });
         }
 
-        // 4. ตรวจสอบว่าเอกสารมีอยู่จริงในระบบหรือไม่
-        const [docRows] = await pool.query("SELECT * FROM documents WHERE id = ?", [id]);
-        if (docRows.length === 0) {
-            return res.status(404).json({
-                error: "ไม่พบเอกสารที่ระบุในระบบ (Document not found)"
-            });
-        }
-
-        const doc = docRows[0];
-        if (!checkDocumentAccess(req, doc, "status").allowed) return res.status(403).json({ error: "Forbidden" });
-        const oldStatus = doc.status || "Received";
-
-        // 5. ป้องกันการเปลี่ยนเป็นสถานะเดิม
-        if (oldStatus === newStatus) {
-            const label = V3_STATUS_LABELS[oldStatus] || oldStatus;
-            return res.status(400).json({
-                error: `เอกสารอยู่ในสถานะ "${label}" (${oldStatus}) อยู่แล้ว ไม่สามารถเปลี่ยนเป็นสถานะเดิมได้`
-            });
-        }
-
-        // 6. ตรวจสอบเงื่อนไขการเปลี่ยนสถานะตาม Workflow
-        const isAdmin = role === "admin";
-        const allowedNextStatuses = V3_WORKFLOW_TRANSITIONS[oldStatus] || [];
-        const isStandardWorkflowStep = allowedNextStatuses.includes(newStatus);
-
-        if (!isAdmin && !isStandardWorkflowStep) {
-            if (oldStatus === "Completed") {
-                return res.status(400).json({
-                    error: `เอกสารนี้อยู่ในสถานะ "ดำเนินการเสร็จสิ้นแล้ว" (Completed) ซึ่งเป็นสถานะสิ้นสุดของ Workflow ไม่สามารถเปลี่ยนสถานะต่อไปได้อีก`
-                });
-            }
-
-            const allowedLabels = allowedNextStatuses.map(s => `"${V3_STATUS_LABELS[s] || s}" (${s})`).join(", ") || "ไม่มี";
-            return res.status(400).json({
-                error: `ไม่สามารถเปลี่ยนสถานะจาก "${V3_STATUS_LABELS[oldStatus] || oldStatus}" ไปเป็น "${V3_STATUS_LABELS[newStatus] || newStatus}" ได้ สำหรับบทบาทของคุณสามารถเลื่อนสถานะไปข้างหน้าได้อย่างเดียว (สถานะถัดไปที่อนุญาตคือ: ${allowedLabels})`
-            });
-        }
-
-        // 7. ใช้ Database Transaction เพื่อป้องกันข้อมูลเอกสารและประวัติไม่สอดคล้องกัน (Task 7)
+        // 4-7. ล็อกแถวก่อน แล้วตรวจทุกอย่างใน transaction เดียว (กัน 2 คำขอผ่านการตรวจพร้อมกัน)
         const connection = await pool.getConnection();
         let auditRecord = null;
         try {
             await connection.beginTransaction();
 
+            const [docRows] = await connection.query(
+                "SELECT * FROM documents WHERE id = ? FOR UPDATE", [id]
+            );
+            if (docRows.length === 0) {
+                await connection.rollback();
+                return sendError(res, 404, "DOCUMENT_NOT_FOUND", "ไม่พบเอกสารที่ระบุในระบบ (Document not found)");
+            }
+
+            const doc = docRows[0];
+            const oldStatus = doc.status || "Received";
+
+            if (!checkDocumentAccess(req, doc, "status").allowed) {
+                await connection.rollback();
+                return sendError(res, 403, "FORBIDDEN", "Forbidden");
+            }
+
+            // ผู้แพ้ race หรือ retry จะมาเจอตรงนี้ -> 409 และไม่เขียนอะไรเพิ่ม
+            if (oldStatus === newStatus) {
+                await connection.rollback();
+                const label = V3_STATUS_LABELS[oldStatus] || oldStatus;
+                return sendError(res, 409, "ALREADY_IN_STATUS",
+                    `เอกสารอยู่ในสถานะ "${label}" (${oldStatus}) อยู่แล้ว (อาจมีผู้อื่นดำเนินการไปก่อน)`);
+            }
+
+            const isAdmin = role === "admin";
+            const allowedNextStatuses = V3_WORKFLOW_TRANSITIONS[oldStatus] || [];
+            const isStandardWorkflowStep = allowedNextStatuses.includes(newStatus);
+
+            if (!isAdmin && !isStandardWorkflowStep) {
+                await connection.rollback();
+                if (oldStatus === "Completed") {
+                    return sendError(res, 400, "INVALID_TRANSITION",
+                        `เอกสารนี้อยู่ในสถานะ "ดำเนินการเสร็จสิ้นแล้ว" (Completed) ซึ่งเป็นสถานะสิ้นสุดของ Workflow ไม่สามารถเปลี่ยนสถานะต่อไปได้อีก`);
+                }
+                const allowedLabels = allowedNextStatuses.map(s => `"${V3_STATUS_LABELS[s] || s}" (${s})`).join(", ") || "ไม่มี";
+                return sendError(res, 400, "INVALID_TRANSITION",
+                    `ไม่สามารถเปลี่ยนสถานะจาก "${V3_STATUS_LABELS[oldStatus] || oldStatus}" ไปเป็น "${V3_STATUS_LABELS[newStatus] || newStatus}" ได้ สำหรับบทบาทของคุณสามารถเลื่อนสถานะไปข้างหน้าได้อย่างเดียว (สถานะถัดไปที่อนุญาตคือ: ${allowedLabels})`);
+            }
+
             const [updateResult] = await connection.query(
                 `UPDATE documents SET status = ? WHERE id = ?`,
                 [newStatus, id]
             );
-
             if (updateResult.affectedRows === 0) {
                 throw new Error("เกิดข้อผิดพลาดในการอัปเดตสถานะเอกสารในฐานข้อมูล");
             }
 
-            // บันทึก document_status_logs สำหรับความเข้ากันได้ย้อนหลังกับ V3
             await connection.query(
                 `INSERT INTO document_status_logs (document_id, old_status, new_status, changed_by, changed_by_user_id, remarks, changed_at)
                  VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
                 [id, oldStatus, newStatus, username, userId, sanitizedRemarks || null]
             );
 
-            // บันทึก Audit Trail ส่วนกลาง (Task 3, 4, 6)
             auditRecord = await recordAuditEvent({
                 documentId: id,
                 actorUserId: actor.actorUserId,
@@ -1371,7 +1414,7 @@ app.get("/api/documents/:id/assignments", requireCognitoAuth, loadUserRole, asyn
 app.post("/api/documents/:id/forward", requireCognitoAuth, loadUserRole, async (req, res) => {
     try {
         const { id } = req.params;
-        const { new_assignee_id, new_assignee_name, receiver_name, remarks, reason } = req.body || {};
+        const { new_assignee_id, new_assignee_name, receiver_name, remarks, reason, expected_assignee_id } = req.body || {};
 
         const actor = extractServerActor(req);
         const role = actor.actorRole;
@@ -1418,6 +1461,16 @@ app.post("/api/documents/:id/forward", requireCognitoAuth, loadUserRole, async (
             }
 
             const doc = docRows[0];
+            // client บอกว่าตอนกดเห็นผู้ถือเป็นใคร ถ้าไม่ตรง = มีคนชิงส่งต่อไปก่อนแล้ว -> 409
+            // (ต้องเช็กก่อน checkDocumentAccess ไม่งั้นผู้แพ้จะได้ 403 แทน)
+            if (
+                expected_assignee_id != null &&
+                String(doc.assignee_id ?? "") !== String(expected_assignee_id).trim()
+            ) {
+                await connection.rollback();
+                return sendError(res, 409, "DOCUMENT_CONFLICT",
+                    "เอกสารถูกดำเนินการโดยผู้อื่นแล้ว กรุณารีเฟรชแล้วลองใหม่");
+            }
             if (!checkDocumentAccess(req, doc, "forward").allowed) {
                 await connection.rollback();
                 return res.status(403).json({ error: "Forbidden" });
