@@ -10,6 +10,7 @@ const cors = require("cors");
 const pool = require("./db");
 const path = require("path");
 const fs = require("fs");
+const crypto = require("crypto");
 
 const sessionMiddleware = require("./session");
 const authRouter = require("./auth");
@@ -244,6 +245,36 @@ app.use(sessionMiddleware);
 app.use("/api/auth", authRouter);
 
 const PORT = Number(process.env.PORT || 3000);
+
+// คำนวณ SHA-256 ของไฟล์
+function calculateFileHash(buffer) {
+    return crypto
+        .createHash("sha256")
+        .update(buffer)
+        .digest("hex");
+}
+
+// ตรวจว่าไฟล์มีเนื้อหาซ้ำกับเอกสารอื่นหรือไม่
+async function findDuplicateFileHash(fileHash, documentId) {
+    const [rows] = await pool.query(
+        `
+        SELECT
+            df.id,
+            df.document_id,
+            df.file_name,
+            d.document_number,
+            d.reference_no
+        FROM document_files df
+        LEFT JOIN documents d ON d.id = df.document_id
+        WHERE df.file_hash = ?
+          AND df.document_id <> ?
+        LIMIT 1
+        `,
+        [fileHash, documentId]
+    );
+
+    return rows.length > 0 ? rows[0] : null;
+}
 
 // Helper ฟังก์ชันป้องกัน XSS
 function sanitizeInput(str) {
@@ -860,7 +891,7 @@ app.post("/api/documents", requireCognitoAuth, loadUserRole, async (req, res) =>
 
         res.status(201).json(createdDoc);
 
-      } catch (error) {
+    } catch (error) {
         console.error(error);
 
         if (error.code === "ER_DUP_ENTRY") {
@@ -1844,52 +1875,18 @@ app.get(
             const fileKey = `documents/${id}/${Date.now()}-${safeFileName}`;
 
             // Generate presigned upload URL
+            // Generate presigned upload URL
             const uploadUrl = await createUploadUrl(
                 fileKey,
                 finalContentType
             );
 
-            // บันทึก file_key ใน documents
-            await pool.query(
-                `
-            UPDATE documents
-            SET file_key = ?
-            WHERE id = ?
-            `,
-                [fileKey, id]
-            );
-
-            // บันทึกหรืออัปเดต Metadata ในตาราง document_files
-            const [existingFiles] = await pool.query(
-                "SELECT id FROM document_files WHERE document_id = ?",
-                [id]
-            );
-
-            const parsedSize = requestedSize;
-
-            if (existingFiles.length > 0) {
-                await pool.query(
-                    `
-                UPDATE document_files
-                SET file_name = ?, file_path = ?, file_size = ?, mime_type = ?, uploaded_at = CURRENT_TIMESTAMP
-                WHERE document_id = ?
-                `,
-                    [safeFileName, fileKey, parsedSize, finalContentType, id]
-                );
-            } else {
-                await pool.query(
-                    `
-                INSERT INTO document_files (document_id, file_name, file_path, file_size, mime_type, uploaded_at)
-                VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-                `,
-                    [id, safeFileName, fileKey, parsedSize, finalContentType]
-                );
-            }
-
-            res.json({
+            // ส่ง URL ให้ Frontend เพียงครั้งเดียว
+            // ยังไม่บันทึก Metadata เพราะผู้ใช้ยังไม่ได้ Upload ไฟล์จริง
+            return res.json({
                 document_id: id,
                 file_name: safeFileName,
-                file_size: parsedSize,
+                file_size: requestedSize,
                 mime_type: finalContentType,
                 upload_url: uploadUrl,
                 file_key: fileKey
@@ -1928,7 +1925,33 @@ app.post(
             const safeFileName = decodeURIComponent(fileName).replace(/[\u0000-\u001F\u007F]/g, "").trim();
             if (!safeFileName || /[\\/]/.test(safeFileName)) return res.status(400).json({ error: "Invalid file name" });
             const finalContentType = getMimeTypeByExtension(safeFileName);
-            if (finalContentType === "application/octet-stream" || (contentType !== finalContentType && contentType !== "application/octet-stream")) return res.status(400).json({ error: "Unsupported or mismatched file type" });
+
+            if (
+                finalContentType === "application/octet-stream" ||
+                (contentType !== finalContentType &&
+                    contentType !== "application/octet-stream")
+            ) {
+                return res.status(400).json({
+                    error: "Unsupported or mismatched file type"
+                });
+            }
+
+            // คำนวณ Hash ก่อนอัปโหลดขึ้น S3
+            const fileHash = calculateFileHash(req.body);
+
+            // ตรวจไฟล์ซ้ำกับเอกสารอื่น
+            const duplicateFile = await findDuplicateFileHash(fileHash, id);
+
+            if (duplicateFile) {
+                return res.status(409).json({
+                    error: "ไฟล์นี้มีเนื้อหาซ้ำกับเอกสารอื่นในระบบ",
+                    code: "DUPLICATE_FILE_CONTENT",
+                    duplicate_document_id: duplicateFile.document_id,
+                    duplicate_document_number: duplicateFile.document_number,
+                    duplicate_file_name: duplicateFile.file_name
+                });
+            }
+
             const fileKey = `documents/${id}/${Date.now()}-${safeFileName}`;
 
             try {
@@ -1944,16 +1967,43 @@ app.post(
 
             await pool.query("UPDATE documents SET file_key = ? WHERE id = ?", [fileKey, id]);
 
-            const [existingFiles] = await pool.query("SELECT id FROM document_files WHERE document_id = ?", [id]);
+            const [existingFiles] = await pool.query(
+                "SELECT id FROM document_files WHERE document_id = ?",
+                [id]
+            );
+
             if (existingFiles.length > 0) {
                 await pool.query(
-                    "UPDATE document_files SET file_name = ?, file_path = ?, file_size = ?, mime_type = ?, uploaded_at = CURRENT_TIMESTAMP WHERE document_id = ?",
-                    [safeFileName, fileKey, req.body.length, finalContentType, id]
+                    `UPDATE document_files
+         SET file_name = ?,
+             file_path = ?,
+             file_size = ?,
+             mime_type = ?,
+             file_hash = ?,
+             uploaded_at = CURRENT_TIMESTAMP
+         WHERE document_id = ?`,
+                    [
+                        safeFileName,
+                        fileKey,
+                        req.body.length,
+                        finalContentType,
+                        fileHash,
+                        id
+                    ]
                 );
             } else {
                 await pool.query(
-                    "INSERT INTO document_files (document_id, file_name, file_path, file_size, mime_type, uploaded_at) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)",
-                    [id, safeFileName, fileKey, req.body.length, finalContentType]
+                    `INSERT INTO document_files
+         (document_id, file_name, file_path, file_size, mime_type, file_hash, uploaded_at)
+         VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+                    [
+                        id,
+                        safeFileName,
+                        fileKey,
+                        req.body.length,
+                        finalContentType,
+                        fileHash
+                    ]
                 );
             }
 
@@ -1997,34 +2047,91 @@ app.post(
 
             const safeFileName = fileName.replace(/[\u0000-\u001F\u007F]/g, "").trim();
             const finalKey = fileKey;
-            if (!finalKey || finalKey !== docRows[0].file_key || !finalKey.startsWith(`documents/${id}/`)) return res.status(400).json({ error: "Invalid file key" });
+
+            if (
+                !finalKey ||
+                !finalKey.startsWith(`documents/${id}/`)
+            ) {
+                return res.status(400).json({
+                    error: "Invalid file key"
+                });
+            }
             const finalMime = mimeType || getMimeTypeByExtension(safeFileName);
             const parsedSize = fileSize ? Number(fileSize) : null;
 
             if (!Number.isInteger(parsedSize) || parsedSize <= 0 || parsedSize > 10 * 1024 * 1024 || finalMime !== getMimeTypeByExtension(safeFileName)) return res.status(400).json({ error: "Invalid file metadata" });
             const storedObject = await getObjectMetadata(finalKey);
             if (storedObject.ContentLength !== parsedSize || (storedObject.ContentType && storedObject.ContentType !== finalMime)) return res.status(400).json({ error: "Uploaded file metadata does not match" });
+            // อ่านเนื้อหาไฟล์จาก S3 เพื่อคำนวณ Hash จริงที่ Backend
+            const s3File = await getObjectBuffer(finalKey);
+
+            if (!s3File || !Buffer.isBuffer(s3File.buffer)) {
+                return res.status(500).json({
+                    error: "Unable to verify uploaded file content"
+                });
+            }
+
+            const fileHash = calculateFileHash(s3File.buffer);
+
+            // ตรวจไฟล์ซ้ำกับเอกสารอื่น
+            const duplicateFile = await findDuplicateFileHash(fileHash, id);
+
+            if (duplicateFile) {
+                return res.status(409).json({
+                    error: "ไฟล์นี้มีเนื้อหาซ้ำกับเอกสารอื่นในระบบ",
+                    code: "DUPLICATE_FILE_CONTENT",
+                    duplicate_document_id: duplicateFile.document_id,
+                    duplicate_document_number: duplicateFile.document_number,
+                    duplicate_file_name: duplicateFile.file_name
+                });
+            }
 
             // Update or Insert into document_files
-            const [existing] = await pool.query("SELECT id FROM document_files WHERE document_id = ?", [id]);
-            if (existing.length > 0) {
+            const [existingFiles] = await pool.query(
+                "SELECT id FROM document_files WHERE document_id = ?",
+                [id]
+            );
+
+            if (existingFiles.length > 0) {
                 await pool.query(
-                    `
-                UPDATE document_files
-                SET file_name = ?, file_path = ?, file_size = ?, mime_type = ?, uploaded_at = CURRENT_TIMESTAMP
-                WHERE document_id = ?
-                `,
-                    [safeFileName, finalKey, parsedSize, finalMime, id]
+                    `UPDATE document_files
+         SET file_name = ?,
+             file_path = ?,
+             file_size = ?,
+             mime_type = ?,
+             file_hash = ?,
+             uploaded_at = CURRENT_TIMESTAMP
+         WHERE document_id = ?`,
+                    [
+                        safeFileName,
+                        finalKey,
+                        parsedSize,
+                        finalMime,
+                        fileHash,
+                        id
+                    ]
                 );
             } else {
                 await pool.query(
-                    `
-                INSERT INTO document_files (document_id, file_name, file_path, file_size, mime_type, uploaded_at)
-                VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-                `,
-                    [id, safeFileName, finalKey, parsedSize, finalMime]
+                    `INSERT INTO document_files
+         (document_id, file_name, file_path, file_size, mime_type, file_hash, uploaded_at)
+         VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+                    [
+                        id,
+                        safeFileName,
+                        finalKey,
+                        parsedSize,
+                        finalMime,
+                        fileHash
+                    ]
                 );
             }
+
+            // Update documents หลังตรวจสอบไฟล์ผ่านแล้ว
+            await pool.query(
+                "UPDATE documents SET file_key = ? WHERE id = ?",
+                [finalKey, id]
+            );
 
             res.json({
                 ok: true,
