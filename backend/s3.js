@@ -13,13 +13,23 @@ const path = require("path");
 
 require("dotenv").config();
 
-const bucketName = process.env.S3_BUCKET || process.env.AWS_S3_BUCKET || "cs361-v2-documents-documentflow";
+const bucketName = process.env.S3_BUCKET || process.env.AWS_S3_BUCKET || "cs361-v2-docuflow-389236210747";
 
 // Region ของ S3 Bucket:
 // cs361-v2-documents-documentflow อยู่ที่ us-east-1
 const s3Region = process.env.AWS_S3_REGION || process.env.AWS_REGION || "us-east-1";
 
+const envAccessKey = process.env.AWS_ACCESS_KEY_ID || process.env.aws_access_key_id;
+const envSecretKey = process.env.AWS_SECRET_ACCESS_KEY || process.env.aws_secret_access_key;
+const envSessionToken = process.env.AWS_SESSION_TOKEN || process.env.aws_session_token;
 const s3 = new S3Client({
+    ...(envAccessKey && envSecretKey ? {
+        credentials: {
+            accessKeyId: envAccessKey,
+            secretAccessKey: envSecretKey,
+            sessionToken: envSessionToken
+        }
+    } : {}),
     region: s3Region
 });
 

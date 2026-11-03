@@ -366,19 +366,37 @@ router.post("/tu-login", async (req, res) => {
         if (!tokens) {
             userSub = userSub || crypto.createHash("sha256").update(targetEmail).digest("hex").slice(0, 32);
             const secret = process.env.SESSION_SECRET || "cs361_docuflow_secret_key_2026";
+
+            // ตรวจสอบบทบาทเดิมจากฐานข้อมูล (ถ้ามี) เพื่อรักษาสิทธิ์ Admin / Executive / DocumentReceiver
+            let fallbackRole = "faculty_staff";
+            let fallbackGroups = ["Staff/Instructor"];
+            try {
+                const [existingUserRows] = await pool.query(
+                    "SELECT role FROM users WHERE username = ?",
+                    [targetEmail]
+                );
+                if (existingUserRows && existingUserRows.length > 0 && existingUserRows[0].role) {
+                    fallbackRole = existingUserRows[0].role;
+                    if (fallbackRole === "admin") fallbackGroups = ["Admin"];
+                    else if (fallbackRole === "document_officer") fallbackGroups = ["DocumentReceiver"];
+                    else if (fallbackRole === "executive") fallbackGroups = ["Executive"];
+                }
+            } catch (roleErr) {
+                console.warn("DB role fallback lookup notice:", roleErr.message);
+            }
             const hsToken = signHs256Jwt({
                 sub: userSub,
                 username: targetEmail,
                 email: targetEmail,
-                "cognito:groups": ["Staff/Instructor"],
-                role: "faculty_staff",
+                "cognito:groups": fallbackGroups,
+                role: fallbackRole,
                 exp: Math.floor(Date.now() / 1000) + 86400 * 7
             }, secret);
 
             tokens = {
                 accessToken: hsToken,
                 idToken: hsToken,
-                groups: ["Staff/Instructor"]
+                groups: fallbackGroups
             };
         }
 
