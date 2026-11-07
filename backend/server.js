@@ -230,7 +230,8 @@ const {
     getObjectMetadata,
     getMimeTypeByExtension,
     getObjectBuffer,
-    uploadObjectBuffer
+    uploadObjectBuffer,
+    deleteS3Object
 } = require("./s3");
 
 const app = express();
@@ -1650,6 +1651,86 @@ app.post("/api/documents/:id/forward", requireCognitoAuth, loadUserRole, async (
     } catch (error) {
         console.error("Forward document error:", error);
         res.status(500).json({ error: "Unable to forward document" });
+    }
+});
+
+// DELETE /api/documents/:id - ลบรายการเอกสาร (เฉพาะบทบาท admin เท่านั้น) เชื่อมต่อไปยังฐานข้อมูลและ S3
+app.delete("/api/documents/:id", requireCognitoAuth, loadUserRole, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const actor = extractServerActor(req);
+        const role = actor.actorRole;
+
+        // 1. ตรวจสอบสิทธิ์: เฉพาะ Admin เท่านั้นที่มีสิทธิ์ลบเอกสาร
+        if (role !== "admin") {
+            return res.status(403).json({
+                error: "คุณไม่มีสิทธิ์ในการลบเอกสาร (ต้องการสิทธิ์ Admin เท่านั้น)"
+            });
+        }
+
+        const docId = Number(id);
+        if (!Number.isInteger(docId) || docId <= 0) {
+            return res.status(400).json({ error: "รหัสเอกสารไม่ถูกต้อง" });
+        }
+
+        const connection = await pool.getConnection();
+        let targetDoc = null;
+
+        try {
+            await connection.beginTransaction();
+
+            // ค้นหาเอกสารก่อนลบ
+            const [docRows] = await connection.query(
+                "SELECT id, reference_no, document_number, subject, file_key FROM documents WHERE id = ? FOR UPDATE",
+                [docId]
+            );
+
+            if (docRows.length === 0) {
+                await connection.rollback();
+                return res.status(404).json({ error: "ไม่พบเอกสารที่ต้องการลบในระบบ" });
+            }
+
+            targetDoc = docRows[0];
+
+            // ลบข้อมูลที่เกี่ยวข้องในตารางลูก (Child tables)
+            await connection.query("DELETE FROM document_files WHERE document_id = ?", [docId]);
+            await connection.query("DELETE FROM document_assignments WHERE document_id = ?", [docId]);
+            await connection.query("DELETE FROM document_status_logs WHERE document_id = ?", [docId]);
+            await connection.query("DELETE FROM document_audit_trails WHERE document_id = ?", [docId]);
+
+            // ลบเอกสารจากตาราง documents
+            const [deleteResult] = await connection.query("DELETE FROM documents WHERE id = ?", [docId]);
+            if (deleteResult.affectedRows === 0) {
+                throw new Error("เกิดข้อผิดพลาดในการลบเอกสารออกจากฐานข้อมูล");
+            }
+
+            await connection.commit();
+        } catch (txErr) {
+            await connection.rollback();
+            throw txErr;
+        } finally {
+            connection.release();
+        }
+
+        // ลบไฟล์แนบออกจาก S3 (ถ้ามี)
+        if (targetDoc && targetDoc.file_key) {
+            try {
+                await deleteS3Object(targetDoc.file_key);
+            } catch (s3Err) {
+                console.warn("Delete S3 file warning:", s3Err.message);
+            }
+        }
+
+        const docIdentifier = targetDoc.document_number || targetDoc.reference_no || `#${docId}`;
+        res.json({
+            ok: true,
+            message: `ลบเอกสาร "${docIdentifier}" ออกจากระบบเรียบร้อยแล้ว`,
+            deleted_id: docId
+        });
+
+    } catch (error) {
+        console.error("Delete document error:", error);
+        res.status(500).json({ error: "เกิดข้อผิดพลาดในการลบเอกสารออกจากระบบ" });
     }
 });
 

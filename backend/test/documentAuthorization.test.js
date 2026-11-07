@@ -71,3 +71,12 @@ test("canAccessDocument ปฏิเสธ role ที่ไม่รู้จ�
 test("ACTION_ROLES: upload จำกัดเฉพาะ document_officer และ admin", () => {
     assert.deepEqual([...ACTION_ROLES.upload].sort(), ["admin", "document_officer"].sort());
 });
+
+test("canAccessDocument DELETE: เฉพาะ admin เท่านั้น", () => {
+    const doc = { id: 5, owner_id: 1, assignee_id: 2 };
+    assert.equal(canAccessDocument({ roles: ["admin"], userId: 1, document: doc, action: "delete" }), true);
+    assert.equal(canAccessDocument({ roles: ["document_officer"], userId: 1, document: doc, action: "delete" }), false);
+    assert.equal(canAccessDocument({ roles: ["faculty_staff"], userId: 1, document: doc, action: "delete" }), false);
+    assert.equal(canAccessDocument({ roles: ["executive"], userId: 1, document: doc, action: "delete" }), false);
+    assert.deepEqual(ACTION_ROLES.delete, ["admin"]);
+});

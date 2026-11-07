@@ -7,7 +7,8 @@ const ACTION_ROLES = Object.freeze({
     upload: ["document_officer", "admin"],
     status: ["document_officer", "admin", "faculty_staff"],
     assign: ["document_officer", "admin"],
-    forward: ["document_officer", "admin", "faculty_staff"]
+    forward: ["document_officer", "admin", "faculty_staff"],
+    delete: ["admin"]
 });
 
 function mapCognitoGroupsToRoles(groups) {
@@ -51,6 +52,11 @@ function canAccessDocument({ roles, userId, document, action = "read" }) {
 
     // Document officers and Admins can assign any document across the system
     if (action === "assign" && normalized.some((r) => ["document_officer", "admin"].includes(r))) {
+        return true;
+    }
+
+    // Admins can delete documents
+    if (action === "delete" && normalized.includes("admin")) {
         return true;
     }
 

@@ -397,6 +397,10 @@ function renderTable(list) {
     tableBody.innerHTML = list.map(doc => {
         const hasFile = Boolean(doc.file_key);
         let actionButtonHtml = "";
+        // Add delete button for admin role
+        if (!isGuest && currentRole === "admin") {
+            actionButtonHtml += `<button class="btn-delete" data-delete="${doc.id}" title="ลบเอกสาร"><svg class="btn-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6v14a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2V6"/><line x1="10" y1="11" x2="14" y2="11"/></svg>ลบ</button>`;
+        }
 
         if (isGuest) {
             actionButtonHtml = `
@@ -406,7 +410,7 @@ function renderTable(list) {
                 </button>
             `;
         } else {
-            actionButtonHtml = hasFile
+            actionButtonHtml += hasFile
                 ? `<button class="btn-preview" data-open="${doc.id}" type="button" title="เรียกดูรายละเอียดและเนื้อหาเอกสาร">
                        <svg class="btn-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
                        <span>เรียกดูเอกสาร</span>
@@ -470,6 +474,29 @@ function renderTable(list) {
             row.style.cursor = "default";
         });
     }
+
+    // ปุ่มลบเอกสาร (เฉพาะ admin)
+    tableBody.querySelectorAll("[data-delete]").forEach(btn => {
+        btn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            const docId = btn.dataset.delete;
+            if (!confirm("คุณแน่ใจหรือว่าต้องการลบเอกสารนี้? การลบจะไม่สามารถย้อนกลับได้")) return;
+            window.apiFetch(`/api/documents/${docId}`, { method: "DELETE" })
+                .then(r => r.json())
+                .then(res => {
+                    if (res.ok) {
+                        alert(res.message || "ลบเอกสารสำเร็จ");
+                        fetchDocuments();
+                    } else {
+                        alert(res.error || "เกิดข้อผิดพลาดในการลบ");
+                    }
+                })
+                .catch(err => {
+                    console.error("Delete error:", err);
+                    alert("เกิดข้อผิดพลาดในการลบเอกสาร");
+                });
+        });
+    });
 }
 
 /* =====================================================
@@ -488,6 +515,10 @@ function renderMobile(list) {
     mobileList.innerHTML = list.map(doc => {
         const hasFile = Boolean(doc.file_key);
         let actionButtonHtml = "";
+        // Add delete button for admin role
+        if (!isGuest && currentRole === "admin") {
+            actionButtonHtml += `<button class="btn-delete" data-delete="${doc.id}" title="ลบเอกสาร"><svg class="btn-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6v14a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2V6"/><line x1="10" y1="11" x2="14" y2="11"/></svg>ลบ</button>`;
+        }
 
         if (isGuest) {
             actionButtonHtml = `
@@ -497,7 +528,7 @@ function renderMobile(list) {
                 </button>
             `;
         } else {
-            actionButtonHtml = hasFile
+            actionButtonHtml += hasFile
                 ? `<button class="btn-preview" data-open="${doc.id}" type="button">
                        <svg class="btn-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
                        <span>เรียกดูเอกสาร</span>
@@ -555,6 +586,29 @@ function renderMobile(list) {
             card.style.cursor = "default";
         });
     }
+
+    // ปุ่มลบเอกสาร (เฉพาะ admin) - mobile
+    mobileList.querySelectorAll("[data-delete]").forEach(btn => {
+        btn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            const docId = btn.dataset.delete;
+            if (!confirm("คุณแน่ใจหรือว่าต้องการลบเอกสารนี้? การลบจะไม่สามารถย้อนกลับได้")) return;
+            window.apiFetch(`/api/documents/${docId}`, { method: "DELETE" })
+                .then(r => r.json())
+                .then(res => {
+                    if (res.ok) {
+                        alert(res.message || "ลบเอกสารสำเร็จ");
+                        fetchDocuments();
+                    } else {
+                        alert(res.error || "เกิดข้อผิดพลาดในการลบ");
+                    }
+                })
+                .catch(err => {
+                    console.error("Delete error:", err);
+                    alert("เกิดข้อผิดพลาดในการลบเอกสาร");
+                });
+        });
+    });
 }
 
 // Helper เรียกเปิด Modal ผ่านโมดูล document-modal.js

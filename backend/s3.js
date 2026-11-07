@@ -2,7 +2,8 @@ const {
     S3Client,
     GetObjectCommand,
     PutObjectCommand,
-    HeadObjectCommand
+    HeadObjectCommand,
+    DeleteObjectCommand
 } = require("@aws-sdk/client-s3");
 
 const {
@@ -138,6 +139,20 @@ async function createDownloadUrl(fileKey, options = {}) {
     }
 }
 
+// Delete an object from S3
+async function deleteS3Object(fileKey) {
+    if (!fileKey) return;
+    try {
+        const command = new DeleteObjectCommand({
+            Bucket: bucketName,
+            Key: fileKey
+        });
+        return await s3.send(command);
+    } catch (err) {
+        console.warn("Failed to delete S3 object:", fileKey, err.message);
+    }
+}
+
 module.exports = {
     createUploadUrl,
     createDownloadUrl,
@@ -146,6 +161,7 @@ module.exports = {
     getMimeTypeByExtension,
     getObjectBuffer,
     uploadObjectBuffer,
+    deleteS3Object,
     bucketName,
     s3Region
 };
