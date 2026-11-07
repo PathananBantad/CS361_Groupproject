@@ -31,6 +31,12 @@ if (togglePassword && passwordInput) {
     });
 }
 
+// ฟังก์ชันนำทางไปยัง Dashboard อย่างปลอดภัย รองรับทั้ง URL ที่มี /html/ และไม่มี
+function navigateToDashboard() {
+    const target = window.location.pathname.startsWith("/html/") ? "dashboard.html" : "/html/dashboard.html";
+    window.location.href = target;
+}
+
 // เข้าสู่ระบบด้วย AWS Cognito
 if (loginForm) {
     loginForm.addEventListener("submit", async (event) => {
@@ -89,7 +95,7 @@ if (loginForm) {
                 localStorage.setItem("docuflow_user", tuData.username || username);
                 localStorage.setItem("docuflow_role", tuData.role || "faculty_staff");
 
-                window.location.href = "dashboard.html";
+                navigateToDashboard();
                 return;
             }
 
@@ -192,7 +198,7 @@ if (loginForm) {
 
                 localStorage.setItem("docuflow_role", role);
 
-                window.location.href = "dashboard.html";
+                navigateToDashboard();
             },
 
             onFailure: (error) => {
@@ -229,6 +235,6 @@ if (guestLoginBtn) {
         localStorage.removeItem("docuflow_id_token");
         localStorage.removeItem("access_token");
         localStorage.removeItem("id_token");
-        window.location.href = "dashboard.html";
+        navigateToDashboard();
     });
 }

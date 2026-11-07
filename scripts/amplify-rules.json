@@ -1,0 +1,107 @@
+[
+  {
+    "source": "/login/dashboard/",
+    "target": "/html/dashboard.html",
+    "status": "302"
+  },
+  {
+    "source": "/login/dashboard",
+    "target": "/html/dashboard.html",
+    "status": "302"
+  },
+  {
+    "source": "/login/dashboard.html",
+    "target": "/html/dashboard.html",
+    "status": "302"
+  },
+  {
+    "source": "/login/",
+    "target": "/html/login.html",
+    "status": "302"
+  },
+  {
+    "source": "/login",
+    "target": "/html/login.html",
+    "status": "302"
+  },
+  {
+    "source": "/login.html",
+    "target": "/html/login.html",
+    "status": "302"
+  },
+  {
+    "source": "/dashboard/",
+    "target": "/html/dashboard.html",
+    "status": "302"
+  },
+  {
+    "source": "/dashboard",
+    "target": "/html/dashboard.html",
+    "status": "302"
+  },
+  {
+    "source": "/dashboard.html",
+    "target": "/html/dashboard.html",
+    "status": "302"
+  },
+  {
+    "source": "/register/",
+    "target": "/html/register.html",
+    "status": "302"
+  },
+  {
+    "source": "/register",
+    "target": "/html/register.html",
+    "status": "302"
+  },
+  {
+    "source": "/register.html",
+    "target": "/html/register.html",
+    "status": "302"
+  },
+  {
+    "source": "/guide/",
+    "target": "/html/guide.html",
+    "status": "302"
+  },
+  {
+    "source": "/guide",
+    "target": "/html/guide.html",
+    "status": "302"
+  },
+  {
+    "source": "/guide.html",
+    "target": "/html/guide.html",
+    "status": "302"
+  },
+  {
+    "source": "/guide2/",
+    "target": "/html/guide2.html",
+    "status": "302"
+  },
+  {
+    "source": "/guide2",
+    "target": "/html/guide2.html",
+    "status": "302"
+  },
+  {
+    "source": "/guide2.html",
+    "target": "/html/guide2.html",
+    "status": "302"
+  },
+  {
+    "source": "/index.html",
+    "target": "/html/index.html",
+    "status": "302"
+  },
+  {
+    "source": "/index",
+    "target": "/html/index.html",
+    "status": "302"
+  },
+  {
+    "source": "/",
+    "target": "/html/index.html",
+    "status": "302"
+  }
+]
