@@ -137,6 +137,10 @@ function rewriteApiUrl(rawUrl) {
 // พร้อมระบบ Smart Auto-Fallback: เมื่อ AWS API Gateway ล่ม/ส่ง 500 (เช่น Lab ดับ) จะสลับไปยิง Render อัตโนมัติทันที
 window.apiFetch = async function (input, options = {}) {
     let rawUrl = input instanceof Request ? input.url : input;
+    if (typeof rawUrl === "string" && !window.IS_LOCAL && rawUrl.startsWith("/api")) {
+        const base = String(window.ACTIVE_API_URL || window.API_BASE_URL || window.PRIMARY_API_URL || "").replace(/\/+$/, "");
+        rawUrl = `${base}${rawUrl}`;
+    }
     rawUrl = rewriteApiUrl(rawUrl);
 
     const headers = new Headers(options.headers || (input instanceof Request ? input.headers : undefined));
@@ -147,7 +151,9 @@ window.apiFetch = async function (input, options = {}) {
     const isProtectedApi = typeof rawUrl === "string" && rawUrl.includes("/api/") && !isGuest;
     if (isProtectedApi && !headers.has("Authorization")) {
         const token = localStorage.getItem("docuflow_access_token") ||
-            localStorage.getItem("access_token") || "";
+            localStorage.getItem("access_token") ||
+            localStorage.getItem("docuflow_id_token") ||
+            localStorage.getItem("id_token") || "";
         if (token) headers.set("Authorization", `Bearer ${token}`);
     }
 

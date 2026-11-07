@@ -477,24 +477,31 @@ function renderTable(list) {
 
     // ปุ่มลบเอกสาร (เฉพาะ admin)
     tableBody.querySelectorAll("[data-delete]").forEach(btn => {
-        btn.addEventListener("click", (e) => {
+        btn.addEventListener("click", async (e) => {
             e.stopPropagation();
             const docId = btn.dataset.delete;
             if (!confirm("คุณแน่ใจหรือว่าต้องการลบเอกสารนี้? การลบจะไม่สามารถย้อนกลับได้")) return;
-            window.apiFetch(`/api/documents/${docId}`, { method: "DELETE" })
-                .then(r => r.json())
-                .then(res => {
-                    if (res.ok) {
-                        alert(res.message || "ลบเอกสารสำเร็จ");
-                        fetchDocuments();
-                    } else {
-                        alert(res.error || "เกิดข้อผิดพลาดในการลบ");
-                    }
-                })
-                .catch(err => {
-                    console.error("Delete error:", err);
-                    alert("เกิดข้อผิดพลาดในการลบเอกสาร");
+            try {
+                const apiBase = getApiBaseUrl();
+                const token = localStorage.getItem("docuflow_access_token") || localStorage.getItem("access_token") || localStorage.getItem("docuflow_id_token") || localStorage.getItem("id_token") || "";
+                const headers = {};
+                if (token) headers["Authorization"] = `Bearer ${token}`;
+
+                const response = await window.apiFetch(`${apiBase}/documents/${docId}`, {
+                    method: "DELETE",
+                    headers
                 });
+                const res = await response.json().catch(() => ({}));
+                if (response.ok && res.ok) {
+                    alert(res.message || "ลบเอกสารสำเร็จ");
+                    fetchDocuments();
+                } else {
+                    alert(res.error || res.message || `เกิดข้อผิดพลาดในการลบ (HTTP ${response.status})`);
+                }
+            } catch (err) {
+                console.error("Delete error:", err);
+                alert("เกิดข้อผิดพลาดในการลบเอกสาร: " + (err.message || err));
+            }
         });
     });
 }
@@ -589,24 +596,31 @@ function renderMobile(list) {
 
     // ปุ่มลบเอกสาร (เฉพาะ admin) - mobile
     mobileList.querySelectorAll("[data-delete]").forEach(btn => {
-        btn.addEventListener("click", (e) => {
+        btn.addEventListener("click", async (e) => {
             e.stopPropagation();
             const docId = btn.dataset.delete;
             if (!confirm("คุณแน่ใจหรือว่าต้องการลบเอกสารนี้? การลบจะไม่สามารถย้อนกลับได้")) return;
-            window.apiFetch(`/api/documents/${docId}`, { method: "DELETE" })
-                .then(r => r.json())
-                .then(res => {
-                    if (res.ok) {
-                        alert(res.message || "ลบเอกสารสำเร็จ");
-                        fetchDocuments();
-                    } else {
-                        alert(res.error || "เกิดข้อผิดพลาดในการลบ");
-                    }
-                })
-                .catch(err => {
-                    console.error("Delete error:", err);
-                    alert("เกิดข้อผิดพลาดในการลบเอกสาร");
+            try {
+                const apiBase = getApiBaseUrl();
+                const token = localStorage.getItem("docuflow_access_token") || localStorage.getItem("access_token") || localStorage.getItem("docuflow_id_token") || localStorage.getItem("id_token") || "";
+                const headers = {};
+                if (token) headers["Authorization"] = `Bearer ${token}`;
+
+                const response = await window.apiFetch(`${apiBase}/documents/${docId}`, {
+                    method: "DELETE",
+                    headers
                 });
+                const res = await response.json().catch(() => ({}));
+                if (response.ok && res.ok) {
+                    alert(res.message || "ลบเอกสารสำเร็จ");
+                    fetchDocuments();
+                } else {
+                    alert(res.error || res.message || `เกิดข้อผิดพลาดในการลบ (HTTP ${response.status})`);
+                }
+            } catch (err) {
+                console.error("Delete error:", err);
+                alert("เกิดข้อผิดพลาดในการลบเอกสาร: " + (err.message || err));
+            }
         });
     });
 }
