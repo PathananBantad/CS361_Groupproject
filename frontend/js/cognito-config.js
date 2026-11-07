@@ -1,6 +1,6 @@
 window.COGNITO_CONFIG = {
-    userPoolId: "us-east-1_1duzJEFfU",
-    clientId: "454o0719rb9d6lkspv4m8tmb6i",
+    userPoolId: "us-east-1_ySsGHRKUQ",
+    clientId: "7onljgop56a811chbidtuppffq",
     region: "us-east-1"
 };
 
@@ -11,7 +11,7 @@ window.IS_LOCAL = ["localhost", "127.0.0.1", "0.0.0.0", "::1"].includes(window.l
 // URLs ของ Backend:
 // - Primary: AWS API Gateway + Lambda (Learner Lab)
 // - Fallback: Render Web Service (รัน 24/7 เชื่อมต่อ TiDB Cloud ชุดเดียวกัน)
-window.AWS_API_GATEWAY_URL = "https://fpdo65dftiw2trv7w6ms4ulh5y0sfact.lambda-url.us-east-1.on.aws";
+window.AWS_API_GATEWAY_URL = "https://htvtloifbzeywxdh4gawlqoxdq0tftsv.lambda-url.us-east-1.on.aws";
 window.RENDER_API_URL = "https://docuflow-backend-z2md.onrender.com";
 
 window.PRIMARY_API_URL = window.AWS_API_GATEWAY_URL;

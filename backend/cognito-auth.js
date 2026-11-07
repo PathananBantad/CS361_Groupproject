@@ -1,9 +1,25 @@
 const crypto = require("node:crypto");
 const { CognitoJwtVerifier } = require("aws-jwt-verify");
 
-// Static JWKS keys for us-east-1_1duzJEFfU (allows instant verification inside VPC without internet/NAT Gateway)
+// Static JWKS keys for us-east-1_ySsGHRKUQ and us-east-1_1duzJEFfU (allows instant verification inside VPC without internet/NAT Gateway)
 const EMBEDDED_JWKS = {
     keys: [
+        {
+            alg: "RS256",
+            e: "AQAB",
+            kid: "kKgOT+Ardsd5C+CGHIVHk6cQjo/nk9CHPc3qXrec/LQ=",
+            kty: "RSA",
+            n: "wn9vlbPVuFTYGdRhpz1AOotJZGpJkG2Ux9UciEyKYN_cFjsAowR63W5_TBA_UiDdjLpQFEDl6JZPrrxTTtRQ1oPMQDTYcKOzlaOIrrNHbBZujK33K_Rehpmhe-AyFAyIZVtSbRYbNd5dUWDcm0o-90iIGsBWVWES4Shx-Ngv91N1h5l3cL3XKa953ZJRUnSOJUcX6Q9xLnuHIKjui6ITct4asgjl6H-Og4VuIvCrQb5mljR6YWhweUi3m7rTdXiNePwO4M4DVluggHaJGQjHTCJRnBrbXi80V0LPAc1LBSwQk-Ufpi34G7Bikt5x0wnde-Mq32Sf-FHyazSRRtVbWQ",
+            use: "sig"
+        },
+        {
+            alg: "RS256",
+            e: "AQAB",
+            kid: "ln2jiUH+KJDVCFJlDXpalujQmTbdJcqLE8w9dJC6lRY=",
+            kty: "RSA",
+            n: "69_nrYDzkRfslVdeNXQ7lpgSV-FrzrEC-ohCgmz0Y5q_hsQ0wcKXkWUODftFWP6fl7GAv_w36f_TVoWgWb6lJGAbnnoXbwI0FsY9eOa26yLXYwdNNK8JUa2bFg5aBknX7OvR3EOR_yzKPX0CD4UsrNrZDKNnNVWufupMsGqCoqQj12bZVblGvD7v9dgaJkMEYzG3rRXfUwjA7tO_9evm86iQebpDC2Jl5Tq2Q-lKBS3vAbXxayoEjtmNAoFcCl6g1kF69c0tKevYD5GAQWhov7yZ4xIHRFrI1euK8k2w4IPPFiuW6RL_6t0NKLqK96-zdUBxsgvpEMXob3fSaEuBbQ",
+            use: "sig"
+        },
         {
             alg: "RS256",
             e: "AQAB",
@@ -68,6 +84,7 @@ function verifyWithEmbeddedJwks(token) {
 
     const allowedClientIds = [
         process.env.COGNITO_APP_CLIENT_ID,
+        "7onljgop56a811chbidtuppffq",
         "454o0719rb9d6lkspv4m8tmb6i",
         "7k0t8e6499bro55f8faso44m2c"
     ].filter(Boolean);
@@ -104,17 +121,18 @@ function verifyWithEmbeddedJwks(token) {
 let verifier;
 
 function getVerifier() {
-    const userPoolId = process.env.COGNITO_USER_POOL_ID || "us-east-1_1duzJEFfU";
-    const clientId = process.env.COGNITO_APP_CLIENT_ID;
+    const userPoolId = process.env.COGNITO_USER_POOL_ID || "us-east-1_ySsGHRKUQ";
+    const clientId = process.env.COGNITO_APP_CLIENT_ID || "7onljgop56a811chbidtuppffq";
 
     if (!userPoolId) {
         throw new Error("Cognito environment variables are not configured");
     }
 
     if (!verifier) {
-        // รองรับทั้ง App Client ของ Frontend (454o0719rb9d6lkspv4m8tmb6i) และค่าจาก Environment
+        // รองรับทั้ง App Client ของ Frontend (7onljgop56a811chbidtuppffq / 454o0719rb9d6lkspv4m8tmb6i) และค่าจาก Environment
         const allowedClientIds = [
             clientId,
+            "7onljgop56a811chbidtuppffq",
             "454o0719rb9d6lkspv4m8tmb6i",
             "7k0t8e6499bro55f8faso44m2c"
         ].filter(Boolean);

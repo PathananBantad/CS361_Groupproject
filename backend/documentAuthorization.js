@@ -24,7 +24,9 @@ function mapCognitoGroupsToRoles(groups) {
         "staff/instructor": "faculty_staff",
         staff: "faculty_staff",
         instructor: "faculty_staff",
-        executive: "executive"
+        executive: "executive",
+        responsibleperson: "faculty_staff",
+        "responsible_person": "faculty_staff"
     };
 
     return [...new Set(

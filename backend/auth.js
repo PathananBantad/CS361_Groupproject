@@ -157,7 +157,7 @@ async function verifyWithTuApi(username, password) {
 
 // ฟังก์ชันยืนยันตัวตนกับ AWS Cognito User Pool โดยตรง (สำหรับบัญชีที่มีใน Cognito เช่น v3test.*, Officer, Executive, Admin)
 async function authenticateWithCognito(username, password) {
-    const clientId = process.env.COGNITO_APP_CLIENT_ID || "454o0719rb9d6lkspv4m8tmb6i";
+    const clientId = process.env.COGNITO_APP_CLIENT_ID || "7onljgop56a811chbidtuppffq";
     try {
         const authRes = await cognito.send(new InitiateAuthCommand({
             AuthFlow: "USER_PASSWORD_AUTH",
@@ -249,8 +249,8 @@ router.post("/tu-login", async (req, res) => {
         // กำหนด Target Email ที่เป็นอีเมลที่ถูกต้องเสมอ (สำหรับ Cognito User Pool ที่ใช้ UsernameAttributes = ['email'])
         targetEmail = (tuResult.email || targetEmail).trim().toLowerCase();
 
-        const userPoolId = process.env.COGNITO_USER_POOL_ID || "us-east-1_1duzJEFfU";
-        const clientId = process.env.COGNITO_APP_CLIENT_ID || "454o0719rb9d6lkspv4m8tmb6i";
+        const userPoolId = process.env.COGNITO_USER_POOL_ID || "us-east-1_ySsGHRKUQ";
+        const clientId = process.env.COGNITO_APP_CLIENT_ID || "7onljgop56a811chbidtuppffq";
 
         // 2. ตรวจสอบและซิงค์ผู้ใช้กับ AWS Cognito (พร้อม Fallback สำหรับ Render หรือเมื่อ Lab ดับ)
         let userSub = null;

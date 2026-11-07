@@ -13,7 +13,7 @@ const path = require("path");
 
 require("dotenv").config();
 
-const bucketName = process.env.S3_BUCKET || process.env.AWS_S3_BUCKET || "cs361-v2-docuflow-389236210747";
+const bucketName = process.env.S3_BUCKET || process.env.AWS_S3_BUCKET || "cs361-v2-docuflow-927017131721";
 
 // Region ของ S3 Bucket:
 // cs361-v2-documents-documentflow อยู่ที่ us-east-1
