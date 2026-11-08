@@ -361,9 +361,16 @@ function render() {
 
     if (sortKey) {
         result.sort((a, b) => {
-            const valueA = String(a[sortKey] || "").toLowerCase();
-            const valueB = String(b[sortKey] || "").toLowerCase();
-            return valueA.localeCompare(valueB) * sortDirection;
+            const valueA = a[sortKey] ?? "";
+            const valueB = b[sortKey] ?? "";
+
+            if (sortKey === "deadlineDate") {
+                const emptyA = !valueA;
+                const emptyB = !valueB;
+                if (emptyA !== emptyB) return emptyA ? 1 : -1;
+            }
+
+            return String(valueA).localeCompare(String(valueB)) * sortDirection;
         });
     }
 
