@@ -361,9 +361,21 @@ function render() {
 
     if (sortKey) {
         result.sort((a, b) => {
-            const valueA = String(a[sortKey] || "").toLowerCase();
-            const valueB = String(b[sortKey] || "").toLowerCase();
-            return valueA.localeCompare(valueB) * sortDirection;
+            const valueA = a[sortKey] ?? "";
+            const valueB = b[sortKey] ?? "";
+
+            // วันที่ว่างให้อยู่ท้ายรายการเสมอ
+            if (sortKey === "deadlineDate" || sortKey === "receivedDateKey") {
+                const emptyA = !valueA;
+                const emptyB = !valueB;
+
+                if (emptyA !== emptyB) return emptyA ? 1 : -1;
+            }
+
+            return String(valueA)
+                .toLocaleLowerCase()
+                .localeCompare(String(valueB).toLocaleLowerCase())
+                * sortDirection;
         });
     }
 
@@ -439,7 +451,9 @@ function renderTable(list) {
                     <span class="status-badge status-${doc.statusKey}">
                         ${escapeHtml(doc.statusLabel)}
                     </span>
-                    ${deadlineLabel(doc)}
+                </td>
+                <td class="deadline-cell">
+                    ${deadlineLabel(doc) || "<span>-</span>"}
                 </td>
                 <td class="received">
                     <strong>${escapeHtml(doc.receivedDate)}</strong>
