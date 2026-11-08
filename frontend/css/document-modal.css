@@ -1125,3 +1125,37 @@ dialog.document-modal::backdrop {
         display: none;
     }
 }
+
+.deadline-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.edit-deadline-button {
+    display: inline-grid;
+    place-items: center;
+    width: 30px;
+    height: 30px;
+    padding: 6px;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: #8b5265;
+    cursor: pointer;
+}
+
+.edit-deadline-button:hover {
+    background: #f8e9ed;
+}
+
+.edit-deadline-button svg {
+    width: 17px;
+    height: 17px;
+    fill: currentColor;
+}
+
+.edit-deadline-button[hidden] {
+    display: none;
+}

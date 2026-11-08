@@ -620,6 +620,68 @@ app.get(
             });
         }
     });
+    // แก้ไข Deadline ของเอกสาร เฉพาะ Admin และ Document Officer
+        app.patch(
+            "/api/documents/:id/deadline",
+            requireCognitoAuth,
+            loadUserRole,
+            async (req, res) => {
+                try {
+                    const roles = (req.userRoles || [req.userRole])
+                        .filter(Boolean)
+                        .map(role => String(role).trim().toLowerCase());
+
+                    if (!roles.some(role =>
+                        ["admin", "document_officer"].includes(role)
+                    )) {
+                        return res.status(403).json({
+                            error: "คุณไม่มีสิทธิ์แก้ไข Deadline"
+                        });
+                    }
+
+                    const id = Number(req.params.id);
+                    if (!Number.isInteger(id) || id <= 0) {
+                        return res.status(400).json({ error: "รหัสเอกสารไม่ถูกต้อง" });
+                    }
+
+                    const deadline = req.body?.deadline;
+
+                    // บังคับให้กรอกวันที่ และตรวจทั้งรูปแบบกับวันที่จริง
+                    if (
+                        typeof deadline !== "string" ||
+                        deadline.trim() === "" ||
+                        !isValidDate(deadline.trim())
+                    ) {
+                        return res.status(400).json({
+                            error: "กรุณากรอกวันที่จริงในรูปแบบ YYYY-MM-DD"
+                        });
+                    }
+
+                    const [documents] = await pool.query(
+                        "SELECT id FROM documents WHERE id = ?",
+                        [id]
+                    );
+
+                    if (documents.length === 0) {
+                        return res.status(404).json({ error: "ไม่พบเอกสาร" });
+                    }
+
+                    const cleanDeadline = deadline.trim();
+
+                    await pool.query(
+                        "UPDATE documents SET deadline = ? WHERE id = ?",
+                        [cleanDeadline, id]
+                    );
+
+                    return res.json({ deadline: cleanDeadline });
+                } catch (error) {
+                    console.error("Update document deadline error:", error);
+                    return res.status(500).json({
+                        error: "บันทึก Deadline ไม่สำเร็จ"
+                    });
+                }
+            }
+        );
 
 // Create document
 app.post("/api/documents", requireCognitoAuth, loadUserRole, async (req, res) => {

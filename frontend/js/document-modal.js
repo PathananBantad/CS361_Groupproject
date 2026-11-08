@@ -347,7 +347,24 @@
                                 <div class="meta-item"><span class="meta-label">ผู้รับ</span><span class="meta-value" id="modalReceiver">-</span></div>
                                 <div class="meta-item"><span class="meta-label">วันที่ส่ง (วันที่ระบุในหนังสือ)</span><span class="meta-value" id="modalSendDate">-</span></div>
                                 <div class="meta-item"><span class="meta-label">วันที่รับ (วันที่หน่วยงานลงรับเอกสาร)</span><span class="meta-value" id="modalReceiveDate">-</span></div>
-                                <div class="meta-item"><span class="meta-label">วันครบกำหนด (Deadline)</span><span class="meta-value" id="modalDeadline">-</span></div>
+                                <div class="meta-item">
+                                    <span class="meta-label">วันครบกำหนด (Deadline)</span>
+                                    <div class="deadline-row">
+                                        <span class="meta-value" id="modalDeadline">-</span>
+                                        <button
+                                            type="button"
+                                            id="editDeadlineButton"
+                                            class="edit-deadline-button"
+                                            aria-label="แก้ไข Deadline"
+                                            title="แก้ไข Deadline"
+                                            hidden
+                                        >
+                                            <svg viewBox="0 0 24 24" aria-hidden="true">
+                                                <path d="M3 17.25V21h3.75L17.8 9.95l-3.75-3.75L3 17.25zm17.7-10.04a1 1 0 0 0 0-1.42l-2.49-2.49a1 1 0 0 0-1.42 0l-1.83 1.83 3.75 3.75 1.99-1.67z"/>
+                                            </svg>
+                                        </button>
+                                    </div>
+                                </div>
                                 <div class="meta-item full-width" id="modalRemarksWrap"><span class="meta-label">หมายเหตุ</span><p class="meta-value remarks-box" id="modalRemarks">-</p></div>
                             </div>
                         </section>
@@ -423,6 +440,65 @@
             isExecutive: role === "executive",
             isGuest: !hasPermission
         };
+    }
+
+    async function editDocumentDeadline(doc, auth, modalDeadline) {
+        if (!(auth.isAdmin || auth.isOfficer)) return;
+
+        const currentDeadline = doc.raw?.deadline || doc.deadline || "";
+        const newDeadline = window.prompt(
+            "กรอกวันครบกำหนดรูปแบบ YYYY-MM-DD",
+            String(currentDeadline).slice(0, 10)
+        );
+
+        if (newDeadline === null) return; // กดยกเลิก
+
+        const value = newDeadline.trim();
+
+        if (!value) {
+            window.alert("กรุณากรอกวันครบกำหนด");
+            return;
+        }
+
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+            window.alert("กรุณากรอกวันที่รูปแบบ YYYY-MM-DD");
+            return;
+        }
+
+        try {
+            const response = await window.apiFetch(
+                `${getApiBaseUrl()}/documents/${encodeURIComponent(doc.id)}/deadline`,
+                {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ deadline: value })
+                }
+            );
+
+            const result = await response.json();
+
+            if (!response.ok) {
+                throw new Error(result.error || "บันทึก Deadline ไม่สำเร็จ");
+            }
+
+            doc.deadline = result.deadline;
+            if (doc.raw) doc.raw.deadline = result.deadline;
+            doc.deadlineDate = result.deadline;
+
+            modalDeadline.textContent = formatDisplayDate(result.deadline);
+
+            const overdue =
+                typeof window.isOverdue === "function" &&
+                window.isOverdue(doc);
+
+            modalDeadline.classList.toggle("deadline-overdue", Boolean(overdue));
+            if (overdue) modalDeadline.textContent += " • เกินกำหนด";
+
+            window.alert("บันทึก Deadline แล้ว");
+        } catch (error) {
+            console.error("Update deadline error:", error);
+            window.alert(error.message || "บันทึก Deadline ไม่สำเร็จ");
+        }
     }
 
     // Helper ป้องกัน XSS
@@ -1011,12 +1087,18 @@
         if (modalReceiver) modalReceiver.textContent = doc.receiver || doc.receiver_name || "-";
         if (modalSendDate) modalSendDate.textContent = formatDisplayDate(doc.raw ? doc.raw.sent_date : (doc.send_date || doc.sent_date));
         if (modalReceiveDate) modalReceiveDate.textContent = formatDisplayDate(doc.raw ? doc.raw.receive_date : doc.receive_date);
+        const editDeadlineButton = document.getElementById("editDeadlineButton");
         if (modalDeadline) {
             const deadline = doc.raw ? doc.raw.deadline : doc.deadline;
             modalDeadline.textContent = formatDisplayDate(deadline);
             const overdue = typeof window.isOverdue === "function" && window.isOverdue(doc);
             modalDeadline.classList.toggle("deadline-overdue", Boolean(overdue));
             if (overdue) modalDeadline.textContent += " • เกินกำหนด";
+            if (editDeadlineButton) {
+                editDeadlineButton.hidden = !(auth.isAdmin || auth.isOfficer);
+                editDeadlineButton.onclick = () =>
+                    editDocumentDeadline(doc, auth, modalDeadline);
+            }
         }
         if (modalRemarks) {
             const rm = doc.remarks;

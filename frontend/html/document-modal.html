@@ -170,7 +170,22 @@
                         </div>
                         <div class="meta-item">
                             <span class="meta-label">วันครบกำหนด (Deadline)</span>
-                            <span class="meta-value" id="modalDeadline">-</span>
+
+                            <div class="deadline-row">
+                                <span class="meta-value" id="modalDeadline">-</span>
+
+                                <button
+                                    type="button"
+                                    id="editDeadlineButton"
+                                    class="edit-deadline-button"
+                                    aria-label="แก้ไข Deadline"
+                                    title="แก้ไข Deadline"
+                                    hidden
+                                >
+                            <svg viewBox="0 0 24 24" aria-hidden="true">
+                                <path d="M3 17.25V21h3.75L17.8 9.95l-3.75-3.75L3 17.25zm17.7-10.04a1 1 0 0 0 0-1.42l-2.49-2.49a1 1 0 0 0-1.42 0l-1.83 1.83 3.75 3.75 1.99-1.67z"/>
+                            </svg>
+                        </button>
                         </div>
                         <div class="meta-item full-width" id="modalRemarksWrap">
                             <span class="meta-label">หมายเหตุ</span>
