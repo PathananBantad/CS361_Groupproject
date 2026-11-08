@@ -125,4 +125,5 @@ V5 มุ่งเน้นการทำให้ Infrastructure และ Dep
 https://main.d29fui7wfvh5a0.amplifyapp.com/
 
 ## Architecture V5
-<img width="1752" height="897" alt="Architecture diagram V4" src="https://github.com/user-attachments/assets/58283b41-e446-47ae-a805-74d31e2f3307" />
+<img width="1755" height="896" alt="Architecture V5 " src="https://github.com/user-attachments/assets/290723a9-9ac3-4b68-b990-158593ee234f" />
+
