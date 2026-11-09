@@ -5,6 +5,10 @@ const dotenv = require('../backend/node_modules/dotenv');
 
 const envPath = path.resolve(__dirname, '../backend/.env');
 const envConfig = dotenv.config({ path: envPath }).parsed || {};
+const deploymentConfig = {
+  ...envConfig,
+  ...process.env
+};
 
 const env = {
   ...process.env,
@@ -14,8 +18,33 @@ const env = {
   AWS_REGION: envConfig.AWS_REGION || 'us-east-1'
 };
 
+function getRequiredDatabaseConfig(config = deploymentConfig) {
+  const firstConfiguredValue = (...values) =>
+    values.find(value => typeof value === 'string' && value.trim());
+  const databaseConfig = {
+    DB_HOST: firstConfiguredValue(config.DB_HOST),
+    DB_PORT: firstConfiguredValue(config.DB_PORT),
+    DB_USER: firstConfiguredValue(config.DB_USER, config.DB_USERNAME),
+    DB_PASSWORD: firstConfiguredValue(config.DB_PASSWORD),
+    DB_NAME: firstConfiguredValue(config.DB_NAME, config.DB_DATABASE)
+  };
+  const missingVariables = Object.entries(databaseConfig)
+    .filter(([, value]) => value === undefined)
+    .map(([name]) => name);
+
+  if (missingVariables.length > 0) {
+    throw new Error(`Database deployment configuration is incomplete: ${missingVariables.join(', ')}.`);
+  }
+
+  return {
+    ...databaseConfig,
+    DB_USERNAME: databaseConfig.DB_USER,
+    DB_DATABASE: databaseConfig.DB_NAME
+  };
+}
+
 function getRequiredSessionSecret() {
-  const sessionSecret = envConfig.SESSION_SECRET;
+  const sessionSecret = deploymentConfig.SESSION_SECRET;
   if (typeof sessionSecret !== 'string' || !sessionSecret.trim()) {
     throw new Error('SESSION_SECRET must be configured before deployment.');
   }
@@ -39,6 +68,7 @@ function runAws(cmd, options = {}) {
 
 async function main() {
   const sessionSecret = getRequiredSessionSecret();
+  const databaseConfig = getRequiredDatabaseConfig();
 
   console.log('=====================================================');
   console.log('DocuFlow AWS Services Setup & Deployment');
@@ -103,13 +133,7 @@ async function main() {
     Variables: {
       AWS_S3_REGION: 'us-east-1',
       S3_BUCKET: s3BucketName,
-      DB_HOST: envConfig.DB_HOST || 'gateway01.us-east-1.prod.aws.tidbcloud.com',
-      DB_PORT: envConfig.DB_PORT || '4000',
-      DB_USER: envConfig.DB_USER || '9dV53PJt9W6BD7q.root',
-      DB_USERNAME: envConfig.DB_USERNAME || '9dV53PJt9W6BD7q.root',
-      DB_PASSWORD: envConfig.DB_PASSWORD || 'KTcbYgh6mpJLHIdF',
-      DB_NAME: envConfig.DB_NAME || 'ems',
-      DB_DATABASE: envConfig.DB_DATABASE || 'ems',
+      ...databaseConfig,
       SESSION_SECRET: sessionSecret,
       COGNITO_REGION: 'us-east-1',
       COGNITO_USER_POOL_ID: cognitoPoolId,
@@ -286,7 +310,11 @@ async function main() {
   console.log('=====================================================\n');
 }
 
-main().catch(err => {
-  console.error('\nDeployment Error:', err);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch(err => {
+    console.error('\nDeployment Error:', err);
+    process.exit(1);
+  });
+}
+
+module.exports = { getRequiredDatabaseConfig };
