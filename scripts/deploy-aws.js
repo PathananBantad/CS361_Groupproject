@@ -14,6 +14,14 @@ const env = {
   AWS_REGION: envConfig.AWS_REGION || 'us-east-1'
 };
 
+function getRequiredSessionSecret() {
+  const sessionSecret = envConfig.SESSION_SECRET;
+  if (typeof sessionSecret !== 'string' || !sessionSecret.trim()) {
+    throw new Error('SESSION_SECRET must be configured before deployment.');
+  }
+  return sessionSecret;
+}
+
 function runAws(cmd, options = {}) {
   try {
     const res = execSync(cmd, { env, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], ...options });
@@ -30,6 +38,8 @@ function runAws(cmd, options = {}) {
 }
 
 async function main() {
+  const sessionSecret = getRequiredSessionSecret();
+
   console.log('=====================================================');
   console.log('DocuFlow AWS Services Setup & Deployment');
   console.log('=====================================================\n');
@@ -100,7 +110,7 @@ async function main() {
       DB_PASSWORD: envConfig.DB_PASSWORD || 'KTcbYgh6mpJLHIdF',
       DB_NAME: envConfig.DB_NAME || 'ems',
       DB_DATABASE: envConfig.DB_DATABASE || 'ems',
-      SESSION_SECRET: envConfig.SESSION_SECRET || 'cs361_docuflow_secret_key_2026',
+      SESSION_SECRET: sessionSecret,
       COGNITO_REGION: 'us-east-1',
       COGNITO_USER_POOL_ID: cognitoPoolId,
       COGNITO_APP_CLIENT_ID: cognitoClientId,
@@ -280,4 +290,3 @@ main().catch(err => {
   console.error('\nDeployment Error:', err);
   process.exit(1);
 });
-
