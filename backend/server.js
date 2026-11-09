@@ -380,6 +380,79 @@ app.get(
                 });
             }
 
+            if (role === "guest") {
+                const {
+                    reference_no,
+                    document_type,
+                    status,
+                    from_date,
+                    to_date,
+                    type,
+                    month
+                } = req.query;
+
+                let guestSql = `
+                    SELECT reference_no, document_type, receive_date, status
+                    FROM documents
+                    WHERE 1 = 1
+                `;
+                const guestParams = [];
+
+                if (reference_no) {
+                    guestSql += " AND reference_no LIKE ?";
+                    guestParams.push(`%${reference_no}%`);
+                }
+
+                if (document_type) {
+                    guestSql += " AND document_type = ?";
+                    guestParams.push(document_type);
+                }
+
+                if (status) {
+                    const statuses = Array.isArray(status) ? status : [status];
+                    if (statuses.length > 0) {
+                        const placeholders = statuses.map(() => "?").join(",");
+                        guestSql += ` AND status IN (${placeholders})`;
+                        guestParams.push(...statuses);
+                    }
+                }
+
+                if (from_date) {
+                    guestSql += " AND receive_date >= ?";
+                    guestParams.push(from_date);
+                }
+
+                if (to_date) {
+                    guestSql += " AND receive_date <= ?";
+                    guestParams.push(to_date);
+                }
+
+                if (type) {
+                    guestSql += " AND document_type = ?";
+                    guestParams.push(type);
+                }
+
+                if (month) {
+                    guestSql += " AND MONTH(receive_date) = ?";
+                    guestParams.push(month);
+                }
+
+                guestSql += " ORDER BY receive_date DESC";
+
+                const [guestRows] = await pool.query(guestSql, guestParams);
+                const publicDocuments = guestRows.map((doc) => ({
+                    reference_no: doc.reference_no,
+                    document_type: doc.document_type,
+                    receive_date: doc.receive_date,
+                    status: doc.status
+                }));
+
+                return res.json({
+                    data: publicDocuments,
+                    total: publicDocuments.length
+                });
+            }
+
             const {
                 reference_no,
                 subject,
@@ -2448,72 +2521,107 @@ app.get("/api/documents/:id/view-file", requireCognitoAuth, loadUserRole, async 
     }
 });
 
-// Direct Download File (Stream file with attachment Content-Disposition)
-// ช่วยให้เบราว์เซอร์ดาวน์โหลดไฟล์ลงเครื่องทันที และไม่ติด Quarantine Policy ของ AWS
-
+// Direct S3 download with document read authorization
 app.get(
     "/api/documents/:id/download-file",
     requireCognitoAuth,
     loadUserRole,
     async (req, res) => {
-
         try {
             const { id } = req.params;
 
             const [rows] = await pool.query(
-                `
-            SELECT 
-                d.*,
-                f.file_name,
-                f.file_size,
-                f.mime_type
-            FROM documents d
-            LEFT JOIN document_files f ON d.id = f.document_id
-            WHERE d.id = ?
-            `,
+                `SELECT d.owner_id, d.assignee_id, d.file_key,
+                        f.id AS file_metadata_id, f.file_name, f.file_size, f.mime_type
+                 FROM documents d
+                 LEFT JOIN document_files f ON d.id = f.document_id
+                 WHERE d.id = ?`,
                 [id]
             );
 
             if (rows.length === 0) {
-                return res.status(404).send("Document or file not found");
+                return res.status(404).json({ error: "Document or file not found" });
             }
 
             const doc = rows[0];
-            const access = checkDocumentAccess(req, doc);
-            if (!access.allowed) {
-                return res.status(403).send("Forbidden");
-            }
-            if (!doc.file_key) return res.status(404).send("Document or file not found");
-
-            const finalFileName = doc.file_name || extractFileNameFromKey(doc.file_key) || "document";
-            const resolvedMime = doc.mime_type || getMimeTypeByExtension(finalFileName);
-            const safeAsciiName = finalFileName.replace(/[^\x20-\x7E]/g, "_");
-            const encodedName = encodeURIComponent(finalFileName);
-
-            const s3DownloadUrl = await createDownloadUrl(doc.file_key, {
-                disposition: "attachment",
-                fileName: finalFileName,
-                contentType: resolvedMime
-            });
-
-            const s3Response = await fetch(s3DownloadUrl);
-
-            if (!s3Response.ok) {
-                return res.status(s3Response.status).send("Failed to retrieve file from storage");
+            const access = checkDocumentAccess(req, doc, "read");
+            if (!access.allowed) return res.status(403).json({ error: "Forbidden" });
+            if (!doc.file_metadata_id || !doc.file_key) {
+                return res.status(404).json({ error: "Document or file not found" });
             }
 
+            const rawFileName = doc.file_name || extractFileNameFromKey(doc.file_key) || "document";
+            const fileName = rawFileName
+                .replace(/[\u0000-\u001F\u007F]/g, "")
+                .replace(/[\\/""]/g, "_")
+                .trim() || "document";
+            const safeAsciiName = fileName.replace(/[^\x20-\x7E]/g, "_");
+            const encodedName = encodeURIComponent(fileName)
+                .replace(/[!'()*]/g, char => `%${char.charCodeAt(0).toString(16).toUpperCase()}`);
+            const resolvedMime = /^[\w.+-]+\/[\w.+-]+$/.test(doc.mime_type || "")
+                ? doc.mime_type
+                : getMimeTypeByExtension(fileName);
+            const file = await getS3Object(doc.file_key);
+
+            if (!file.Body || typeof file.Body.pipe !== "function") {
+                return res.status(502).json({ error: "File content is unavailable" });
+            }
+
+            const contentLength = Number.isSafeInteger(file.ContentLength)
+                ? file.ContentLength
+                : doc.file_size != null && String(doc.file_size).trim() !== "" &&
+                    Number.isSafeInteger(Number(doc.file_size))
+                    ? Number(doc.file_size)
+                    : null;
+
+            const clearDownloadHeaders = () => {
+                res.removeHeader("Content-Type");
+                res.removeHeader("Content-Disposition");
+                res.removeHeader("Content-Length");
+                res.removeHeader("X-Content-Type-Options");
+            };
+            const handleStreamError = error => {
+                console.error("Download stream failed:", error.name || "Error");
+                if (res.headersSent || res.destroyed) {
+                    if (!res.destroyed) res.destroy();
+                    return;
+                }
+                clearDownloadHeaders();
+                res.status(500).json({ error: "Failed to download document" });
+            };
+
+            file.Body.once("error", handleStreamError);
             res.setHeader("Content-Type", resolvedMime);
-            res.setHeader("Content-Disposition", `attachment; filename="${safeAsciiName}"; filename*=UTF-8''${encodedName}`);
-            if (doc.file_size) {
-                res.setHeader("Content-Length", doc.file_size);
+            res.setHeader(
+                "Content-Disposition",
+                `attachment; filename="${safeAsciiName}"; filename*=UTF-8''${encodedName}`
+            );
+            res.setHeader("X-Content-Type-Options", "nosniff");
+            if (contentLength != null) {
+                res.setHeader("Content-Length", String(contentLength));
             }
-
-            const arrayBuffer = await s3Response.arrayBuffer();
-            res.send(Buffer.from(arrayBuffer));
-
+            file.Body.pipe(res);
         } catch (error) {
-            console.error("Direct download file error:", error);
-            res.status(500).send("Error downloading file");
+            const isMissingS3Object =
+                error.name === "NoSuchKey" ||
+                error.name === "NotFound" ||
+                error.Code === "NoSuchKey" ||
+                error.$metadata?.httpStatusCode === 404;
+            console.error(
+                "Download file retrieval failed:",
+                error.name || "Error",
+                error.$metadata?.httpStatusCode || ""
+            );
+
+            if (res.headersSent || res.destroyed) {
+                if (!res.destroyed) res.destroy();
+            } else {
+                res.status(isMissingS3Object ? 404 : 500).json({
+                    error: isMissingS3Object
+                        ? "Document or file not found"
+                        : "Failed to download document"
+                });
+            }
         }
     });
 
@@ -2706,71 +2814,6 @@ app.get(
             });
         }
     });
-
-// ดาวน์โหลดไฟล์เอกสารโดยตรง (รองรับทั้ง Local Fallback และ S3)
-app.get(
-    "/api/documents/:id/download-file",
-    requireCognitoAuth,
-    loadUserRole,
-    async (req, res) => {
-        try {
-            const { id } = req.params;
-            const [rows] = await pool.query(
-                `SELECT d.*, f.file_name, f.file_size, f.mime_type
-                 FROM documents d
-                 LEFT JOIN document_files f ON d.id = f.document_id
-                 WHERE d.id = ?`,
-                [id]
-            );
-
-            if (rows.length === 0) {
-                return res.status(404).json({ error: "Document or file not found" });
-            }
-
-            const doc = rows[0];
-            const access = checkDocumentAccess(req, doc, "read");
-            if (!access.allowed) return res.status(403).json({ error: "Forbidden" });
-
-            const fileName = doc.file_name || extractFileNameFromKey(doc.file_key) || "document";
-            const mimeType = doc.mime_type || getMimeTypeByExtension(fileName);
-
-            const possibleLocalPaths = [
-                path.join(__dirname, "../documents", fileName),
-                path.join(__dirname, "../frontend/data", fileName),
-                path.join(__dirname, "uploads", fileName),
-                path.join(__dirname, "../documents", path.basename(doc.file_key || "")),
-                path.join(__dirname, "../frontend/data", path.basename(doc.file_key || ""))
-            ];
-            const foundLocal = possibleLocalPaths.find(p => fs.existsSync(p));
-
-            if (foundLocal) {
-                const stat = fs.statSync(foundLocal);
-                res.setHeader("Content-Type", mimeType);
-                res.setHeader(
-                    "Content-Disposition",
-                    `attachment; filename="${fileName.replace(/[^\x20-\x7E]/g, "_")}"`
-                );
-                res.setHeader("X-Content-Type-Options", "nosniff");
-                res.setHeader("Content-Length", stat.size);
-                return fs.createReadStream(foundLocal).pipe(res);
-            }
-
-            const file = await getS3Object(doc.file_key);
-            res.setHeader("Content-Type", mimeType);
-            res.setHeader(
-                "Content-Disposition",
-                `attachment; filename="${fileName.replace(/[^\x20-\x7E]/g, "_")}"`
-            );
-            res.setHeader("X-Content-Type-Options", "nosniff");
-            if (file.ContentLength != null) res.setHeader("Content-Length", file.ContentLength);
-            file.Body.pipe(res);
-        } catch (error) {
-            console.error("Download file error:", error.message);
-            res.status(500).json({ error: "Failed to download document" });
-        }
-    }
-);
-
 
 // ดักจับกรณีส่ง Request เกิน 1MB
 app.use((err, req, res, next) => {
