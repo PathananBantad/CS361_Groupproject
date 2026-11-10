@@ -1159,3 +1159,34 @@ dialog.document-modal::backdrop {
 .edit-deadline-button[hidden] {
     display: none;
 }
+.assignment-action-panel {
+    margin-top: 15px;
+    padding: 15px;
+    background: #f0fdf4;
+    border: 1px solid #bbf7d0;
+    border-radius: 8px;
+}
+
+.assignment-action-panel h4 {
+    margin: 0 0 10px;
+    color: #166534;
+}
+
+.assignment-action-panel form,
+.assignment-action-panel label {
+    display: grid;
+    gap: 8px;
+}
+
+.assignment-action-panel button {
+    justify-self: start;
+    padding: 8px 16px;
+    border: 0;
+    border-radius: 4px;
+    background: #16a34a;
+    color: white;
+}
+
+.assignment-action-panel button:disabled {
+    opacity: 0.55;
+}

@@ -1032,7 +1032,6 @@
         if (!currentActiveDoc) return;
         currentActiveDoc.permissions = {};
         renderWorkflowUI(currentActiveDoc.status, getCurrentAuth());
-        document.querySelector("#assignSection form")?.remove();
         document.getElementById("forwardSectionContainer")?.replaceChildren();
         const deadlineButton = document.getElementById("editDeadlineButton");
         if (deadlineButton) deadlineButton.hidden = true;
@@ -1066,8 +1065,11 @@
         currentActiveDoc = doc;
         const auth = getCurrentAuth(doc);
         const permissions = doc.permissions || {};
+        const forwardHost = document.getElementById("forwardSectionContainer");
+        forwardHost?.replaceChildren();
         if (window.DocuFlowAssignment) {
             window.DocuFlowAssignment.mount(doc, {
+                actionHost: permissions.forward === true ? null : forwardHost,
                 onDenied: () => { if (currentActiveDoc === doc) disableWorkflowActions(); },
                 onDone: async () => {
                     if (currentActiveDoc === doc) {
@@ -1140,50 +1142,43 @@
             documentModal.showModal();
         }
 
-        const forwardHost = document.getElementById("forwardSectionContainer");
+        if (forwardHost && permissions.forward === true) {
+            forwardHost.innerHTML = renderForwardSection(doc.id);
+            const recipientSelect = document.getElementById("modalForwardAssigneeId");
 
-        if (forwardHost) {
-            forwardHost.innerHTML = permissions.forward === true
-                ? renderForwardSection(doc.id)
-                : "";
+            try {
+                const response = await window.apiFetch(
+                    `${getApiBaseUrl()}/forward-recipients`
+                );
+                const result = await response.json();
+                if (currentActiveDoc !== doc) return;
+                if (response.status === 401 || response.status === 403) disableWorkflowActions();
 
-            if (permissions.forward === true) {
-                const recipientSelect = document.getElementById("modalForwardAssigneeId");
+                if (!response.ok) {
+                    throw new Error(result.error || "โหลดรายชื่อผู้รับไม่สำเร็จ");
+                }
 
-                try {
-                    const response = await window.apiFetch(
-                        `${getApiBaseUrl()}/forward-recipients`
-                    );
-                    const result = await response.json();
-                    if (currentActiveDoc !== doc) return;
-                    if (response.status === 401 || response.status === 403) disableWorkflowActions();
+                recipientSelect.replaceChildren(
+                    new Option("เลือกผู้รับผิดชอบ", "")
+                );
 
-                    if (!response.ok) {
-                        throw new Error(result.error || "โหลดรายชื่อผู้รับไม่สำเร็จ");
-                    }
-
-                    recipientSelect.replaceChildren(
-                        new Option("เลือกผู้รับผิดชอบ", "")
-                    );
-
-                    for (const user of result.data || []) {
-                        const displayName = user.full_name || user.username;
-                        recipientSelect.add(
-                            new Option(`${displayName} (${user.username})`, String(user.id))
-                        );
-                    }
-
-                    if (!result.data?.length) {
-                        recipientSelect.replaceChildren(
-                            new Option("ไม่พบผู้รับที่ใช้งานได้", "")
-                        );
-                    }
-                } catch (error) {
-                    console.error("Load forwarding recipients error:", error);
-                    recipientSelect.replaceChildren(
-                        new Option("โหลดรายชื่อผู้รับไม่สำเร็จ", "")
+                for (const user of result.data || []) {
+                    const displayName = user.full_name || user.username;
+                    recipientSelect.add(
+                        new Option(`${displayName} (${user.username})`, String(user.id))
                     );
                 }
+
+                if (!result.data?.length) {
+                    recipientSelect.replaceChildren(
+                        new Option("ไม่พบผู้รับที่ใช้งานได้", "")
+                    );
+                }
+            } catch (error) {
+                console.error("Load forwarding recipients error:", error);
+                recipientSelect.replaceChildren(
+                    new Option("โหลดรายชื่อผู้รับไม่สำเร็จ", "")
+                );
             }
         }
 

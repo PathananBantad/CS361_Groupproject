@@ -96,24 +96,28 @@
             (info.isCreator ? ' <small style="font-size:12px;font-weight:normal;color:#6b7280;">(ผู้เพิ่มเอกสาร)</small>' : '') +
             '</span></div>';
 
-        if (doc.permissions?.assign !== true) return;
+        const { actionHost } = opts;
+        if (!actionHost || doc.permissions?.assign !== true) return;
 
         const label = doc.assignee_id == null ? "มอบหมายเอกสาร" : "มอบหมายใหม่";
-        section.insertAdjacentHTML("beforeend", `
-            <form>
-                <label>ผู้รับมอบหมาย <select name="assignee" required disabled>
-                    <option value="">กำลังโหลดรายชื่อผู้รับมอบหมาย</option>
-                </select></label>
-                <label>หมายเหตุ <input name="remarks" type="text"></label>
-                <button type="submit" disabled>${label}</button>
-            </form>
-            <p data-assignment-message role="status" aria-live="polite"></p>
-        `);
+        actionHost.innerHTML = `
+            <section class="assignment-action-panel">
+                <h4>${label}</h4>
+                <form>
+                    <label>ผู้รับมอบหมาย <select name="assignee" required disabled>
+                        <option value="">กำลังโหลดรายชื่อผู้รับมอบหมาย</option>
+                    </select></label>
+                    <label>หมายเหตุ <input name="remarks" type="text"></label>
+                    <button type="submit" disabled>${label}</button>
+                </form>
+                <p data-assignment-message role="status" aria-live="polite"></p>
+            </section>
+        `;
 
-        const form = section.querySelector("form");
+        const form = actionHost.querySelector("form");
         const select = form.elements.assignee;
         const submit = form.querySelector("button");
-        const message = section.querySelector("[data-assignment-message]");
+        const message = actionHost.querySelector("[data-assignment-message]");
         const documentUrl = `${apiBase()}/documents/${encodeURIComponent(doc.id)}`;
         const allowedRoles = ["faculty_staff", "responsible_person"];
 
