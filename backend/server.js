@@ -1664,13 +1664,18 @@ app.post("/api/documents/:id/forward", requireCognitoAuth, loadUserRole, async (
                 console.warn("Lookup forwarder name failed:", e.message);
             }
 
-            // อัปเดตเอกสาร
+            const newStatus = sanitizedNewAssigneeId && currentStatus === "Received"
+                ? "Assigned"
+                : currentStatus;
+
+            // บันทึกผู้รับผิดชอบและสถานะใน transaction เดียวกัน
             await connection.query(
                 `UPDATE documents 
                  SET assignee_id = COALESCE(?, assignee_id),
-                     receiver_name = COALESCE(?, receiver_name)
+                     receiver_name = COALESCE(?, receiver_name),
+                     status = ?
                  WHERE id = ?`,
-                [sanitizedNewAssigneeId, sanitizedReceiverName || null, id]
+                [sanitizedNewAssigneeId, sanitizedReceiverName || null, newStatus, id]
             );
 
             // บันทึกลงตาราง document_assignments
@@ -1705,7 +1710,7 @@ app.post("/api/documents/:id/forward", requireCognitoAuth, loadUserRole, async (
                     owner_id: doc.owner_id,
                     assignee_id: sanitizedNewAssigneeId || doc.assignee_id,
                     receiver_name: sanitizedReceiverName || doc.receiver_name,
-                    status: doc.status
+                    status: newStatus
                 },
                 details: {
                     // ผู้ส่งต่อ/ผู้มอบหมาย (Assigned By) - ดึงจากข้อมูลผู้ใช้จริงฝั่ง Server
