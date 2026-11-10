@@ -1579,6 +1579,8 @@
 
     // Expose ไปยัง window object
     window.DocuFlowModal = {
+        currentDocument: () => currentActiveDoc,
+        disableWorkflowActions,
         open: openDocumentModal,
         download: downloadDocumentFile,
         close: () => { if (documentModal && documentModal.open) documentModal.close(); },
