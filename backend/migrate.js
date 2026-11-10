@@ -4,6 +4,11 @@ async function runMigration() {
   try {
     console.log("🚀 กำลังตรวจสอบและ Migrate โครงสร้างฐานข้อมูล DocuFlow (AWS RDS)...");
 
+    await pool.query(
+      "INSERT IGNORE INTO roles (name, description) VALUES (?, ?)",
+      ["responsible_person", "ผู้รับผิดชอบเรื่อง"]
+    );
+
     // 1. ตาราง channels (ช่องทางการรับเอกสาร)
     await pool.query(`
       CREATE TABLE IF NOT EXISTS channels (

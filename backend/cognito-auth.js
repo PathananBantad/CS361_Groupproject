@@ -43,7 +43,8 @@ const cachedPublicKeys = new Map();
 
 // Helper ฟังก์ชันสำหรับสร้างและตรวจสอบ HS256 Token (สำหรับ TU Auth Fallback เมื่อ AWS Learner Lab ถูกระงับหรือรันบน Render)
 function signHs256Jwt(payload, secret) {
-    const sec = secret || process.env.SESSION_SECRET || "cs361_docuflow_secret_key_2026";
+    const sec = secret || process.env.SESSION_SECRET;
+    if (!sec) throw new Error("SESSION_SECRET must be configured");
     const header = Buffer.from(JSON.stringify({ alg: "HS256", typ: "JWT" })).toString("base64url");
     const body = Buffer.from(JSON.stringify(payload)).toString("base64url");
     const sig = crypto.createHmac("sha256", sec).update(`${header}.${body}`).digest("base64url");
@@ -51,15 +52,18 @@ function signHs256Jwt(payload, secret) {
 }
 
 function verifyHs256Jwt(token, secret) {
-    const sec = secret || process.env.SESSION_SECRET || "cs361_docuflow_secret_key_2026";
+    const sec = secret || process.env.SESSION_SECRET;
+    if (!sec) return null;
     const parts = (token || "").split(".");
     if (parts.length !== 3) return null;
     try {
         const expectedSig = crypto.createHmac("sha256", sec).update(`${parts[0]}.${parts[1]}`).digest("base64url");
-        if (parts[2] !== expectedSig) return null;
+        const actual = Buffer.from(parts[2]);
+        const expected = Buffer.from(expectedSig);
+        if (actual.length !== expected.length || !crypto.timingSafeEqual(actual, expected)) return null;
         const payload = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8"));
         const now = Math.floor(Date.now() / 1000);
-        if (payload.exp && payload.exp < now) return null;
+        if (!Number.isFinite(payload.exp) || payload.exp <= now || !payload.sub || !payload.username) return null;
         return payload;
     } catch (_) {
         return null;

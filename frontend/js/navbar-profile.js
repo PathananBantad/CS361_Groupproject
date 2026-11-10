@@ -12,6 +12,7 @@
         faculty_staff: "อาจารย์ / บุคลากร",
         staff: "อาจารย์ / บุคลากร",
         executive: "ผู้บริหาร",
+        responsible_person: "ผู้รับผิดชอบเรื่อง",
         guest: "ผู้ใช้ทั่วไป"
     };
 

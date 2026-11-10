@@ -9,10 +9,10 @@ const {
     canAccessDocument
 } = require("../documentAuthorization");
 
-test("ROLES ครอบคลุม 4 บทบาทหลักของระบบ", () => {
+test("ROLES ครอบคลุม 5 บทบาทหลักของระบบ", () => {
     assert.deepEqual(
         [...ROLES].sort(),
-        ["admin", "document_officer", "executive", "faculty_staff"].sort()
+        ["admin", "document_officer", "executive", "faculty_staff", "responsible_person"].sort()
     );
 });
 
@@ -21,6 +21,7 @@ test("mapCognitoGroupsToRoles แปลงชื่อกลุ่ม Cognito �
     assert.deepEqual(mapCognitoGroupsToRoles(["DocumentReceiver"]), ["document_officer"]);
     assert.deepEqual(mapCognitoGroupsToRoles(["Staff/Instructor"]), ["faculty_staff"]);
     assert.deepEqual(mapCognitoGroupsToRoles(["Executive"]), ["executive"]);
+    assert.deepEqual(mapCognitoGroupsToRoles(["ResponsiblePerson"]), ["responsible_person"]);
 });
 
 test("mapCognitoGroupsToRoles ไม่สนตัวพิมพ์เล็ก/ใหญ่ และตัด duplicate", () => {
@@ -55,7 +56,7 @@ test("canAccessDocument READ: faculty_staff อ่านได้เฉพาะ
     assert.equal(canAccessDocument({ roles: ["faculty_staff"], userId: 7, document: unrelated, action: "read" }), false);
 });
 
-test("canAccessDocument ASSIGN: เฉพาะ document_officer และ admin", () => {
+test("canAccessDocument ASSIGN: document_officer และ admin มอบหมายเอกสารที่ไม่เกี่ยวข้องได้", () => {
     const doc = { id: 5, owner_id: 99, assignee_id: 99 };
     assert.equal(canAccessDocument({ roles: ["document_officer"], userId: 1, document: doc, action: "assign" }), true);
     assert.equal(canAccessDocument({ roles: ["admin"], userId: 1, document: doc, action: "assign" }), true);
@@ -79,4 +80,27 @@ test("canAccessDocument DELETE: เฉพาะ admin เท่านั้น",
     assert.equal(canAccessDocument({ roles: ["faculty_staff"], userId: 1, document: doc, action: "delete" }), false);
     assert.equal(canAccessDocument({ roles: ["executive"], userId: 1, document: doc, action: "delete" }), false);
     assert.deepEqual(ACTION_ROLES.delete, ["admin"]);
+});
+
+test("Responsible Person can reassign only as current assignee", () => {
+    const document = { owner_id: 7, assignee_id: 8, status: "Assigned" };
+    const context = { roles: ["responsible_person"], document, action: "assign" };
+    assert.equal(canAccessDocument({ ...context, userId: 7 }), false);
+    assert.equal(canAccessDocument({ ...context, userId: 8 }), true);
+    assert.equal(canAccessDocument({ ...context, userId: 8, document: { ...document, status: "Completed" } }), false);
+});
+
+test("Previous assignees and executives can read without workflow rights", () => {
+    const document = { owner_id: 7, assignee_id: 8, status: "Assigned" };
+    const contexts = [
+        { roles: ["responsible_person"], userId: 7, document, previousAssignee: true },
+        { roles: ["faculty_staff"], userId: 7, document, previousAssignee: true },
+        { roles: ["executive"], userId: 8, document }
+    ];
+    for (const context of contexts) {
+        assert.equal(canAccessDocument({ ...context, action: "read" }), true);
+        for (const action of ["assign", "forward", "status"]) {
+            assert.equal(canAccessDocument({ ...context, action }), false);
+        }
+    }
 });

@@ -16,37 +16,6 @@
         return d.innerHTML;
     }
 
-    // แคชรายชื่อผู้ใช้เพื่อลดการเรียก API ซ้ำ
-    let usersCache = null;
-
-    async function fetchUsersList() {
-        if (usersCache) return usersCache;
-        try {
-            let res = await window.apiFetch(apiBase() + "/forward-recipients");
-            if (!res.ok) {
-                res = await window.apiFetch(apiBase() + "/assignees");
-            }
-            if (res.ok) {
-                const data = await res.json();
-                usersCache = data.data || data.assignees || [];
-                return usersCache;
-            }
-        } catch (e) {
-            console.warn("Could not fetch users list:", e);
-        }
-        return [];
-    }
-
-    async function resolveUserName(userId) {
-        if (!userId) return null;
-        const users = await fetchUsersList();
-        const found = users.find((u) => String(u.id) === String(userId));
-        if (found) {
-            return found.full_name || found.username;
-        }
-        return null;
-    }
-
     // สร้างกล่อง section ถ้ายังไม่มี (วางก่อนการ์ดประวัติ)
     function ensureSection() {
         let el = document.getElementById("assignSection");
@@ -127,15 +96,77 @@
             (info.isCreator ? ' <small style="font-size:12px;font-weight:normal;color:#6b7280;">(ผู้เพิ่มเอกสาร)</small>' : '') +
             '</span></div>';
 
-        // กรณีที่ชื่อยังเป็น "ผู้ใช้ #..." หรือมีข้อมูล userId ให้ลองดึงชื่อจริงภาษาไทยจากระบบมาอัปเดตอัตโนมัติ
-        if (info.userId) {
-            const assignCurrentEl = section.querySelector("#assignCurrent");
-            resolveUserName(info.userId).then((resolved) => {
-                if (resolved && assignCurrentEl && !resolved.includes("@")) {
-                    assignCurrentEl.innerHTML = esc(resolved) +
-                        (info.isCreator ? ' <small style="font-size:12px;font-weight:normal;color:#6b7280;">(ผู้เพิ่มเอกสาร)</small>' : '');
+        if (doc.permissions?.assign !== true) return;
+
+        const label = doc.assignee_id == null ? "มอบหมายเอกสาร" : "มอบหมายใหม่";
+        section.insertAdjacentHTML("beforeend", `
+            <form>
+                <label>ผู้รับมอบหมาย <select name="assignee" required disabled>
+                    <option value="">กำลังโหลดรายชื่อผู้รับมอบหมาย</option>
+                </select></label>
+                <label>หมายเหตุ <input name="remarks" type="text"></label>
+                <button type="submit" disabled>${label}</button>
+            </form>
+            <p data-assignment-message role="status" aria-live="polite"></p>
+        `);
+
+        const form = section.querySelector("form");
+        const select = form.elements.assignee;
+        const submit = form.querySelector("button");
+        const message = section.querySelector("[data-assignment-message]");
+        const documentUrl = `${apiBase()}/documents/${encodeURIComponent(doc.id)}`;
+        const allowedRoles = ["faculty_staff", "responsible_person"];
+
+        try {
+            const res = await window.apiFetch(`${apiBase()}/assignees?document_id=${encodeURIComponent(doc.id)}`);
+            const result = await res.json().catch(() => ({}));
+            if (!form.isConnected) return;
+            if (res.status === 401 || res.status === 403) opts.onDenied();
+            if (!res.ok) throw new Error(result.error || "โหลดรายชื่อผู้รับมอบหมายไม่สำเร็จ");
+
+            const recipients = new Map();
+            for (const user of result.data || []) {
+                if (allowedRoles.includes(user.role) && String(user.id) !== String(doc.assignee_id)) {
+                    recipients.set(String(user.id), user.full_name || user.username);
                 }
-            }).catch(() => {});
+            }
+            select.replaceChildren(new Option(recipients.size ? "เลือกผู้รับมอบหมาย" : "ไม่มีผู้รับมอบหมายที่เลือกได้", ""));
+            for (const [id, name] of recipients) select.add(new Option(name, id));
+            select.disabled = !recipients.size;
+            select.addEventListener("change", () => { submit.disabled = !recipients.has(select.value); });
+
+            form.addEventListener("submit", async event => {
+                event.preventDefault();
+                if (submit.disabled || !recipients.has(select.value)) return;
+                const assigneeId = select.value;
+                submit.disabled = true;
+                select.disabled = true;
+                message.textContent = "กำลังบันทึกการมอบหมาย…";
+                try {
+                    const response = await window.apiFetch(`${documentUrl}/assign`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            assignee_id: assigneeId,
+                            expected_assignee_id: doc.assignee_id ?? null,
+                            remarks: form.elements.remarks.value
+                        })
+                    });
+                    const data = await response.json().catch(() => ({}));
+                    if (!response.ok) {
+                        if ((response.status === 401 || response.status === 403) && form.isConnected) opts.onDenied();
+                        throw new Error(data.error || "บันทึกการมอบหมายไม่สำเร็จ");
+                    }
+                    message.textContent = "บันทึกการมอบหมายสำเร็จ";
+                    await opts.onDone();
+                } catch (error) {
+                    message.textContent = error.message;
+                    select.disabled = false;
+                    submit.disabled = false;
+                }
+            });
+        } catch (error) {
+            message.textContent = error.message;
         }
     }
 

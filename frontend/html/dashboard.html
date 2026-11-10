@@ -34,7 +34,7 @@
 
         <nav class="nav-links">
             <a href="dashboard.html" class="active">หน้าหลัก</a>
-            <a href="register.html">ลงทะเบียนเอกสาร</a>
+            <a href="register.html" hidden>ลงทะเบียนเอกสาร</a>
             <a href="guide.html">คู่มือ</a>
         </nav>
 
@@ -76,6 +76,8 @@
         <section class="page-heading">
             <div>
                 <h1>Document Registry <span>• <strong id="shownCount">0</strong> รายการ</span></h1>
+                <p id="guestTrackingHint" hidden><a href="login.html">เข้าสู่ระบบ</a> เพื่อดูรายละเอียดและไฟล์เอกสารตามสิทธิ์</p>
+                <p id="executiveReadOnly" hidden>อ่านอย่างเดียว (Read-only) • ติดตามเอกสารและตรวจสอบประวัติ</p>
             </div>
         </section>
 

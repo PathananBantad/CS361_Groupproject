@@ -1,13 +1,14 @@
 const ROLES = Object.freeze([
-    "document_officer", "faculty_staff", "admin", "executive"
+    "document_officer", "faculty_staff", "responsible_person", "admin", "executive"
 ]);
 
 const ACTION_ROLES = Object.freeze({
     read: ROLES,
     upload: ["document_officer", "admin"],
-    status: ["document_officer", "admin", "faculty_staff"],
-    assign: ["document_officer", "admin"],
-    forward: ["document_officer", "admin", "faculty_staff"],
+    status: ["document_officer", "admin", "faculty_staff", "responsible_person"],
+    assign: ["document_officer", "admin", "faculty_staff", "responsible_person"],
+    deadline: ["document_officer", "admin"],
+    forward: ["document_officer", "admin", "faculty_staff", "responsible_person"],
     delete: ["admin"]
 });
 
@@ -23,50 +24,50 @@ function mapCognitoGroupsToRoles(groups) {
         document_officer: "document_officer",
         documentreceiver: "document_officer",
         "staff/instructor": "faculty_staff",
+        faculty_staff: "faculty_staff",
         staff: "faculty_staff",
         instructor: "faculty_staff",
         executive: "executive",
-        responsibleperson: "faculty_staff",
-        "responsible_person": "faculty_staff"
+        responsibleperson: "responsible_person",
+        responsible_person: "responsible_person"
     };
 
     return [...new Set(
         groupList
             .filter(group => typeof group === "string")
-            .map(group => groupToRole[group.trim().toLowerCase()])
+            .map(group => group.trim().toLowerCase())
+            .filter(group => Object.hasOwn(groupToRole, group))
+            .map(group => groupToRole[group])
             .filter(Boolean)
     )];
 }
 
-function canAccessDocument({ roles, userId, document, action = "read" }) {
+function canAccessDocument({ roles, userId, document, action = "read", previousAssignee = false }) {
     const normalized = (Array.isArray(roles) ? roles : [roles])
         .map((role) => String(role || "").trim().toLowerCase())
         .filter((role) => ROLES.includes(role));
     const allowedRoles = ACTION_ROLES[action];
     if (!allowedRoles || !normalized.some((role) => allowedRoles.includes(role)) || userId == null || !document) return false;
 
-    // Admin, Executive, and Document Officer have system-wide read/view access to all documents and files
-    if (action === "read" && normalized.some((r) => ["admin", "executive", "document_officer"].includes(r))) {
-        return true;
+    const currentAssignee = document.assignee_id != null && String(document.assignee_id) === String(userId);
+    const owner = document.owner_id != null && String(document.owner_id) === String(userId);
+    const admin = normalized.includes("admin");
+    const officer = normalized.includes("document_officer");
+    const faculty = normalized.includes("faculty_staff");
+    const executive = normalized.includes("executive");
+
+    if (action === "read") return admin || officer || executive || owner || currentAssignee || previousAssignee;
+    if (executive || (previousAssignee && !currentAssignee)) return false;
+    if (action === "assign") {
+        return document.status !== "Completed" && (admin || officer || currentAssignee || (faculty && owner));
     }
-
-    // Document officers and Admins can assign any document across the system
-    if (action === "assign" && normalized.some((r) => ["document_officer", "admin"].includes(r))) {
-        return true;
+    if (action === "forward" && !["Received", "Assigned", "Processing"].includes(document.status || "Received")) {
+        return false;
     }
-
-    // Admins can delete documents
-    if (action === "delete" && normalized.includes("admin")) {
-        return true;
-    }
-
-    const isRelated = [document.owner_id, document.assignee_id]
-        .some((id) => id != null && String(id) === String(userId));
-
-    // Admin has system-wide override to update status
-    if (action === "status" && normalized.includes("admin")) return true;
-
-    return isRelated;
+    if (action === "status" && !admin && document.status === "Completed") return false;
+    if (action === "delete" || action === "deadline") return true;
+    if (action === "status" && admin) return true;
+    return currentAssignee || ((admin || officer || faculty) && owner);
 }
 
 module.exports = {

@@ -365,7 +365,10 @@ router.post("/tu-login", async (req, res) => {
         // หาก Cognito Admin ไม่พร้อมใช้งาน (เช่น อยู่บน Render หรือ Lab ดับ) ให้ออก Token ที่ระบบยอมรับโดยตรง
         if (!tokens) {
             userSub = userSub || crypto.createHash("sha256").update(targetEmail).digest("hex").slice(0, 32);
-            const secret = process.env.SESSION_SECRET || "cs361_docuflow_secret_key_2026";
+            const secret = process.env.SESSION_SECRET;
+            if (!secret) {
+                return res.status(503).json({ ok: false, message: "ระบบยืนยันตัวตนสำรองยังไม่ได้ตั้งค่า" });
+            }
 
             // ตรวจสอบบทบาทเดิมจากฐานข้อมูล (ถ้ามี) เพื่อรักษาสิทธิ์ Admin / Executive / DocumentReceiver
             let fallbackRole = "faculty_staff";
@@ -380,6 +383,7 @@ router.post("/tu-login", async (req, res) => {
                     if (fallbackRole === "admin") fallbackGroups = ["Admin"];
                     else if (fallbackRole === "document_officer") fallbackGroups = ["DocumentReceiver"];
                     else if (fallbackRole === "executive") fallbackGroups = ["Executive"];
+                    else if (fallbackRole === "responsible_person") fallbackGroups = ["ResponsiblePerson"];
                 }
             } catch (roleErr) {
                 console.warn("DB role fallback lookup notice:", roleErr.message);
@@ -526,7 +530,7 @@ router.post("/login", async (req, res) => {
         }
 
         const user = users[0];
-        const roles = (user.roles || "").split(",").map((role) => role.trim()).filter((role) => ["document_officer", "faculty_staff", "admin", "executive"].includes(role));
+        const roles = (user.roles || "").split(",").map((role) => role.trim()).filter((role) => ["document_officer", "faculty_staff", "responsible_person", "admin", "executive"].includes(role));
         if (!roles.length) return res.status(403).json({ ok: false, message: "บัญชีนี้ยังไม่มีบทบาทที่ได้รับอนุญาต" });
 
         // 5. สร้าง Session หลังยืนยันตัวตนสำเร็จ

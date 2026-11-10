@@ -6,6 +6,25 @@ const loginButton = document.getElementById("loginButton");
 const loginButtonText = document.getElementById("loginButtonText");
 const loginMessage = document.getElementById("loginMessage");
 const togglePassword = document.getElementById("togglePassword");
+function resolveLoginRole(responseRole, groups = []) {
+    const aliases = {
+        documentreceiver: "document_officer",
+        "staff/instructor": "faculty_staff",
+        instructor: "faculty_staff",
+        staff: "faculty_staff",
+        responsibleperson: "responsible_person",
+        responsible_person: "responsible_person"
+    };
+    const normalize = value => {
+        const role = String(value || "").trim().toLowerCase();
+        return Object.hasOwn(aliases, role) ? aliases[role] : role;
+    };
+    const roles = (Array.isArray(groups) ? groups : [groups]).map(normalize);
+    if (responseRole) return normalize(responseRole);
+    return ["admin", "document_officer", "responsible_person", "faculty_staff", "executive"]
+        .find(role => roles.includes(role)) || roles[0] || "faculty_staff";
+}
+
 const guestLoginBtn = document.getElementById("guestLoginBtn");
 
 // โหลด Username ล่าสุด
@@ -93,7 +112,7 @@ if (loginForm) {
                 localStorage.setItem("access_token", tuData.access_token);
                 localStorage.setItem("id_token", tuData.id_token);
                 localStorage.setItem("docuflow_user", tuData.username || username);
-                localStorage.setItem("docuflow_role", tuData.role || "faculty_staff");
+                localStorage.setItem("docuflow_role", resolveLoginRole(tuData.role, tuData.groups));
 
                 navigateToDashboard();
                 return;
@@ -167,36 +186,10 @@ if (loginForm) {
                 localStorage.setItem("id_token", idToken);
                 localStorage.setItem("docuflow_user", username);
 
-                // ตรวจสอบ Role จาก Cognito Groups ใน Token
-                let role = "faculty_staff"; // ค่าเริ่มต้นสำหรับผู้ใช้ทั่วไป
-                try {
-                    const idPayload = session.getIdToken().decodePayload();
-                    const groups = (idPayload["cognito:groups"] || []).map(group => {
-                        const name = String(group).trim().toLowerCase();
-                        const aliases = {
-                            documentreceiver: "document_officer",
-                            "staff/instructor": "faculty_staff",
-                            instructor: "faculty_staff"
-                        };
-                        return aliases[name] || name;
-                    });
-
-                    if (groups.includes("admin")) {
-                        role = "admin";
-                    } else if (groups.includes("document_officer")) {
-                        role = "document_officer";
-                    } else if (groups.includes("faculty_staff") || groups.includes("staff")) {
-                        role = "faculty_staff";
-                    } else if (groups.includes("executive")) {
-                        role = "executive";
-                    } else if (groups.length > 0) {
-                        role = groups[0];
-                    }
-                } catch (e) {
-                    console.warn("Could not decode Cognito ID token:", e);
-                }
-
-                localStorage.setItem("docuflow_role", role);
+                localStorage.setItem("docuflow_role", resolveLoginRole(
+                    null, session.getAccessToken().decodePayload()["cognito:groups"] ||
+                        session.getIdToken().decodePayload()["cognito:groups"]
+                ));
 
                 navigateToDashboard();
             },

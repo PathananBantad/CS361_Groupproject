@@ -59,6 +59,7 @@
     let modalOpenTabBtn = null;
 
     let currentActiveDoc = null;
+    let openRequest = 0;
     let modalLoadPromise = null;
 
     // ผูกตัวแปร DOM Elements กับเทมเพลต HTML
@@ -187,6 +188,7 @@
                 if (previewViewport) previewViewport.innerHTML = "";
                 hideAlert();
                 currentActiveDoc = null;
+                openRequest++;
             });
         }
     }
@@ -419,13 +421,14 @@
     }
 
     // Helper ดึงสิทธิ์ปัจจุบัน
-    function getCurrentAuth() {
-        const role = (localStorage.getItem("docuflow_role") || "guest").toLowerCase().trim();
+    function getCurrentAuth(doc = currentActiveDoc) {
+        const role = (doc?.viewer_role || localStorage.getItem("docuflow_role") || "guest").toLowerCase().trim();
         const user = localStorage.getItem("docuflow_user") || "";
         const internalRoles = [
             "admin",
             "document_officer",
             "faculty_staff",
+            "responsible_person",
             "staff",
             "executive"
         ];
@@ -442,8 +445,8 @@
         };
     }
 
-    async function editDocumentDeadline(doc, auth, modalDeadline) {
-        if (!(auth.isAdmin || auth.isOfficer)) return;
+    async function editDocumentDeadline(doc, modalDeadline) {
+        if (doc !== currentActiveDoc || doc.permissions?.deadline !== true) return;
 
         const currentDeadline = doc.raw?.deadline || doc.deadline || "";
         const newDeadline = window.prompt(
@@ -478,6 +481,7 @@
             const result = await response.json();
 
             if (!response.ok) {
+                if ((response.status === 401 || response.status === 403) && currentActiveDoc === doc) disableWorkflowActions();
                 throw new Error(result.error || "บันทึก Deadline ไม่สำเร็จ");
             }
 
@@ -634,6 +638,7 @@
                 faculty_staff: "อาจารย์ / บุคลากร (Staff)",
                 staff: "อาจารย์ / บุคลากร (Staff)",
                 executive: "ผู้บริหาร",
+                responsible_person: "ผู้รับผิดชอบเรื่อง",
                 guest: "ผู้ใช้ทั่วไป"
             };
             const roleLabel = roleLabels[auth.role] || auth.role || "ผู้ใช้ทั่วไป";
@@ -676,7 +681,7 @@
 
         const isGuest = auth.isGuest || !auth.hasPermission;
         const isExecutive = auth.isExecutive;
-        const isCompleted = rawStatus === "Completed";
+        const canChangeStatus = currentActiveDoc?.permissions?.status === true;
         const isAdmin = auth.isAdmin;
 
         if (isGuest) {
@@ -687,20 +692,15 @@
                 if (statusDisabledIcon) statusDisabledIcon.textContent = "🔒";
                 if (statusDisabledText) statusDisabledText.textContent = "คุณอยู่ในบทบาท Guest ไม่มีสิทธิ์เปลี่ยนสถานะเอกสาร กรุณาเข้าสู่ระบบด้วยบัญชีเจ้าหน้าที่เพื่อดำเนินการ";
             }
-        } else if (isExecutive) {
-            // Executive role is monitoring / view-only
+        } else if (isExecutive || !canChangeStatus) {
             if (statusNextActionWrap) statusNextActionWrap.hidden = true;
-            if (statusDisabledMessage) {
-                statusDisabledMessage.hidden = false;
-                if (statusDisabledText) statusDisabledText.textContent = "บทบาทผู้บริหาร (Executive): สำหรับติดตามและตรวจสอบการดำเนินงานของเอกสาร (View / Audit Only)";
-            }
-        } else if (isCompleted && !isAdmin) {
-            // Completed is terminal state for staff
-            if (statusNextActionWrap) statusNextActionWrap.hidden = true;
-            if (statusDisabledMessage) {
-                statusDisabledMessage.hidden = false;
-                if (statusDisabledIcon) statusDisabledIcon.textContent = "✅";
-                if (statusDisabledText) statusDisabledText.textContent = "เอกสารนี้ดำเนินการเสร็จสิ้นสมบูรณ์แล้ว (Workflow Completed)";
+            if (adminOverrideWrap) adminOverrideWrap.hidden = true;
+            if (statusDisabledMessage) statusDisabledMessage.hidden = false;
+            if (statusDisabledIcon) statusDisabledIcon.textContent = "🔒";
+            if (statusDisabledText) {
+                statusDisabledText.textContent = currentActiveDoc?.permissions?.assign || currentActiveDoc?.permissions?.forward
+                    ? "ไม่สามารถเปลี่ยนสถานะเอกสารนี้ได้"
+                    : "อ่านอย่างเดียว (Read-only)";
             }
         } else {
             // Staff, Officer, Admin can proceed with workflow
@@ -738,11 +738,12 @@
     async function changeDocumentStatus(targetStatus, remarks) {
         if (!currentActiveDoc) return;
         const auth = getCurrentAuth();
-        const docId = currentActiveDoc.id;
+        const doc = currentActiveDoc;
+        const docId = doc.id;
         const apiBase = getApiBaseUrl();
 
         // Check permission client-side
-        if (auth.isGuest || auth.isExecutive || !auth.hasPermission) {
+        if (currentActiveDoc.permissions?.status !== true) {
             showAlert("คุณไม่มีสิทธิ์ในการเปลี่ยนสถานะเอกสาร", "error", "ไม่อนุญาต (Permission Denied)");
             return;
         }
@@ -769,25 +770,20 @@
             });
 
             const result = await response.json().catch(() => ({}));
+            if (currentActiveDoc !== doc) return;
 
             if (!response.ok) {
+                if (response.status === 401 || response.status === 403) disableWorkflowActions();
                 // Task 8: แสดงข้อความแจ้งเตือนเมื่อไม่สามารถเปลี่ยนสถานะเอกสารได้
                 const errorMsg = result.error || "เกิดข้อผิดพลาดในการเปลี่ยนสถานะเอกสาร";
                 showAlert(errorMsg, "error", "ไม่สามารถเปลี่ยนสถานะเอกสารได้");
                 return;
             }
 
-            // Success feedback
-            showAlert(result.message || `เปลี่ยนสถานะเป็น "${targetStatus}" สำเร็จเรียบร้อย`, "success", "บันทึกสำเร็จ");
-
-            // Update active doc state
-            currentActiveDoc.status = targetStatus;
-            currentActiveDoc.rawStatus = targetStatus;
-            if (currentActiveDoc.raw) currentActiveDoc.raw.status = targetStatus;
-
-            // Re-render workflow UI & reload history
-            renderWorkflowUI(targetStatus, auth);
-            await loadStatusHistory(docId);
+            if (String(currentActiveDoc?.id) === String(docId)) {
+                await openDocumentModal(docId);
+                showAlert(result.message || "เปลี่ยนสถานะสำเร็จ", "success", "บันทึกสำเร็จ");
+            }
 
             // Notify dashboard to re-fetch and update table / badges (Task 7)
             window.dispatchEvent(new CustomEvent("docuflow:statusChanged", {
@@ -852,6 +848,7 @@
         statusHistoryTimeline.innerHTML = `<div class="history-loading">กำลังโหลดประวัติการดำเนินการ (Audit Trail)...</div>`;
 
         const apiBase = getApiBaseUrl();
+        const activeDoc = currentActiveDoc;
 
         try {
             // โหลดแคชรายชื่อผู้ใช้เตรียมไว้สำหรับแปลง Email เป็นชื่อจริง
@@ -869,16 +866,19 @@
             let res = await window.apiFetch(`${apiBase}/documents/${docId}/audit-trail`);
 
             // Fallback ไปที่ status-history หาก audit-trail ไม่พร้อม
-            if (!res.ok) {
+            if (res.status === 404 || res.status === 501) {
                 res = await window.apiFetch(`${apiBase}/documents/${docId}/status-history`);
             }
 
+            if (currentActiveDoc !== activeDoc) return;
             if (!res.ok) {
+                if (res.status === 401 || res.status === 403) disableWorkflowActions();
                 statusHistoryTimeline.innerHTML = `<div class="history-error">ไม่สามารถดึงข้อมูลประวัติการดำเนินการได้ (${res.status})</div>`;
                 return;
             }
 
             const data = await res.json();
+            if (currentActiveDoc !== activeDoc) return;
             const logs = data.history || [];
 
             if (!logs.length) {
@@ -897,6 +897,7 @@
                 faculty_staff: "อาจารย์ / บุคลากร",
                 staff: "อาจารย์ / บุคลากร",
                 executive: "ผู้บริหาร",
+                responsible_person: "ผู้รับผิดชอบเรื่อง",
                 guest: "ผู้ใช้ทั่วไป"
             };
 
@@ -1018,6 +1019,7 @@
             }).join("");
 
         } catch (err) {
+            if (currentActiveDoc !== activeDoc) return;
             console.error("Load status history error:", err);
             statusHistoryTimeline.innerHTML = `<div class="history-error">ไม่สามารถดึงประวัติการดำเนินการได้</div>`;
         }
@@ -1026,44 +1028,56 @@
     /* =====================================================
        OPEN DOCUMENT MODAL
     ===================================================== */
+    function disableWorkflowActions() {
+        if (!currentActiveDoc) return;
+        currentActiveDoc.permissions = {};
+        renderWorkflowUI(currentActiveDoc.status, getCurrentAuth());
+        document.querySelector("#assignSection form")?.remove();
+        document.getElementById("forwardSectionContainer")?.replaceChildren();
+        const deadlineButton = document.getElementById("editDeadlineButton");
+        if (deadlineButton) deadlineButton.hidden = true;
+    }
+
     async function openDocumentModal(docOrId) {
-        const auth = getCurrentAuth();
-        if (auth.isGuest || !auth.hasPermission) {
-            alert("ผู้ใช้ทั่วไป (Guest) ไม่มีสิทธิ์ในการเปิดดูรายละเอียดเอกสาร กรุณาเข้าสู่ระบบด้วยบัญชีเจ้าหน้าที่");
+        if (getCurrentAuth(null).isGuest) {
+            alert("กรุณาเข้าสู่ระบบเพื่อดูรายละเอียดเอกสาร");
             return;
         }
 
+        const request = ++openRequest;
         await ensureModalLoaded();
-        let doc = docOrId;
-
-        // ดึงข้อมูลเอกสารฉบับเต็มพร้อม Presigned S3 URLs จาก API (/api/documents/:id)
-        const docId = (docOrId && typeof docOrId === "object") ? docOrId.id : docOrId;
-        if (docId) {
-            try {
-                const apiBase = getApiBaseUrl();
-                const res = await window.apiFetch(`${apiBase}/documents/${docId}`);
-                if (res.ok) {
-                    const freshDoc = await res.json();
-                    doc = { ...(doc || {}), ...freshDoc };
-                }
-            } catch (e) {
-                console.warn("Fetch document details by id error:", e);
-            }
-        }
-
-        if (!doc && Array.isArray(window.docuflowDocuments)) {
-            doc = window.docuflowDocuments.find(item => String(item.id) === String(docId));
-        }
-
-        if (!doc) {
-            alert("ไม่พบข้อมูลเอกสาร");
+        const docId = typeof docOrId === "object" ? docOrId?.id : docOrId;
+        let doc;
+        try {
+            const res = await window.apiFetch(`${getApiBaseUrl()}/documents/${encodeURIComponent(docId)}`);
+            if (request !== openRequest) return;
+            if (res.status === 401) throw new Error("เซสชันหมดอายุ กรุณาเข้าสู่ระบบอีกครั้ง");
+            if (res.status === 403) throw new Error("คุณไม่มีสิทธิ์ดูรายละเอียดเอกสารนี้");
+            if (!res.ok) throw new Error("ไม่สามารถโหลดรายละเอียดเอกสารได้");
+            doc = await res.json();
+        } catch (error) {
+            if (request !== openRequest) return;
+            if (documentModal?.open) documentModal.close();
+            alert(error.message);
             return;
         }
+        if (request !== openRequest) return;
 
         currentActiveDoc = doc;
+        const auth = getCurrentAuth(doc);
+        const permissions = doc.permissions || {};
         if (window.DocuFlowAssignment) {
             window.DocuFlowAssignment.mount(doc, {
-                onDone: () => { if (window.fetchDocuments) window.fetchDocuments(); }
+                onDenied: () => { if (currentActiveDoc === doc) disableWorkflowActions(); },
+                onDone: async () => {
+                    if (currentActiveDoc === doc) {
+                        await openDocumentModal(doc.id);
+                        if (String(currentActiveDoc?.id) === String(doc.id)) {
+                            showAlert("บันทึกการมอบหมายสำเร็จ", "success", "บันทึกสำเร็จ");
+                        }
+                    }
+                    if (window.fetchDocuments) window.fetchDocuments();
+                }
             });
         }
 
@@ -1095,15 +1109,21 @@
             modalDeadline.classList.toggle("deadline-overdue", Boolean(overdue));
             if (overdue) modalDeadline.textContent += " • เกินกำหนด";
             if (editDeadlineButton) {
-                editDeadlineButton.hidden = !(auth.isAdmin || auth.isOfficer);
+                editDeadlineButton.hidden = permissions.deadline !== true;
                 editDeadlineButton.onclick = () =>
-                    editDocumentDeadline(doc, auth, modalDeadline);
+                    editDocumentDeadline(doc, modalDeadline);
             }
         }
         if (modalRemarks) {
             const rm = doc.remarks;
             modalRemarks.textContent = rm && rm !== "-" ? rm : "ไม่มีหมายเหตุเพิ่มเติม";
         }
+
+        if (modalDownloadBtn) {
+            modalDownloadBtn.disabled = true;
+            modalDownloadBtn.onclick = null;
+        }
+        if (modalOpenTabBtn) modalOpenTabBtn.hidden = true;
 
         // 2. เคลียร์ viewport และแสดง loader
         if (previewViewport) {
@@ -1120,21 +1140,14 @@
             documentModal.showModal();
         }
 
-        const forwarderRoles = [
-            "document_officer",
-            "admin",
-            "faculty_staff",
-            "staff"
-        ];
-
         const forwardHost = document.getElementById("forwardSectionContainer");
 
         if (forwardHost) {
-            forwardHost.innerHTML = forwarderRoles.includes(auth.role)
+            forwardHost.innerHTML = permissions.forward === true
                 ? renderForwardSection(doc.id)
                 : "";
 
-            if (forwarderRoles.includes(auth.role)) {
+            if (permissions.forward === true) {
                 const recipientSelect = document.getElementById("modalForwardAssigneeId");
 
                 try {
@@ -1142,6 +1155,8 @@
                         `${getApiBaseUrl()}/forward-recipients`
                     );
                     const result = await response.json();
+                    if (currentActiveDoc !== doc) return;
+                    if (response.status === 401 || response.status === 403) disableWorkflowActions();
 
                     if (!response.ok) {
                         throw new Error(result.error || "โหลดรายชื่อผู้รับไม่สำเร็จ");
@@ -1172,6 +1187,8 @@
             }
         }
 
+        if (currentActiveDoc !== doc) return;
+
         // 4. กรณีไม่มีไฟล์แนบ
         if (!doc.file_key) {
             if (previewFileName) previewFileName.textContent = "ไม่มีไฟล์แนบในระบบ";
@@ -1195,38 +1212,13 @@
             return;
         }
 
-        // 5. ตรวจสอบสิทธิ์ (Permission Check)
-        if (!auth.hasPermission) {
-            const fileName = doc.file_name || doc.display_file_name || "ไฟล์เอกสารแนบ";
-            if (previewFileName) previewFileName.textContent = fileName;
-            if (previewFileSize) previewFileSize.textContent = "ถูกจำกัดสิทธิ์";
-            if (previewFileTypeTag) {
-                previewFileTypeTag.textContent = "LOCKED";
-                previewFileTypeTag.className = "file-type-pill";
-            }
-            if (modalDownloadBtn) modalDownloadBtn.disabled = true;
-            if (modalOpenTabBtn) modalOpenTabBtn.hidden = true;
-
-            if (previewViewport) {
-                previewViewport.innerHTML = `
-                    <div class="permission-denied-box">
-                        <div class="permission-icon">🔒</div>
-                        <h4>ไม่อนุญาตให้เข้าถึง (Permission Denied)</h4>
-                        <p>คุณไม่มีสิทธิ์ในการเรียกดูเนื้อหาหรือดาวน์โหลดไฟล์เอกสารนี้ เนื่องจากบทบาทปัจจุบันของคุณคือ <strong>ผู้ใช้ทั่วไป (Guest)</strong></p>
-                        <p style="margin-top:10px; font-size:13px; color:#64748b;">กรุณาเข้าสู่ระบบด้วยบัญชีผู้ใช้ที่มีสิทธิ์เพื่อเปิดอ่านเอกสาร</p>
-                    </div>
-                `;
-            }
-            return;
-        }
-
         // 6. มีสิทธิ์เข้าถึง: โหลดตัวอย่างเอกสาร
         if (modalDownloadBtn) {
             modalDownloadBtn.disabled = false;
             modalDownloadBtn.onclick = () => downloadDocumentFile(doc.id, doc.file_name || doc.display_file_name);
         }
 
-        await loadFilePreviewContent(doc, auth);
+        await loadFilePreviewContent(doc);
     }
 
     /* =====================================================
@@ -1234,7 +1226,7 @@
        (PDF, JPG/JPEG, PNG -> แสดงเนื้อหา + ปุ่มดาวน์โหลด)
        (DOCX, XLSX, PPTX -> แสดงชื่อไฟล์ + ปุ่มดาวน์โหลด)
     ===================================================== */
-    async function loadFilePreviewContent(doc, auth) {
+    async function loadFilePreviewContent(doc) {
         const apiBase = getApiBaseUrl();
 
         try {
@@ -1272,6 +1264,14 @@
                         }
                     );
 
+                    if (urlRes.status === 401 || urlRes.status === 403) {
+                        if (currentActiveDoc === doc) {
+                            disableWorkflowActions();
+                            if (modalDownloadBtn) modalDownloadBtn.disabled = true;
+                            if (previewViewport) previewViewport.textContent = "ไม่สามารถเข้าถึงไฟล์เอกสารได้";
+                        }
+                        return;
+                    }
                     if (!urlRes.ok) {
                         throw new Error(
                             `ขอลิงก์ไฟล์ไม่สำเร็จ (${urlRes.status})`
@@ -1296,6 +1296,8 @@
                     throw error;
                 }
             }
+
+            if (currentActiveDoc !== doc) return;
 
             // แปลง relative downloadUrl และ previewUrl เป็น full URL
             if (downloadUrl && downloadUrl.startsWith("/")) {
@@ -1403,6 +1405,7 @@
             }
 
         } catch (error) {
+            if (currentActiveDoc !== doc) return;
             console.error("Preview loading error:", error);
             if (previewViewport) {
                 previewViewport.innerHTML = `
@@ -1410,9 +1413,6 @@
                         <span style="font-size: 32px;">⚠️</span>
                         <h4>ไม่สามารถโหลดตัวอย่างเอกสารได้</h4>
                         <p>${escapeHtml(error.message)}</p>
-                        <button type="button" class="btn-download-primary" style="margin-top: 14px;" onclick="window.DocuFlowModal.download('${doc.id}', '${escapeHtml(doc.file_name)}')">
-                            <span>↓</span> ลองดาวน์โหลดไฟล์แทน
-                        </button>
                     </div>
                 `;
             }
@@ -1473,6 +1473,13 @@
             );
 
             if (!response.ok) {
+                if ((response.status === 401 || response.status === 403) &&
+                    String(currentActiveDoc?.id) === String(documentId)) {
+                    disableWorkflowActions();
+                    if (modalDownloadBtn) modalDownloadBtn.disabled = true;
+                    if (modalOpenTabBtn) modalOpenTabBtn.hidden = true;
+                    if (previewViewport) previewViewport.textContent = "ไม่สามารถเข้าถึงไฟล์เอกสารได้";
+                }
                 const errData = await response.json().catch(() => ({}));
 
                 throw new Error(
@@ -1623,6 +1630,8 @@ function renderForwardSection(documentId) {
 
 // 2. ฟังก์ชันยิง API ไปที่ Backend เพื่อบันทึกการส่งต่อเอกสาร
 async function submitDocumentForward(documentId) {
+    const doc = window.DocuFlowModal.currentDocument();
+    if (String(doc?.id) !== String(documentId) || doc.permissions?.forward !== true) return;
     const newAssigneeId = document.getElementById("modalForwardAssigneeId").value.trim();
     const receiverName = document.getElementById("modalForwardReceiverName").value.trim();
     const reason = document.getElementById("modalForwardReason").value.trim();
@@ -1652,13 +1661,16 @@ async function submitDocumentForward(documentId) {
             body: JSON.stringify({
                 new_assignee_id: newAssigneeId || null,
                 receiver_name: receiverName || null,
-                reason: reason
+                reason: reason,
+                expected_assignee_id: doc.assignee_id ?? ""
             })
         });
 
         const result = await response.json();
 
         if (!response.ok) {
+            if ((response.status === 401 || response.status === 403) &&
+                window.DocuFlowModal.currentDocument() === doc) window.DocuFlowModal.disableWorkflowActions();
             throw new Error(result.error || "ไม่สามารถส่งต่อเอกสารได้");
         }
 
