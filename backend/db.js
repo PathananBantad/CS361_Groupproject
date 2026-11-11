@@ -1,3 +1,5 @@
+const fs = require("fs");
+const path = require("path");
 const mysql = require("mysql2/promise");
 require("dotenv").config();
 
@@ -22,11 +24,16 @@ const poolConfig = {
     keepAliveInitialDelay: 10000
 };
 
+// Amazon RDS certificates are signed by the RDS CA, which Node.js does not trust by default.
+const rdsCaPath = path.join(__dirname, "certs", "rds-global-bundle.pem");
+const rdsCa = !isTiDB && fs.existsSync(rdsCaPath) ? fs.readFileSync(rdsCaPath, "utf8") : null;
+
 // TiDB Cloud Serverless requires SSL connection
 if (isTiDB || process.env.DB_SSL === "true") {
     poolConfig.ssl = {
         minVersion: "TLSv1.2",
         rejectUnauthorized: true,
+        ...(rdsCa ? { ca: rdsCa } : {}),
         ...(process.env.DB_TLS_SERVERNAME ? { servername: process.env.DB_TLS_SERVERNAME } : {})
     };
 }

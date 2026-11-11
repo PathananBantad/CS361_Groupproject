@@ -23,6 +23,8 @@ for (const f of filesToCopy) {
   fs.copyFileSync(path.join(__dirname, f), path.join(staging, f));
 }
 
+fs.cpSync(path.join(__dirname, 'certs'), path.join(staging, 'certs'), { recursive: true });
+
 console.log('Copying node_modules (excluding bcrypt and cache)...');
 fs.cpSync(path.join(__dirname, 'node_modules'), path.join(staging, 'node_modules'), {
   recursive: true,

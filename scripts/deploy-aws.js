@@ -37,6 +37,9 @@ async function main() {
   if (!envConfig.LAMBDA_DB_HOST || !envConfig.LAMBDA_DB_SECRET_ARN || !envConfig.SESSION_SECRET) {
     throw new Error('Set LAMBDA_DB_HOST, LAMBDA_DB_SECRET_ARN, and SESSION_SECRET in backend/.env before deploying the Lambda.');
   }
+  if (!envConfig.LAMBDA_SUBNET_IDS || !envConfig.LAMBDA_SECURITY_GROUP_IDS) {
+    throw new Error('Set LAMBDA_SUBNET_IDS and LAMBDA_SECURITY_GROUP_IDS in backend/.env so the Lambda can reach RDS inside the VPC.');
+  }
 
   // 1. Verify AWS Identity
   console.log('[1/8] Verifying AWS credentials and identity...');
@@ -83,12 +86,10 @@ async function main() {
   // 4. Package backend zip
   console.log('[4/8] Packaging backend for Lambda deployment...');
   const zipPath = path.resolve(__dirname, '../backend/backend-full.zip');
-  if (!fs.existsSync(zipPath)) {
-    const packageZipScript = path.resolve(__dirname, '../backend/package-zip.js');
-    execSync(`node "${packageZipScript}"`, { cwd: path.resolve(__dirname, '../backend'), stdio: 'inherit' });
-  } else {
-    console.log(` -> Reusing existing zip package: ${zipPath}`);
-  }
+  // Always rebuild so the deployed code matches the working tree.
+  if (fs.existsSync(zipPath)) fs.unlinkSync(zipPath);
+  const packageZipScript = path.resolve(__dirname, '../backend/package-zip.js');
+  execSync(`node "${packageZipScript}"`, { cwd: path.resolve(__dirname, '../backend'), stdio: 'inherit' });
   console.log(` -> Zip package ready: ${zipPath}\n`);
 
   // 5. Create or Update Lambda Function
@@ -114,6 +115,9 @@ async function main() {
   const envJsonPath = path.resolve(__dirname, 'lambda-env.json');
   fs.writeFileSync(envJsonPath, JSON.stringify(lambdaEnvVars, null, 2));
 
+  // RDS is reachable only inside the VPC; Lambda reaches the internet through the NAT Gateway.
+  const vpcConfigArg = `--vpc-config SubnetIds=${envConfig.LAMBDA_SUBNET_IDS},SecurityGroupIds=${envConfig.LAMBDA_SECURITY_GROUP_IDS} `;
+
   let functionExists = false;
   try {
     runAws(`aws lambda get-function --function-name ${lambdaFunctionName}`);
@@ -132,6 +136,7 @@ async function main() {
       `--timeout 30 ` +
       `--memory-size 512 ` +
       `--zip-file fileb://${zipPath} ` +
+      vpcConfigArg +
       `--environment file://${envJsonPath}`
     );
     lambdaArn = createRes.FunctionArn;
@@ -139,6 +144,7 @@ async function main() {
   } else {
     console.log(` -> Updating Lambda function code...`);
     runAws(`aws lambda update-function-code --function-name ${lambdaFunctionName} --zip-file fileb://${zipPath}`);
+    runAws(`aws lambda wait function-updated --function-name ${lambdaFunctionName}`);
     console.log(` -> Updating Lambda function configuration...`);
     const updateRes = runAws(
       `aws lambda update-function-configuration ` +
@@ -147,6 +153,7 @@ async function main() {
       `--handler index.handler ` +
       `--timeout 30 ` +
       `--memory-size 512 ` +
+      vpcConfigArg +
       `--environment file://${envJsonPath}`
     );
     lambdaArn = updateRes.FunctionArn;
