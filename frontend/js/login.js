@@ -27,7 +27,6 @@ function resolveLoginRole(responseRole, groups = []) {
         .find(role => candidateRoles.includes(role)) || (responseRole ? normalize(responseRole) : groupRoles[0]) || "faculty_staff";
 }
 
-const guestLoginBtn = document.getElementById("guestLoginBtn");
 
 // โหลด Username ล่าสุด
 document.addEventListener("DOMContentLoaded", () => {
@@ -216,20 +215,5 @@ if (loginForm) {
                 loginButtonText.textContent = "SIGN IN";
             }
         });
-    });
-}
-
-// เข้าสู่ระบบในฐานะ Guest
-if (guestLoginBtn) {
-    guestLoginBtn.addEventListener("click", (event) => {
-        event.preventDefault();
-        localStorage.setItem("docuflow_role", "guest");
-        localStorage.setItem("docuflow_user", "Guest");
-        // ล้าง Token ทุกคีย์ที่อาจค้างจากการล็อกอินครั้งก่อน เพื่อไม่ให้ Guest ส่ง Token เก่าที่หมดอายุ (ป้องกัน 401)
-        localStorage.removeItem("docuflow_access_token");
-        localStorage.removeItem("docuflow_id_token");
-        localStorage.removeItem("access_token");
-        localStorage.removeItem("id_token");
-        navigateToDashboard();
     });
 }

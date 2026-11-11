@@ -7,6 +7,8 @@
 const tableBody = document.getElementById("documentTableBody");
 const mobileList = document.getElementById("mobileList");
 const globalSearch = document.getElementById("globalSearch");
+const typeFilter = document.getElementById("filterType");
+const urgencyFilter = document.getElementById("filterUrgency");
 const shownCount = document.getElementById("shownCount");
 
 // Role Selector Elements
@@ -17,6 +19,7 @@ const userRoleDisplay = document.getElementById("userRoleDisplay");
 
 let documents = [];
 let currentFilters = new Set(["all"]);
+let selectedUrgency = "";
 let sortKey = null;
 let sortDirection = 1;
 
@@ -306,8 +309,8 @@ function todayInThailand() {
     const get = type => parts.find(part => part.type === type).value;
     return `${get("year")}-${get("month")}-${get("day")}`;
 }
-function isOverdue(doc) {
-    return Boolean(doc.deadlineDate && doc.rawStatus !== "Completed" && doc.deadlineDate < todayInThailand());
+function isOverdue(doc, today = todayInThailand()) {
+    return Boolean(doc.deadlineDate && doc.rawStatus !== "Completed" && doc.deadlineDate < today);
 }
 function deadlineLabel(doc) {
     if (!doc.deadlineDate) return "";
@@ -350,16 +353,23 @@ function render() {
         });
     }
 
-    const fields = { filterReference: "code", filterSubject: "description", filterType: "type", filterSender: "sender", filterReceiver: "receiver" };
-    for (const [id, field] of Object.entries(fields)) {
-        const query = document.getElementById(id).value.trim().toLocaleLowerCase();
-        if (query) result = result.filter(doc => String(doc[field]).toLocaleLowerCase().includes(query));
+    const selectedType = typeFilter.value.toLocaleLowerCase();
+    if (selectedType) {
+        result = result.filter(doc => doc.type.toLocaleLowerCase().includes(selectedType));
     }
-    const from = document.getElementById("filterFrom").value;
-    const to = document.getElementById("filterTo").value;
-    if (from) result = result.filter(doc => doc.receivedDateKey && doc.receivedDateKey >= from);
-    if (to) result = result.filter(doc => doc.receivedDateKey && doc.receivedDateKey <= to);
-    if (document.getElementById("filterDeadline").value === "overdue") result = result.filter(isOverdue);
+
+    if (selectedUrgency === "overdue") {
+        const today = todayInThailand();
+        result = result.filter(doc => isOverdue(doc, today));
+    } else if (selectedUrgency === "due-soon") {
+        const today = todayInThailand();
+        const cutoff = new Date(`${today}T00:00:00Z`);
+        cutoff.setUTCDate(cutoff.getUTCDate() + 3);
+        const lastDate = cutoff.toISOString().slice(0, 10);
+        result = result.filter(doc =>
+            doc.rawStatus !== "Completed" && doc.deadlineDate >= today && doc.deadlineDate <= lastDate
+        );
+    }
 
     if (sortKey) {
         result.sort((a, b) => {
@@ -688,8 +698,17 @@ if (globalSearch) {
     });
 }
 
-document.querySelectorAll(".document-search-filters input, .document-search-filters select").forEach(input => {
-    input.addEventListener("input", render);
+typeFilter.addEventListener("change", render);
+const urgencyButtons = urgencyFilter.querySelectorAll("[data-urgency]");
+urgencyButtons.forEach(button => {
+    button.addEventListener("click", () => {
+        const urgency = button.dataset.urgency;
+        selectedUrgency = selectedUrgency === urgency ? "" : urgency;
+        urgencyButtons.forEach(option => {
+            option.setAttribute("aria-pressed", String(option.dataset.urgency === selectedUrgency));
+        });
+        render();
+    });
 });
 // Re-evaluate deadlines when returning to the dashboard and across midnight.
 window.addEventListener("focus", render);
@@ -748,9 +767,8 @@ function initializeDashboard() {
     if (currentRole === "guest") {
         const headings = tableBody.closest("table").tHead.rows[0];
         headings.innerHTML = '<th scope="col">เลขอ้างอิง</th><th scope="col">สถานะ</th>';
-        document.querySelectorAll(".document-search-filters label").forEach(label => {
-            label.hidden = !label.querySelector("#filterReference");
-        });
+        typeFilter.hidden = true;
+        urgencyFilter.hidden = true;
         if (globalSearch) globalSearch.placeholder = "ค้นหาด้วยเลขอ้างอิง";
     }
     syncFilterButtons();
