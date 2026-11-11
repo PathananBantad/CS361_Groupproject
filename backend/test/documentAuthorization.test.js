@@ -47,13 +47,16 @@ test("canAccessDocument READ: admin/executive/document_officer เข้าถ�
     }
 });
 
-test("canAccessDocument READ: faculty_staff อ่านได้เฉพาะเอกสารที่เป็นเจ้าของหรือผู้รับมอบหมาย", () => {
+test("canAccessDocument READ: faculty_staff อ่านได้เฉพาะเอกสารที่เป็น Current หรือ Previous Assignee (ไม่ใช่ owner)", () => {
+    // ตาม V5: owner_id ไม่ให้สิทธิ์อ่าน — ต้องเป็น assignee เท่านั้น
     const owned = { id: 5, owner_id: 7, assignee_id: null };
     const assigned = { id: 6, owner_id: 99, assignee_id: 7 };
     const unrelated = { id: 7, owner_id: 99, assignee_id: 88 };
-    assert.equal(canAccessDocument({ roles: ["faculty_staff"], userId: 7, document: owned, action: "read" }), true);
-    assert.equal(canAccessDocument({ roles: ["faculty_staff"], userId: 7, document: assigned, action: "read" }), true);
-    assert.equal(canAccessDocument({ roles: ["faculty_staff"], userId: 7, document: unrelated, action: "read" }), false);
+    assert.equal(canAccessDocument({ roles: ["faculty_staff"], userId: 7, document: owned, action: "read" }), false, "owner เท่านั้น (ไม่ใช่ assignee) ต้องอ่านไม่ได้");
+    assert.equal(canAccessDocument({ roles: ["faculty_staff"], userId: 7, document: assigned, action: "read" }), true, "current assignee อ่านได้");
+    assert.equal(canAccessDocument({ roles: ["faculty_staff"], userId: 7, document: unrelated, action: "read" }), false, "ไม่ใช่ assignee อ่านไม่ได้");
+    // previous assignee อ่านได้
+    assert.equal(canAccessDocument({ roles: ["faculty_staff"], userId: 7, document: unrelated, action: "read", previousAssignee: true }), true, "previous assignee อ่านได้");
 });
 
 test("canAccessDocument ASSIGN: document_officer และ admin มอบหมายเอกสารที่ไม่เกี่ยวข้องได้", () => {

@@ -4,10 +4,21 @@ async function runMigration() {
   try {
     console.log("🚀 กำลังตรวจสอบและ Migrate โครงสร้างฐานข้อมูล DocuFlow (AWS RDS)...");
 
-    await pool.query(
-      "INSERT IGNORE INTO roles (name, description) VALUES (?, ?)",
-      ["responsible_person", "ผู้รับผิดชอบเรื่อง"]
-    );
+    // 0. ตาราง roles, users, users_roles (สิทธิ์และผู้ใช้งาน)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS roles (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        name VARCHAR(50) NOT NULL UNIQUE,
+        description VARCHAR(255) NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
+    await pool.query(`
+      INSERT INTO roles (name, description) VALUES (?, ?)
+      ON DUPLICATE KEY UPDATE description = VALUES(description)
+    `, ["responsible_person", "ผู้รับผิดชอบเรื่อง"]);
+    console.log("  + Verified 'responsible_person' role in roles table");
 
     // 1. ตาราง channels (ช่องทางการรับเอกสาร)
     await pool.query(`

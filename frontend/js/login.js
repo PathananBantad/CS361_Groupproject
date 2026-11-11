@@ -19,10 +19,12 @@ function resolveLoginRole(responseRole, groups = []) {
         const role = String(value || "").trim().toLowerCase();
         return Object.hasOwn(aliases, role) ? aliases[role] : role;
     };
-    const roles = (Array.isArray(groups) ? groups : [groups]).map(normalize);
-    if (responseRole) return normalize(responseRole);
-    return ["admin", "document_officer", "responsible_person", "faculty_staff", "executive"]
-        .find(role => roles.includes(role)) || roles[0] || "faculty_staff";
+    const groupRoles = (Array.isArray(groups) ? groups : [groups]).map(normalize).filter(Boolean);
+    const candidateRoles = [...groupRoles];
+    if (responseRole) candidateRoles.push(normalize(responseRole));
+
+    return ["admin", "executive", "document_officer", "responsible_person", "faculty_staff"]
+        .find(role => candidateRoles.includes(role)) || (responseRole ? normalize(responseRole) : groupRoles[0]) || "faculty_staff";
 }
 
 const guestLoginBtn = document.getElementById("guestLoginBtn");

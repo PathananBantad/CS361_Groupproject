@@ -71,6 +71,8 @@
                 userRoleDot.classList.add("role-executive");
             } else if (savedRole === "document_officer") {
                 userRoleDot.classList.add("role-officer");
+            } else if (savedRole === "responsible_person") {
+                userRoleDot.classList.add("role-responsible");
             } else if (savedRole === "guest") {
                 userRoleDot.classList.add("role-guest");
             } else {

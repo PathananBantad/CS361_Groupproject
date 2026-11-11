@@ -34,6 +34,10 @@ async function main() {
   console.log('DocuFlow AWS Services Setup & Deployment');
   console.log('=====================================================\n');
 
+  if (!envConfig.LAMBDA_DB_HOST || !envConfig.LAMBDA_DB_SECRET_ARN || !envConfig.SESSION_SECRET) {
+    throw new Error('Set LAMBDA_DB_HOST, LAMBDA_DB_SECRET_ARN, and SESSION_SECRET in backend/.env before deploying the Lambda.');
+  }
+
   // 1. Verify AWS Identity
   console.log('[1/8] Verifying AWS credentials and identity...');
   const identity = runAws('aws sts get-caller-identity');
@@ -93,14 +97,13 @@ async function main() {
     Variables: {
       AWS_S3_REGION: 'us-east-1',
       S3_BUCKET: s3BucketName,
-      DB_HOST: envConfig.DB_HOST || 'gateway01.us-east-1.prod.aws.tidbcloud.com',
-      DB_PORT: envConfig.DB_PORT || '4000',
-      DB_USER: envConfig.DB_USER || '9dV53PJt9W6BD7q.root',
-      DB_USERNAME: envConfig.DB_USERNAME || '9dV53PJt9W6BD7q.root',
-      DB_PASSWORD: envConfig.DB_PASSWORD || 'KTcbYgh6mpJLHIdF',
-      DB_NAME: envConfig.DB_NAME || 'ems',
-      DB_DATABASE: envConfig.DB_DATABASE || 'ems',
-      SESSION_SECRET: envConfig.SESSION_SECRET || 'cs361_docuflow_secret_key_2026',
+      DB_HOST: envConfig.LAMBDA_DB_HOST,
+      DB_PORT: envConfig.LAMBDA_DB_PORT || '3306',
+      DB_SECRET_ARN: envConfig.LAMBDA_DB_SECRET_ARN,
+      DB_SSL: 'true',
+      DB_TLS_SERVERNAME: envConfig.LAMBDA_DB_HOST,
+      DB_NAME: envConfig.LAMBDA_DB_NAME || 'ems',
+      SESSION_SECRET: envConfig.SESSION_SECRET,
       COGNITO_REGION: 'us-east-1',
       COGNITO_USER_POOL_ID: cognitoPoolId,
       COGNITO_APP_CLIENT_ID: cognitoClientId,
@@ -280,4 +283,3 @@ main().catch(err => {
   console.error('\nDeployment Error:', err);
   process.exit(1);
 });
-

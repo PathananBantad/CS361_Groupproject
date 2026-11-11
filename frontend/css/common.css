@@ -442,7 +442,7 @@ button {
 .profile-icon.role-admin { color: #d8b4fe; }
 .profile-icon.role-executive { color: #fde047; }
 .profile-icon.role-officer { color: #7dd3fc; }
-.profile-icon.role-owner { color: #86efac; }
+.profile-icon.role-responsible { color: #86efac; }
 .profile-icon.role-guest { color: #fca5a5; }
 
 .chevron {
