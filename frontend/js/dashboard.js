@@ -7,6 +7,7 @@
 const tableBody = document.getElementById("documentTableBody");
 const mobileList = document.getElementById("mobileList");
 const globalSearch = document.getElementById("globalSearch");
+const typeFilter = document.getElementById("filterType");
 const shownCount = document.getElementById("shownCount");
 
 // Role Selector Elements
@@ -350,16 +351,10 @@ function render() {
         });
     }
 
-    const fields = { filterReference: "code", filterSubject: "description", filterType: "type", filterSender: "sender", filterReceiver: "receiver" };
-    for (const [id, field] of Object.entries(fields)) {
-        const query = document.getElementById(id).value.trim().toLocaleLowerCase();
-        if (query) result = result.filter(doc => String(doc[field]).toLocaleLowerCase().includes(query));
+    const selectedType = typeFilter.value.toLocaleLowerCase();
+    if (selectedType) {
+        result = result.filter(doc => doc.type.toLocaleLowerCase().includes(selectedType));
     }
-    const from = document.getElementById("filterFrom").value;
-    const to = document.getElementById("filterTo").value;
-    if (from) result = result.filter(doc => doc.receivedDateKey && doc.receivedDateKey >= from);
-    if (to) result = result.filter(doc => doc.receivedDateKey && doc.receivedDateKey <= to);
-    if (document.getElementById("filterDeadline").value === "overdue") result = result.filter(isOverdue);
 
     if (sortKey) {
         result.sort((a, b) => {
@@ -688,9 +683,7 @@ if (globalSearch) {
     });
 }
 
-document.querySelectorAll(".document-search-filters input, .document-search-filters select").forEach(input => {
-    input.addEventListener("input", render);
-});
+typeFilter.addEventListener("change", render);
 // Re-evaluate deadlines when returning to the dashboard and across midnight.
 window.addEventListener("focus", render);
 setInterval(render, 60000);
@@ -748,9 +741,7 @@ function initializeDashboard() {
     if (currentRole === "guest") {
         const headings = tableBody.closest("table").tHead.rows[0];
         headings.innerHTML = '<th scope="col">เลขอ้างอิง</th><th scope="col">สถานะ</th>';
-        document.querySelectorAll(".document-search-filters label").forEach(label => {
-            label.hidden = !label.querySelector("#filterReference");
-        });
+        typeFilter.hidden = true;
         if (globalSearch) globalSearch.placeholder = "ค้นหาด้วยเลขอ้างอิง";
     }
     syncFilterButtons();

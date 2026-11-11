@@ -81,19 +81,16 @@
             </div>
         </section>
 
-        <!-- Filters Area (V3 Workflow Statuses) -->
-        <div class="status-filters" role="tablist" aria-label="กรองข้อมูลเอกสารตามสถานะ">
-            <button class="status-filter active" data-filter="all" role="tab">ทั้งหมด</button>
-            <button class="status-filter" data-filter="Received" role="tab">ได้รับเอกสารแล้ว</button>
-            <button class="status-filter" data-filter="Assigned" role="tab">มอบหมายแล้ว</button>
-            <button class="status-filter" data-filter="Processing" role="tab">กำลังดำเนินการ</button>
-            <button class="status-filter" data-filter="Completed" role="tab">ดำเนินการเสร็จสิ้น</button>
-        </div>
+        <div class="registry-filters">
+            <div class="status-filters" role="tablist" aria-label="กรองข้อมูลเอกสารตามสถานะ">
+                <button class="status-filter active" data-filter="all" role="tab">ทั้งหมด</button>
+                <button class="status-filter" data-filter="Received" role="tab">ได้รับเอกสารแล้ว</button>
+                <button class="status-filter" data-filter="Assigned" role="tab">มอบหมายแล้ว</button>
+                <button class="status-filter" data-filter="Processing" role="tab">กำลังดำเนินการ</button>
+                <button class="status-filter" data-filter="Completed" role="tab">ดำเนินการเสร็จสิ้น</button>
+            </div>
 
-        <section class="document-search-filters" aria-label="ค้นหาเอกสารเพิ่มเติม">
-            <label>เลขอ้างอิง<input id="filterReference" type="search"></label>
-            <label>เรื่อง<input id="filterSubject" type="search"></label>
-            <label>ประเภท<select id="filterType">
+            <select id="filterType" class="document-type-filter" aria-label="กรองตามประเภทเอกสาร">
                 <option value="">ทุกประเภท</option>
                 <option value="ประชาสัมพันธ์">เอกสารประชาสัมพันธ์</option>
                 <option value="ขออนุมัติ">เอกสารขออนุมัติ</option>
@@ -102,14 +99,9 @@
                 <option value="รอการตอบกลับ">เอกสารรอการตอบกลับ</option>
                 <option value="กำหนดการ/การนัดหมาย">เอกสารแจ้งกำหนดการ/การนัดหมาย</option>
                 <option value="รายงานผล">เอกสารรายงานผล</option>
-            </select></label>
-            <label>ผู้ส่ง<input id="filterSender" type="search"></label>
-            <label>ผู้รับ<input id="filterReceiver" type="search"></label>
-            <label>วันที่รับตั้งแต่<input id="filterFrom" type="date"></label>
-            <label>วันที่รับถึง<input id="filterTo" type="date"></label>
-            <label>กำหนดเวลา<select id="filterDeadline"><option value="">ทั้งหมด</option><option value="overdue">เกินกำหนดและยังไม่เสร็จ</option></select></label>
-            <p>วันที่รับ คือวันที่หน่วยงานลงรับเอกสาร ส่วนวันที่ส่ง คือวันที่ระบุในหนังสือ</p>
-        </section>
+            </select>
+        </div>
+
         <!-- Main registry -->
         <section class="registry-layout">
             <div class="registry-card">
