@@ -90,7 +90,7 @@
                 <button class="status-filter" data-filter="Completed" role="tab">ดำเนินการเสร็จสิ้น</button>
             </div>
 
-            <select id="filterType" class="document-type-filter" aria-label="กรองตามประเภทเอกสาร">
+            <select id="filterType" class="registry-filter-select" aria-label="กรองตามประเภทเอกสาร">
                 <option value="">ทุกประเภท</option>
                 <option value="ประชาสัมพันธ์">เอกสารประชาสัมพันธ์</option>
                 <option value="ขออนุมัติ">เอกสารขออนุมัติ</option>
@@ -100,6 +100,10 @@
                 <option value="กำหนดการ/การนัดหมาย">เอกสารแจ้งกำหนดการ/การนัดหมาย</option>
                 <option value="รายงานผล">เอกสารรายงานผล</option>
             </select>
+            <div id="filterUrgency" class="urgency-filters" role="group" aria-label="กรองตามความเร่งด่วน">
+                <button type="button" class="status-filter" data-urgency="due-soon" aria-pressed="false" title="ครบกำหนดภายใน 3 วัน">เร่งด่วน</button>
+                <button type="button" class="status-filter" data-urgency="overdue" aria-pressed="false">เกินกำหนด</button>
+            </div>
         </div>
 
         <!-- Main registry -->

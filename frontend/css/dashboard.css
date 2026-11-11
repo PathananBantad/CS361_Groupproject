@@ -83,7 +83,8 @@
 }
 
 .status-filter:hover,
-.status-filter.active {
+.status-filter.active,
+.status-filter[aria-pressed="true"] {
     color: white;
 
     border-color: var(--wine);
@@ -650,7 +651,13 @@
     }
 }
 
-.document-type-filter {
+.urgency-filters:not([hidden]) {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+.registry-filter-select {
     max-width: 100%;
     min-height: 44px;
     padding: 10px 36px 10px 16px;
@@ -667,7 +674,7 @@
     cursor: pointer;
 }
 
-.document-type-filter:focus-visible {
+.registry-filter-select:focus-visible {
     outline: 2px solid var(--wine);
     outline-offset: 2px;
 }
