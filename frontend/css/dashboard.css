@@ -67,8 +67,7 @@
     min-width: 0;
 }
 
-.status-filter,
-.legend-item {
+.status-filter {
     border: 1px solid #ddbdb8;
 
     background: rgba(255, 249, 243, .72);
@@ -530,76 +529,6 @@
 }
 
 
-/* =========================
-   LEGEND
-========================= */
-
-.status-legend {
-    display: flex;
-    flex-wrap: wrap;
-
-    gap: 18px;
-
-    align-items: center;
-
-    margin: 22px 0 0;
-}
-
-.legend-item {
-    padding: 7px 16px;
-
-    display: inline-flex;
-    align-items: center;
-
-    gap: 8px;
-
-    background: rgba(255, 249, 243, .72);
-    border-color: transparent;
-
-    font-size: 13px;
-}
-
-.legend-item:hover,
-.legend-item.active {
-    border-color: #e1c7c0;
-    background: rgba(255, 255, 255, .65);
-}
-
-.dot {
-    width: 10px;
-    height: 10px;
-
-    border-radius: 50%;
-
-    display: inline-block;
-}
-
-.dot-all {
-    background: var(--wine);
-}
-
-.dot-received,
-.dot-waiting {
-    background: #0284c7;
-}
-
-.dot-assigned,
-.dot-approval {
-    background: #d97706;
-}
-
-.dot-processing {
-    background: #2563eb;
-}
-
-.dot-completed {
-    background: #16a34a;
-}
-
-.dot-archived {
-    background: var(--gray);
-}
-
 .empty-table {
     padding: 55px 20px !important;
 
@@ -709,15 +638,6 @@
         align-items: center;
 
         gap: 8px;
-    }
-
-    .status-legend {
-        gap: 5px;
-    }
-
-    .legend-item {
-        padding: 6px 10px;
-        font-size: 11px;
     }
 
     .file-actions {
