@@ -779,7 +779,8 @@ app.post("/api/documents", requireCognitoAuth, loadUserRole, requireAction("regi
             remarks,
             receiving_channel,
             status = "Received",
-            assignee_id = null
+            assignee_id = null,
+            assignee_name
         } = req.body;
         if (req.body.file_key != null) return res.status(400).json({ error: "file_key is assigned by the server during upload" });
 
@@ -858,6 +859,33 @@ app.post("/api/documents", requireCognitoAuth, loadUserRole, requireAction("regi
 
         // 5. กำหนดและแปลงผู้รับผิดชอบเอกสาร (Assignee)
         let resolvedAssigneeId = (assignee_id && !isNaN(Number(assignee_id))) ? Number(assignee_id) : null;
+
+        if (assignee_name !== undefined) {
+            const name = typeof assignee_name === "string" ? assignee_name.trim() : "";
+            if (!name || name.length > 150 || assignee_id != null) {
+                return res.status(400).json({ error: "กรุณาระบุอีเมล ชื่อเต็ม หรือชื่อผู้ใช้ของผู้รับมอบหมาย" });
+            }
+
+            const [matches] = await pool.query(
+                `SELECT DISTINCT u.id,
+                    CASE WHEN u.email = ? THEN 2 WHEN u.username = ? THEN 1 ELSE 0 END AS match_rank
+                 FROM users u
+                 JOIN users_roles ur ON ur.user_id = u.id
+                 JOIN roles r ON r.id = ur.role_id
+                 WHERE u.is_active = 1 AND r.name IN (?)
+                   AND (u.email = ? OR u.username = ? OR u.full_name = ?)
+                 ORDER BY match_rank DESC, u.id
+                 LIMIT 2`,
+                [name, name, ASSIGNEE_ROLES, name, name, name]
+            );
+            if (matches.length === 0) {
+                return res.status(400).json({ error: "ไม่พบผู้รับมอบหมายที่มีสิทธิ์ กรุณาตรวจอีเมล ชื่อเต็ม หรือชื่อผู้ใช้ใน DocuFlow" });
+            }
+            if (matches.length > 1 && matches[0].match_rank === matches[1].match_rank) {
+                return res.status(400).json({ error: "พบผู้ใช้มากกว่าหนึ่งบัญชี กรุณากรอกอีเมลของผู้รับมอบหมาย" });
+            }
+            resolvedAssigneeId = matches[0].id;
+        }
 
         // หากยังไม่ได้ระบุ assignee_id ให้ค้นหาจาก receiver_name อัตโนมัติจากฐานข้อมูล
         if (!resolvedAssigneeId && sanitizedReceiverName) {
