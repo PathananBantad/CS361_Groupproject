@@ -37,10 +37,6 @@
 .login-button:hover { background:var(--wine-dark); transform:translateY(-1px); }
 .login-button:disabled { opacity:.65; cursor:wait; transform:none; }
 .button-arrow { font-size:23px; font-weight:400; }
-.login-divider { display:flex; align-items:center; gap:12px; margin:20px 0; color:var(--muted); font-size:12px; }
-.login-divider::before,.login-divider::after { content:''; height:1px; flex:1; background:var(--line); }
-.guest-button { width:100%; min-height:49px; padding:8px 16px; border:1.5px solid #ddbdb8; border-radius:26px; background:#fffaf6; color:var(--wine-dark); cursor:pointer; font-size:13px; font-weight:600; transition:background .2s,border-color .2s; }
-.guest-button:hover { background:#f8e9e7; border-color:var(--wine); }
 .security-note { display:flex; justify-content:center; align-items:center; gap:8px; margin-top:22px; color:var(--muted); font-size:11px; text-align:center; }
 .security-dot { width:7px; height:7px; border-radius:50%; background:var(--green); }
 .page-footer { display:flex; justify-content:space-between; gap:12px; max-width:1190px; margin:0 auto; padding:17px 0 0; border-top:1px solid var(--line); color:#a08a8c; font-size:11px; letter-spacing:.7px; }
