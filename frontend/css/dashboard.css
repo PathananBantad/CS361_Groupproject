@@ -64,6 +64,7 @@
 }
 
 .status-filters {
+    flex-basis: 100%;
     min-width: 0;
 }
 
@@ -83,8 +84,7 @@
 }
 
 .status-filter:hover,
-.status-filter.active,
-.status-filter[aria-pressed="true"] {
+.status-filter.active {
     color: white;
 
     border-color: var(--wine);
@@ -655,6 +655,43 @@
     display: flex;
     flex-wrap: wrap;
     gap: 12px;
+}
+
+.urgency-filter {
+    --urgency-color: #854200;
+    --urgency-border: #e9c28d;
+    --urgency-background: #fff0d8;
+    min-height: 44px;
+    padding: 6px 14px;
+    border: 1px solid var(--urgency-border);
+    border-radius: 10px;
+    background: var(--urgency-background);
+    color: var(--urgency-color);
+    font: inherit;
+    font-size: .875rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.urgency-filter[data-urgency="overdue"] {
+    --urgency-color: #9b2738;
+    --urgency-border: #edb6be;
+    --urgency-background: #fce8eb;
+}
+
+.urgency-filter:hover {
+    border-color: var(--urgency-color);
+}
+
+.urgency-filter[aria-pressed="true"] {
+    border-color: var(--urgency-color);
+    background: var(--urgency-color);
+    color: #fff;
+}
+
+.urgency-filter:focus-visible {
+    outline: 2px solid var(--urgency-color);
+    outline-offset: 2px;
 }
 
 .registry-filter-select {
