@@ -1,9 +1,13 @@
+// ใช้ secret เฉพาะการทดสอบ (ห้าม hardcode secret จริงของระบบในโค้ด)
+// ต้องตั้งก่อน require server/session เพื่อให้ server ตรวจ token ด้วย secret เดียวกัน
+process.env.SESSION_SECRET ||= "test-only-session-secret";
+const SESSION_SECRET = process.env.SESSION_SECRET;
+
 const pool = require("../db");
 const { mapCognitoGroupsToRoles, canAccessDocument, ROLES, ACTION_ROLES } = require("../documentAuthorization");
 const { signHs256Jwt } = require("../cognito-auth");
 const http = require("node:http");
 
-const SESSION_SECRET = process.env.SESSION_SECRET || "cs361_docuflow_secret_key_2026";
 
 function maskSecret(val) {
     if (!val || typeof val !== "string") return val;
