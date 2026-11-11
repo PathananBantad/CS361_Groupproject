@@ -11,16 +11,19 @@ const submitBtn = document.getElementById("submitBtn");
 const submitText = document.getElementById("submitText");
 const assigneeSelect = document.getElementById("assigneeSelect");
 const recipientInput = document.getElementById("recipient");
+const copyAssigneeButton = document.getElementById("copyAssigneeToRecipient");
 
 const assigneeSearch = document.getElementById("assigneeSearch");
 const assigneeResults = document.getElementById("assigneeResults");
 const assigneeHint = document.getElementById("assigneeHint");
+const assigneePrompt = assigneeHint.textContent;
 let assignableUsers = [];
-function renderAssignees() {
-    const query = assigneeSearch.value.trim().toLocaleLowerCase();
+let assigneesLoaded = false;
+function renderAssignees(search = assigneeSearch.value) {
+    if (!assigneesLoaded) return;
+    const query = search.trim().toLocaleLowerCase();
     assigneeResults.replaceChildren();
-    assigneeResults.hidden = !query;
-    if (!query) return;
+    assigneeResults.hidden = false;
     const matches = assignableUsers.filter(user => `${user.full_name || ""} ${user.username}`.toLocaleLowerCase().includes(query));
     if (!matches.length) assigneeResults.textContent = "ไม่พบผู้ใช้ที่สามารถรับมอบหมายได้";
     matches.forEach(user => {
@@ -31,9 +34,10 @@ function renderAssignees() {
             assigneeSelect.value = String(user.id);
             assigneeSearch.value = button.textContent;
             assigneeSearch.setCustomValidity("");
-            recipientInput.value = user.full_name || user.username;
+            copyAssigneeButton.disabled = false;
             assigneeResults.hidden = true;
             assigneeHint.textContent = `เลือกผู้รับมอบหมาย: ${button.textContent}`;
+            assigneeSearch.focus();
         });
         assigneeResults.append(button);
     });
@@ -46,6 +50,7 @@ async function loadAssignees() {
         if (!response.ok) throw new Error("โหลดรายชื่อไม่สำเร็จ");
         const result = await response.json();
         assignableUsers = [...new Map((result.data || []).map(user => [String(user.id), user])).values()];
+        assigneesLoaded = true;
         renderAssignees();
     } catch (error) {
         assigneeHint.textContent = "โหลดรายชื่อผู้รับมอบหมายไม่ได้ กรุณาโหลดหน้าใหม่เพื่อลองอีกครั้ง";
@@ -53,14 +58,21 @@ async function loadAssignees() {
 }
 assigneeSearch.addEventListener("input", () => {
     assigneeSelect.value = "";
+    copyAssigneeButton.disabled = true;
     assigneeSearch.setCustomValidity(assigneeSearch.value.trim() ? "กรุณาเลือกผู้ใช้จากผลการค้นหา" : "");
-    assigneeHint.textContent = "กรุณาเลือกผู้รับมอบหมายจากผลการค้นหาก่อนบันทึกเอกสาร";
+    if (assigneesLoaded) assigneeHint.textContent = assigneePrompt;
     renderAssignees();
+});
+copyAssigneeButton.addEventListener("click", () => {
+    const user = assignableUsers.find(user => String(user.id) === assigneeSelect.value);
+    if (user) recipientInput.value = user.full_name || user.username;
 });
 registerForm.addEventListener("reset", () => {
     assigneeSelect.value = "";
+    copyAssigneeButton.disabled = true;
     assigneeSearch.setCustomValidity("");
-    assigneeResults.hidden = true;
+    if (assigneesLoaded) assigneeHint.textContent = assigneePrompt;
+    renderAssignees("");
 });
 loadAssignees();
 
@@ -229,7 +241,7 @@ registerForm.addEventListener("submit", async (event) => {
     // 2. ตรวจสอบช่องทางรับ
     const allowedChannels = ["EMAIL", "PAPER"];
     if (!allowedChannels.includes(receiveChannel)) {
-        alert("กรุณาเลือกช่องทางรับเอกสารเป็น EMAIL หรือ PAPER");
+        alert("กรุณาเลือกช่องทางที่เจ้าหน้าที่ได้รับเอกสารจริง");
         return;
     }
 
@@ -392,10 +404,7 @@ registerForm.addEventListener("submit", async (event) => {
         // Reset แบบฟอร์ม
         registerForm.reset();
         fileText.textContent = "เลือกไฟล์ หรือลากไฟล์มาวางที่นี่...";
-        const receiveDateInput = document.getElementById("receiveDate");
-        if (receiveDateInput) {
-            receiveDateInput.value = new Date().toISOString().split("T")[0];
-        }
+        setDefaultReceiveDate();
 
     } catch (error) {
         console.error("Error saving document:", error);
@@ -409,9 +418,18 @@ registerForm.addEventListener("submit", async (event) => {
 });
 
 // กำหนดวันที่รับเอกสารเริ่มต้นเป็นวันปัจจุบันโดยอัตโนมัติ เพื่อความสะดวกของผู้ใช้งาน
-document.addEventListener("DOMContentLoaded", () => {
+function setDefaultReceiveDate() {
     const receiveDateInput = document.getElementById("receiveDate");
     if (receiveDateInput && !receiveDateInput.value) {
-        receiveDateInput.value = new Date().toISOString().split("T")[0];
+        const parts = new Intl.DateTimeFormat("en-CA", {
+            timeZone: "Asia/Bangkok",
+            year: "numeric",
+            month: "2-digit",
+            day: "2-digit"
+        }).formatToParts(new Date());
+        const get = type => parts.find(part => part.type === type).value;
+        receiveDateInput.value = `${get("year")}-${get("month")}-${get("day")}`;
     }
-});
+}
+
+document.addEventListener("DOMContentLoaded", setDefaultReceiveDate);

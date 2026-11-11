@@ -134,18 +134,19 @@
                 <!-- ช่องทางรับเอกสาร -->
                 <div class="field">
                     <label for="receiveChannel">
-                        ช่องทางรับเอกสาร <span style="color: red;">*</span>
+                        ช่องทางที่เจ้าหน้าที่ได้รับเอกสาร <span style="color: red;">*</span>
                     </label>
 
                     <div class="select-wrap">
-                        <select id="receiveChannel" name="receiveChannel" required>
+                        <select id="receiveChannel" name="receiveChannel" aria-describedby="receiveChannelHint" required>
                             <option value="" selected disabled>
                                 เลือกช่องทางรับเอกสาร...
                             </option>
                             <option value="EMAIL">อีเมล (Email)</option>
-                            <option value="PAPER">ส่งด้วยตนเอง / เอกสารกระดาษ (Paper)</option>
+                            <option value="PAPER">เอกสารกระดาษ</option>
                         </select>
                     </div>
+                    <small id="receiveChannelHint" class="field-desc">เลือกช่องทางที่ได้รับเอกสารฉบับนี้จริง ก่อนบันทึกลง DocuFlow หากได้รับเป็นกระดาษแล้วนำมาสแกนเพื่อแนบไฟล์ ให้เลือกเอกสารกระดาษ</small>
                 </div>
 
                 <!-- เลือกประเภทเอกสาร -->
@@ -204,16 +205,17 @@
                 <!-- ผู้รับมอบหมาย (Assignee - ส่งตรงไปยัง Role อาจารย์) -->
                 <div class="field">
                     <label for="assigneeSearch">ส่งมอบหมายให้ <span aria-hidden="true">*</span></label>
-                    <input id="assigneeSearch" type="search" required placeholder="พิมพ์ชื่อหรือชื่อผู้ใช้เพื่อค้นหา..." autocomplete="off" aria-controls="assigneeResults" aria-describedby="assigneeHint">
+                    <input id="assigneeSearch" type="search" required placeholder="ค้นหาชื่อหรือชื่อผู้ใช้..." autocomplete="off" aria-controls="assigneeResults" aria-describedby="assigneeHint">
                     <input id="assigneeSelect" type="hidden" name="assigneeSelect">
                     <div id="assigneeResults" class="assignee-results" hidden></div>
-                    <small id="assigneeHint" class="field-desc" role="status">กรุณาเลือกผู้รับมอบหมายจากผลการค้นหาก่อนบันทึกเอกสาร</small>
+                    <small id="assigneeHint" class="field-desc" role="status">เลือกผู้รับมอบหมายจากรายชื่อ หรือพิมพ์เพื่อค้นหา</small>
                 </div>
 
                 <!-- ข้อมูลผู้รับ -->
                 <div class="field">
                     <label for="recipient">หน่วยงานผู้รับ / ชื่อผู้รับ <span style="color: red;">*</span></label>
                     <input id="recipient" name="recipient" type="text" list="recipientList" placeholder="ระบุผู้รับหรือหน่วยงาน..." required>
+                    <button id="copyAssigneeToRecipient" class="copy-assignee-button" type="button" disabled>ใช้ชื่อผู้รับมอบหมาย</button>
                     <datalist id="recipientList">
                         <option value="คณะวิทยาศาสตร์และเทคโนโลยี">คณะวิทยาศาสตร์และเทคโนโลยี</option>
                         <option value="สาขาวิชาวิทยาการคอมพิวเตอร์">สาขาวิชาวิทยาการคอมพิวเตอร์</option>
