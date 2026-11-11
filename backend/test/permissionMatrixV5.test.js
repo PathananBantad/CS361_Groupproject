@@ -159,9 +159,11 @@ test("V5 FORWARD: faculty/responsible forward ได้เฉพาะ Current A
 });
 
 // ---- STATUS ----
-test("V5 STATUS: admin/officer เปลี่ยน status ได้ทุกกรณี รวมถึง Completed", () => {
+test("V5 STATUS: admin/officer เปลี่ยน status ได้ทุกเอกสาร; Completed เปลี่ยนได้เฉพาะ admin", () => {
+    assert.equal(access(USER.admin, DOC.assigned, "status"), true);
+    assert.equal(access(USER.officer, DOC.assigned, "status"), true);
     assert.equal(access(USER.admin, DOC.completed, "status"), true);
-    assert.equal(access(USER.officer, DOC.completed, "status"), true);
+    assert.equal(access(USER.officer, DOC.completed, "status"), false);
 });
 
 test("V5 STATUS: executive เปลี่ยน status ไม่ได้", () => {

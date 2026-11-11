@@ -17,8 +17,6 @@ const authRouter = require("./auth");
 const { requireCognitoAuth } = require("./cognito-auth");
 const {
     ROLES: DOCUMENT_ROLES,
-    ACTION_ROLES,
-    canPerformAction,
     requireAction,
     canAccessDocument,
     mapCognitoGroupsToRoles
@@ -494,9 +492,9 @@ app.get(
             const params = [];
 
             // Admin, Executive, and Document Officer roles can view all documents and their files across the system.
-            // Guest role can view the tracking registry; Faculty/Responsible users are scoped to assignees.
+            // Faculty/Responsible users are scoped to assignees (guest ถูกตอบกลับไปก่อนถึงตรงนี้แล้ว).
             const userRoles = (req.userRoles || (role ? [role] : [])).map((r) => String(r || "").trim().toLowerCase());
-            const canViewAll = userRoles.some((r) => ["admin", "executive", "document_officer", "guest"].includes(r));
+            const canViewAll = userRoles.some((r) => ["admin", "executive", "document_officer"].includes(r));
             if (!canViewAll) {
                 // ห้ามใช้ owner_id เป็นเกณฑ์กรองสิทธิ์ตาม Permission Matrix V5
                 // faculty_staff และ responsible_person เห็นเฉพาะเอกสารที่เป็น Current หรือ Previous Assignee
@@ -715,18 +713,6 @@ app.get(
             requireAction("deadline"),
             async (req, res) => {
                 try {
-                    const roles = (req.userRoles || [req.userRole])
-                        .filter(Boolean)
-                        .map(role => String(role).trim().toLowerCase());
-
-                    if (!roles.some(role =>
-                        ["admin", "document_officer"].includes(role)
-                    )) {
-                        return res.status(403).json({
-                            error: "คุณไม่มีสิทธิ์แก้ไข Deadline"
-                        });
-                    }
-
                     const id = Number(req.params.id);
                     if (!Number.isInteger(id) || id <= 0) {
                         return res.status(400).json({ error: "รหัสเอกสารไม่ถูกต้อง" });
@@ -777,16 +763,7 @@ app.get(
 // Create document
 app.post("/api/documents", requireCognitoAuth, loadUserRole, requireAction("register"), async (req, res) => {
     try {
-        // ตรวจสอบสิทธิ์: คนที่มีสิทธิ์เพิ่มเอกสาร คือ เจ้าหน้าที่รับเอกสาร และ Admin เท่านั้น
-        const allowedCreateRoles = ["document_officer", "admin"];
-        const userRoles = req.userRoles || (req.userRole ? [req.userRole] : []);
-        const canCreate = userRoles.some(r => allowedCreateRoles.includes(r));
-        if (!canCreate) {
-            return res.status(403).json({
-                error: "คุณไม่มีสิทธิ์เพิ่มเอกสาร (เฉพาะเจ้าหน้าที่รับเอกสารและผู้ดูแลระบบเท่านั้น)"
-            });
-        }
-
+        // สิทธิ์ลงทะเบียนเอกสารตรวจแล้วโดย requireAction("register") (เฉพาะ document_officer และ admin)
         let {
             reference_no,
             document_number,
@@ -1165,12 +1142,7 @@ app.put("/api/documents/:id/status", requireCognitoAuth, loadUserRole, requireAc
         const role = actor.actorRole;
         const sanitizedRemarks = sanitizeInput(remarks || "");
 
-        // 2. ตรวจสอบสิทธิ์ผู้ใช้: เฉพาะ staff, faculty_staff, document_officer และ admin
-        if (!role || !ACTION_ROLES.status.includes(role)) {
-            return res.status(403).json({
-                error: "คุณไม่มีสิทธิ์ในการเปลี่ยนสถานะเอกสาร (ต้องการสิทธิ์ Staff หรือ Admin เท่านั้น)"
-            });
-        }
+        // 2. สิทธิ์ระดับ Role ตรวจแล้วโดย requireAction("status")
 
         // 3. ตรวจสอบค่าสถานะใหม่ที่ส่งมา
         if (!newStatus) {
@@ -1305,8 +1277,7 @@ app.put("/api/documents/:id/status", requireCognitoAuth, loadUserRole, requireAc
     }
 });
 
-// กติกาการมอบหมายเอกสาร (เฉพาะเจ้าหน้าที่รับเอกสาร และ Admin)
-const ASSIGNER_ROLES = ACTION_ROLES.assign;
+// ผู้มอบหมาย: ตรวจด้วย requireAction("assign") + canAccessDocument(..., "assign")
 const ASSIGNEE_ROLES = ["faculty_staff", "responsible_person"];   // รับมอบหมายได้
 
 class HttpError extends Error {
@@ -1322,10 +1293,6 @@ app.post("/api/documents/:id/assign", requireCognitoAuth, loadUserRole, requireA
     const actorId = req.userId;
     const actorRole = req.userRole;
     const actorUsername = req.auth.username || String(req.auth.sub);
-
-    if (!ASSIGNER_ROLES.includes(actorRole)) {
-        return res.status(403).json({ error: "คุณไม่มีสิทธิ์มอบหมายเอกสาร" });
-    }
 
     // ดึงชื่อเต็มของผู้มอบหมาย (Assigned By) จากฐานข้อมูลจริง เพื่อแสดงใน Audit Trail
     let actorFullName = req.dbUsername || actorUsername;
@@ -1486,12 +1453,9 @@ app.post("/api/documents/:id/assign", requireCognitoAuth, loadUserRole, requireA
 
 // GET /api/assignees - รายชื่อผู้ที่รับมอบหมายได้ (สำหรับ dropdown) เฉพาะผู้มีสิทธิ์มอบหมาย
 app.get("/api/assignees", requireCognitoAuth, loadUserRole, requireAction("assign"), async (req, res) => {
-    if (!ASSIGNER_ROLES.includes(req.userRole)) {
-        return res.status(403).json({ error: "คุณไม่มีสิทธิ์ดูรายชื่อผู้รับมอบหมาย" });
-    }
-
     try {
-        if (req.query.document_id || !["admin", "document_officer"].includes(req.userRole)) {
+        const privilegedAssigner = (req.userRoles || [req.userRole]).some(r => ["admin", "document_officer"].includes(r));
+        if (req.query.document_id || !privilegedAssigner) {
             const [[doc]] = await pool.query("SELECT * FROM documents WHERE id = ?", [String(req.query.document_id || "")]);
             if (!doc || !(await checkDocumentAccess(req, doc, "assign")).allowed) {
                 return res.status(403).json({ error: "คุณไม่มีสิทธิ์มอบหมายเอกสารนี้" });
@@ -1519,12 +1483,6 @@ app.get(
     loadUserRole,
     requireAction("forward"),
     async (req, res) => {
-        if (!ACTION_ROLES.forward.includes(req.userRole)) {
-            return res.status(403).json({
-                error: "คุณไม่มีสิทธิ์ดูรายชื่อผู้รับส่งต่อ"
-            });
-        }
-
         try {
             const [rows] = await pool.query(
                 `SELECT DISTINCT u.id, u.username, u.full_name
@@ -1605,14 +1563,6 @@ app.post("/api/documents/:id/forward", requireCognitoAuth, loadUserRole, require
         const { new_assignee_id, new_assignee_name, receiver_name, remarks, reason, expected_assignee_id } = req.body || {};
 
         const actor = extractServerActor(req);
-        const role = actor.actorRole;
-
-        // ตรวจสอบสิทธิ์ผู้มีอำนาจส่งต่อ
-        if (!role || !ACTION_ROLES.forward.includes(role)) {
-            return res.status(403).json({
-                error: "คุณไม่มีสิทธิ์ในการส่งต่อเอกสาร (ต้องการสิทธิ์ Staff หรือ Admin)"
-            });
-        }
 
         if (!new_assignee_id && !receiver_name) {
             return res.status(400).json({
@@ -1820,14 +1770,8 @@ app.delete("/api/documents/:id", requireCognitoAuth, loadUserRole, requireAction
     try {
         const { id } = req.params;
         const actor = extractServerActor(req);
-        const role = actor.actorRole;
 
-        // 1. ตรวจสอบสิทธิ์: เฉพาะ Admin เท่านั้นที่มีสิทธิ์ลบเอกสาร
-        if (role !== "admin") {
-            return res.status(403).json({
-                error: "คุณไม่มีสิทธิ์ในการลบเอกสาร (ต้องการสิทธิ์ Admin เท่านั้น)"
-            });
-        }
+        // 1. สิทธิ์ลบ (เฉพาะ Admin) ตรวจแล้วโดย requireAction("delete")
 
         const docId = Number(id);
         if (!Number.isInteger(docId) || docId <= 0) {

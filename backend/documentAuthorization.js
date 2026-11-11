@@ -103,10 +103,11 @@ function canAccessDocument({ roles, userId, document, action = "read", previousA
     }
 
     if (action === "status") {
-        // admin และ officer เปลี่ยน status ได้ทุกกรณี รวมถึงเอกสาร Completed
-        if (normalized.some(role => ["admin", "document_officer"].includes(role))) return true;
-        // faculty/responsible: ห้ามเปลี่ยน status ของเอกสาร Completed
+        // เฉพาะ admin เปลี่ยน status ของเอกสาร Completed ได้ (admin override)
+        // ให้ตรงกับ PUT /api/documents/:id/status ที่ไม่มี transition ออกจาก Completed สำหรับ non-admin
+        if (normalized.includes("admin")) return true;
         if (document.status === "Completed") return false;
+        if (normalized.includes("document_officer")) return true;
         return currentAssignee;
     }
 
