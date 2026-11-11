@@ -212,7 +212,13 @@ router.post("/tu-login", async (req, res) => {
 
         if (directCognitoAuth) {
             const mappedRoles = mapCognitoGroupsToRoles(directCognitoAuth.groups);
-            const resolvedRole = mappedRoles[0] || "faculty_staff";
+            const resolvedRole = [
+                "admin",
+                "executive",
+                "document_officer",
+                "responsible_person",
+                "faculty_staff"
+            ].find(r => mappedRoles.includes(r)) || mappedRoles[0] || "faculty_staff";
 
             try {
                 await pool.query(
@@ -221,6 +227,23 @@ router.post("/tu-login", async (req, res) => {
                      ON DUPLICATE KEY UPDATE cognito_sub = VALUES(cognito_sub), role = VALUES(role), is_active = 1`,
                     [directCognitoAuth.email, resolvedRole, directCognitoAuth.userSub, directCognitoAuth.displayName || directCognitoAuth.email]
                 );
+
+                const [userRows] = await pool.query("SELECT id FROM users WHERE username = ?", [directCognitoAuth.email]);
+                if (userRows.length > 0) {
+                    const userId = userRows[0].id;
+                    if (mappedRoles.includes("responsible_person") && !mappedRoles.includes("faculty_staff")) {
+                        await pool.query(
+                            "DELETE ur FROM users_roles ur JOIN roles r ON r.id = ur.role_id WHERE ur.user_id = ? AND r.name = 'faculty_staff'",
+                            [userId]
+                        );
+                    }
+                    for (const rName of mappedRoles) {
+                        const [rRows] = await pool.query("SELECT id FROM roles WHERE name = ?", [rName]);
+                        if (rRows.length > 0) {
+                            await pool.query("INSERT IGNORE INTO users_roles (user_id, role_id) VALUES (?, ?)", [userId, rRows[0].id]);
+                        }
+                    }
+                }
             } catch (dbErr) {
                 console.warn("DB user sync warning:", dbErr.message);
             }
@@ -232,6 +255,7 @@ router.post("/tu-login", async (req, res) => {
                 id_token: directCognitoAuth.idToken,
                 username: directCognitoAuth.email,
                 role: resolvedRole,
+                roles: mappedRoles,
                 groups: directCognitoAuth.groups,
                 displayName: directCognitoAuth.displayName
             });
@@ -406,7 +430,13 @@ router.post("/tu-login", async (req, res) => {
 
         // 6. ซิงค์ข้อมูลผู้ใช้และ Role จาก Cognito Group ลงใน MySQL Database
         const mappedRoles = mapCognitoGroupsToRoles(tokens.groups);
-        const resolvedRole = mappedRoles[0] || "faculty_staff";
+        const resolvedRole = [
+            "admin",
+            "executive",
+            "document_officer",
+            "responsible_person",
+            "faculty_staff"
+        ].find(r => mappedRoles.includes(r)) || mappedRoles[0] || "faculty_staff";
 
         try {
             await pool.query(
@@ -415,6 +445,23 @@ router.post("/tu-login", async (req, res) => {
                  ON DUPLICATE KEY UPDATE cognito_sub = VALUES(cognito_sub), role = VALUES(role), is_active = 1`,
                 [targetEmail, resolvedRole, userSub, tuResult.displayName || targetEmail]
             );
+
+            const [userRows] = await pool.query("SELECT id FROM users WHERE username = ?", [targetEmail]);
+            if (userRows.length > 0) {
+                const userId = userRows[0].id;
+                if (mappedRoles.includes("responsible_person") && !mappedRoles.includes("faculty_staff")) {
+                    await pool.query(
+                        "DELETE ur FROM users_roles ur JOIN roles r ON r.id = ur.role_id WHERE ur.user_id = ? AND r.name = 'faculty_staff'",
+                        [userId]
+                    );
+                }
+                for (const rName of mappedRoles) {
+                    const [rRows] = await pool.query("SELECT id FROM roles WHERE name = ?", [rName]);
+                    if (rRows.length > 0) {
+                        await pool.query("INSERT IGNORE INTO users_roles (user_id, role_id) VALUES (?, ?)", [userId, rRows[0].id]);
+                    }
+                }
+            }
         } catch (dbErr) {
             console.warn("DB user sync warning:", dbErr.message);
         }
@@ -426,6 +473,7 @@ router.post("/tu-login", async (req, res) => {
             id_token: tokens.idToken,
             username: targetEmail,
             role: resolvedRole,
+            roles: mappedRoles,
             groups: tokens.groups,
             displayName: tuResult.displayName || targetEmail.split("@")[0]
         });

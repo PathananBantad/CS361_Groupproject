@@ -7,6 +7,7 @@
 // ============================================================================
 
 const defaultPool = require("./db");
+const { canAccessDocument } = require("./documentAuthorization");
 
 // 1. กำหนดประเภท Event มาตรฐาน (Task 1)
 const AUDIT_EVENTS = Object.freeze({
@@ -417,36 +418,26 @@ async function queryAuditTrails(options = {}, poolOrConn = defaultPool) {
  * - admin: ดูได้ทุกเอกสาร และดูประวัติรวมทั้งระบบได้
  * - executive: ดูได้ทุกเอกสาร
  * - document_officer: ดูได้ทุกเอกสารที่รับเข้ามาในระบบ
- * - faculty_staff / staff: ดูได้เฉพาะเอกสารที่ตนเองเกี่ยวข้อง
+ * - faculty_staff / responsible_person: ดูได้เฉพาะเอกสารที่เป็น Current หรือ Previous Assignee
  * - guest / unauthenticated: ไม่มีสิทธิ์เข้าถึง (403/401)
  *
  * @param {Object} actor { userId, role }
  * @param {Object} document ข้อมูลเอกสาร
  * @returns {{ allowed: boolean, reason?: string }}
  */
-function verifyAuditTrailAccess(actor, document) {
-    if (!actor || !actor.role) {
+function verifyAuditTrailAccess(actor, document, previousAssignee = false) {
+    if (!actor || !(actor.roles || actor.role)) {
         return { allowed: false, reason: "Authentication required" };
     }
 
-    const role = String(actor.role).trim().toLowerCase();
-    const userId = String(actor.userId || "");
-
-    // 1. Admin, Executive และ Document Officer สามารถดูประวัติของเอกสารได้ทุกฉบับ
-    if (["admin", "executive", "document_officer"].includes(role)) {
-        return { allowed: true };
-    }
-
-    // 2. หากเป็น faculty_staff ต้องเป็นเจ้าของหรือผู้รับมอบหมายเอกสาร
-    if (document) {
-        const docOwnerId = document.owner_id ? String(document.owner_id) : null;
-        const docAssigneeId = document.assignee_id ? String(document.assignee_id) : null;
-
-        if (docOwnerId === userId || docAssigneeId === userId) {
-            return { allowed: true };
-        }
-
-    }
+    const allowed = canAccessDocument({
+        roles: actor.roles || actor.role,
+        userId: actor.userId,
+        document,
+        action: "read",
+        previousAssignee
+    });
+    if (allowed) return { allowed: true };
 
     return {
         allowed: false,

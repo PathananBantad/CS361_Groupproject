@@ -4,6 +4,7 @@ const ROLES = Object.freeze([
 
 const ACTION_ROLES = Object.freeze({
     read: ROLES,
+    register: ["document_officer", "admin"],
     upload: ["document_officer", "admin"],
     status: ["document_officer", "admin", "faculty_staff", "responsible_person"],
     assign: ["document_officer", "admin", "faculty_staff", "responsible_person"],
@@ -42,37 +43,88 @@ function mapCognitoGroupsToRoles(groups) {
     )];
 }
 
-function canAccessDocument({ roles, userId, document, action = "read", previousAssignee = false }) {
-    const normalized = (Array.isArray(roles) ? roles : [roles])
-        .map((role) => String(role || "").trim().toLowerCase())
-        .filter((role) => ROLES.includes(role));
+function normalizeRoles(roles) {
+    return (Array.isArray(roles) ? roles : [roles])
+        .map(role => String(role || "").trim().toLowerCase())
+        .filter(role => ROLES.includes(role));
+}
+
+function canPerformAction(roles, action) {
+    const normalized = normalizeRoles(roles);
+    if (!normalized.length || action === "read") return false;
+    if (normalized.includes("executive")) return false;
+
     const allowedRoles = ACTION_ROLES[action];
-    if (!allowedRoles || !normalized.some((role) => allowedRoles.includes(role)) || userId == null || !document) return false;
+    return Boolean(allowedRoles && normalized.some(role => allowedRoles.includes(role)));
+}
+
+function requireAction(action) {
+    return (req, res, next) => {
+        const roles = req.userRoles || [req.userRole];
+        if (!canPerformAction(roles, action)) {
+            return res.status(403).json({ error: "Forbidden", code: "FORBIDDEN" });
+        }
+        return next();
+    };
+}
+
+function canAccessDocument({ roles, userId, document, action = "read", previousAssignee = false }) {
+    const normalized = normalizeRoles(roles);
+
+    // ตรวจสอบ input พื้นฐาน — ต้องมี roles ที่รู้จัก, userId และ document
+    if (!normalized.length || userId == null || !document) return false;
 
     const currentAssignee = document.assignee_id != null && String(document.assignee_id) === String(userId);
-    const owner = document.owner_id != null && String(document.owner_id) === String(userId);
-    const admin = normalized.includes("admin");
-    const officer = normalized.includes("document_officer");
-    const faculty = normalized.includes("faculty_staff");
-    const executive = normalized.includes("executive");
+    // ห้ามใช้ owner_id เป็นเกณฑ์ตัดสินสิทธิ์ตาม Permission Matrix V5
+    // READ: admin/officer/executive เห็นเอกสารทุกรายการ
+    // faculty_staff/responsible_person เห็นเฉพาะเอกสารที่เป็น Current หรือ Previous Assignee
+    if (action === "read") {
+        if (normalized.some(role => ["admin", "document_officer", "executive"].includes(role))) return true;
+        return currentAssignee || previousAssignee;
+    }
 
-    if (action === "read") return admin || officer || executive || owner || currentAssignee || previousAssignee;
-    if (executive || (previousAssignee && !currentAssignee)) return false;
+    if (!canPerformAction(normalized, action)) return false;
+
+    // Previous assignees are read-only unless an officer/admin permission independently applies.
+    const privilegedAssigneeRole = normalized.some(role => ["admin", "document_officer"].includes(role));
+    if (previousAssignee && !currentAssignee && !privilegedAssigneeRole) return false;
+
     if (action === "assign") {
-        return document.status !== "Completed" && (admin || officer || currentAssignee || (faculty && owner));
+        if (document.status === "Completed") return false;
+        // admin/officer assign ได้ไม่จำกัด; faculty/responsible assign ได้เฉพาะในฐานะ Current Assignee
+        if (normalized.some(role => ["admin", "document_officer"].includes(role))) return true;
+        return currentAssignee; // faculty_staff และ responsible_person ต้องเป็น assignee ปัจจุบัน
     }
-    if (action === "forward" && !["Received", "Assigned", "Processing"].includes(document.status || "Received")) {
-        return false;
+
+    if (action === "forward") {
+        if (!["Received", "Assigned", "Processing"].includes(document.status || "Received")) return false;
+        if (normalized.some(role => ["admin", "document_officer"].includes(role))) return true;
+        return currentAssignee; // faculty_staff และ responsible_person ต้องเป็น assignee ปัจจุบัน
     }
-    if (action === "status" && !admin && document.status === "Completed") return false;
-    if (action === "delete" || action === "deadline") return true;
-    if (action === "status" && admin) return true;
-    return currentAssignee || ((admin || officer || faculty) && owner);
+
+    if (action === "status") {
+        // admin และ officer เปลี่ยน status ได้ทุกกรณี รวมถึงเอกสาร Completed
+        if (normalized.some(role => ["admin", "document_officer"].includes(role))) return true;
+        // faculty/responsible: ห้ามเปลี่ยน status ของเอกสาร Completed
+        if (document.status === "Completed") return false;
+        return currentAssignee;
+    }
+
+    // upload, deadline: เฉพาะ admin/officer (ถูกกรองจาก ACTION_ROLES แล้ว)
+    // delete: เฉพาะ admin (ถูกกรองจาก ACTION_ROLES แล้ว)
+    if (action === "upload" || action === "deadline" || action === "delete") {
+        return true;
+    }
+
+    return false;
 }
 
 module.exports = {
     ROLES,
     ACTION_ROLES,
     mapCognitoGroupsToRoles,
+    normalizeRoles,
+    canPerformAction,
+    requireAction,
     canAccessDocument
 };
