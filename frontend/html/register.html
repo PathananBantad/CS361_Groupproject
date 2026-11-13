@@ -204,11 +204,16 @@
 
                 <!-- ผู้รับมอบหมาย (Assignee - ส่งตรงไปยัง Role อาจารย์) -->
                 <div class="field">
-                    <label for="assigneeSearch">ส่งมอบหมายให้ <span aria-hidden="true">*</span></label>
-                    <input id="assigneeSearch" type="search" required placeholder="ค้นหาชื่อหรือชื่อผู้ใช้..." autocomplete="off" aria-controls="assigneeResults" aria-describedby="assigneeHint">
-                    <input id="assigneeSelect" type="hidden" name="assigneeSelect">
-                    <div id="assigneeResults" class="assignee-results" hidden></div>
-                    <small id="assigneeHint" class="field-desc" role="status">เลือกผู้รับมอบหมายจากรายชื่อ หรือพิมพ์เพื่อค้นหา</small>
+                    <label for="assigneeName">ส่งมอบหมายให้ <span aria-hidden="true">*</span></label>
+                    <input id="assigneeName" name="assigneeName" type="text" required maxlength="150"
+                        list="testAssigneeEmails" placeholder="พิมพ์อีเมล ชื่อเต็ม หรือชื่อผู้ใช้..." autocomplete="off"
+                        aria-describedby="assigneeHint">
+                    <datalist id="testAssigneeEmails">
+                        <option value="Responsible@gmail.com" label="ผู้รับผิดชอบเรื่อง"></option>
+                        <option value="Instructor@gmail.com" label="อาจารย์"></option>
+                        <option value="Staff@gmail.com" label="เจ้าหน้าที่บุคลากร"></option>
+                    </datalist>
+                    <small id="assigneeHint" class="field-desc">เลือกอีเมลทดสอบจากรายการแนะนำ หรือพิมพ์อีเมล ชื่อเต็ม หรือชื่อผู้ใช้ใน DocuFlow</small>
                 </div>
 
                 <!-- ข้อมูลผู้รับ -->

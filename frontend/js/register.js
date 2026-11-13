@@ -9,72 +9,19 @@ const fileText = document.getElementById("fileText");
 const uploadBox = document.querySelector(".upload-box");
 const submitBtn = document.getElementById("submitBtn");
 const submitText = document.getElementById("submitText");
-const assigneeSelect = document.getElementById("assigneeSelect");
+const assigneeInput = document.getElementById("assigneeName");
 const recipientInput = document.getElementById("recipient");
 const copyAssigneeButton = document.getElementById("copyAssigneeToRecipient");
 
-const assigneeSearch = document.getElementById("assigneeSearch");
-const assigneeResults = document.getElementById("assigneeResults");
-const assigneeHint = document.getElementById("assigneeHint");
-const assigneePrompt = assigneeHint.textContent;
-let assignableUsers = [];
-let assigneesLoaded = false;
-function renderAssignees(search = assigneeSearch.value) {
-    if (!assigneesLoaded) return;
-    const query = search.trim().toLocaleLowerCase();
-    assigneeResults.replaceChildren();
-    assigneeResults.hidden = false;
-    const matches = assignableUsers.filter(user => `${user.full_name || ""} ${user.username}`.toLocaleLowerCase().includes(query));
-    if (!matches.length) assigneeResults.textContent = "ไม่พบผู้ใช้ที่สามารถรับมอบหมายได้";
-    matches.forEach(user => {
-        const button = document.createElement("button");
-        button.type = "button";
-        button.textContent = `${user.full_name || user.username} (${user.username})`;
-        button.addEventListener("click", () => {
-            assigneeSelect.value = String(user.id);
-            assigneeSearch.value = button.textContent;
-            assigneeSearch.setCustomValidity("");
-            copyAssigneeButton.disabled = false;
-            assigneeResults.hidden = true;
-            assigneeHint.textContent = `เลือกผู้รับมอบหมาย: ${button.textContent}`;
-            assigneeSearch.focus();
-        });
-        assigneeResults.append(button);
-    });
-}
-async function loadAssignees() {
-    const role = (localStorage.getItem("docuflow_role") || "guest").toLowerCase().trim();
-    if (!["admin", "document_officer"].includes(role)) return;
-    try {
-        const response = await window.apiFetch(`${getApiBaseUrl()}/assignees`);
-        if (!response.ok) throw new Error("โหลดรายชื่อไม่สำเร็จ");
-        const result = await response.json();
-        assignableUsers = [...new Map((result.data || []).map(user => [String(user.id), user])).values()];
-        assigneesLoaded = true;
-        renderAssignees();
-    } catch (error) {
-        assigneeHint.textContent = "โหลดรายชื่อผู้รับมอบหมายไม่ได้ กรุณาโหลดหน้าใหม่เพื่อลองอีกครั้ง";
-    }
-}
-assigneeSearch.addEventListener("input", () => {
-    assigneeSelect.value = "";
-    copyAssigneeButton.disabled = true;
-    assigneeSearch.setCustomValidity(assigneeSearch.value.trim() ? "กรุณาเลือกผู้ใช้จากผลการค้นหา" : "");
-    if (assigneesLoaded) assigneeHint.textContent = assigneePrompt;
-    renderAssignees();
+assigneeInput.addEventListener("input", () => {
+    copyAssigneeButton.disabled = !assigneeInput.value.trim();
 });
 copyAssigneeButton.addEventListener("click", () => {
-    const user = assignableUsers.find(user => String(user.id) === assigneeSelect.value);
-    if (user) recipientInput.value = user.full_name || user.username;
+    recipientInput.value = assigneeInput.value.trim();
 });
 registerForm.addEventListener("reset", () => {
-    assigneeSelect.value = "";
     copyAssigneeButton.disabled = true;
-    assigneeSearch.setCustomValidity("");
-    if (assigneesLoaded) assigneeHint.textContent = assigneePrompt;
-    renderAssignees("");
 });
-loadAssignees();
 
 // รายการนามสกุลไฟล์ที่ระบบรองรับ (PDF, DOCX, JPG/JPEG, PNG, XLSX, PPTX)
 const ALLOWED_EXTENSIONS = [
@@ -224,6 +171,7 @@ registerForm.addEventListener("submit", async (event) => {
     const senderDept = document.getElementById("senderDept").value.trim();
     const senderName = document.getElementById("senderName").value.trim();
     const senderContact = document.getElementById("senderContact").value.trim();
+    const assigneeName = assigneeInput.value.trim();
     const recipient = document.getElementById("recipient").value.trim();
     const sendDate = document.getElementById("sendDate").value;
     const receiveDate = document.getElementById("receiveDate").value;
@@ -254,17 +202,12 @@ registerForm.addEventListener("submit", async (event) => {
         !senderDept ||
         !senderName ||
         !senderContact ||
+        !assigneeName ||
         !recipient ||
         !sendDate ||
         !receiveDate
     ) {
         alert("กรุณากรอกข้อมูลที่จำเป็น (*) ให้ครบถ้วน");
-        return;
-    }
-
-    if (!assigneeSelect.value) {
-        assigneeSearch.setCustomValidity("กรุณาเลือกผู้รับมอบหมายจากผลการค้นหา");
-        assigneeSearch.reportValidity();
         return;
     }
 
@@ -277,9 +220,6 @@ registerForm.addEventListener("submit", async (event) => {
     const apiBase = getApiBaseUrl();
 
     try {
-        let assigneeId = assigneeSelect && assigneeSelect.value ? Number(assigneeSelect.value) : null;
-
-
         const payload = {
             document_number: docNo,
             subject: subject,
@@ -293,7 +233,7 @@ registerForm.addEventListener("submit", async (event) => {
             deadline: deadline || null,
             remarks: remarks || null,
             receiving_channel: receiveChannel,
-            assignee_id: assigneeId
+            assignee_name: assigneeName
         };
 
         const token = localStorage.getItem("docuflow_access_token") || localStorage.getItem("access_token") || localStorage.getItem("docuflow_id_token") || localStorage.getItem("id_token") || "";
