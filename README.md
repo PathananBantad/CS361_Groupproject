@@ -122,7 +122,7 @@ V5 มุ่งเน้นการทำให้ Infrastructure และ Dep
 - ขั้นตอนใดสามารถทำ Automation ได้ และขั้นตอนใดยังต้องทำด้วยมือ?
 
 ## Deploy link
-https://main.d29fui7wfvh5a0.amplifyapp.com/
+[https://main.d29fui7wfvh5a0.amplifyapp.com/](https://main.d29fui7wfvh5a0.amplifyapp.com/)
 
 ## Architecture V5
 <img width="1755" height="896" alt="Architecture V5 " src="https://github.com/user-attachments/assets/290723a9-9ac3-4b68-b990-158593ee234f" />
