@@ -385,7 +385,7 @@ async function wasPreviouslyAssigned(document, userId, db = pool) {
 async function checkDocumentAccess(req, document, action = "read", db = pool) {
     const roles = req.userRoles || [req.userRole];
     const previousAssignee = await wasPreviouslyAssigned(document, req.userId, db);
-    const forwardedByViewer = ["forward", "status"].includes(action)
+    const forwardedByViewer = ["assign", "forward", "status"].includes(action)
         && await didOfficerForward(req, document, db);
     return { allowed: canAccessDocument({ roles, userId: req.userId, document, action, previousAssignee, forwardedByViewer }) };
 }
