@@ -458,45 +458,20 @@ app.get("/api/health", async (req, res) => {
     }
 });
 
-// Middleware ตรวจสอบสิทธิ์สำหรับรายการเอกสาร (อนุญาตให้ Guest เข้าดูรายการติดตามเอกสารได้โดยไม่ต้องมี Token แต่จำกัดไม่ให้เข้าถึงไฟล์)
-async function authenticateDocumentListAccess(req, res, next) {
-    const authorization = req.headers.authorization;
-    if (!authorization || authorization === "Bearer guest" || authorization.trim() === "guest") {
-        req.userId = null;
-        req.userRole = "guest";
-        req.userRoles = ["guest"];
-        return next();
-    }
-    return requireCognitoAuth(req, res, (err) => {
-        if (err) return next(err);
-        return loadUserRole(req, res, next);
-    });
-}
-
-// ดึงรายการเอกสารพร้อม Metadata ของไฟล์
+// ดึงรายการเอกสารพร้อม Metadata ของไฟล์ (ต้องเข้าสู่ระบบ — ไม่มีโหมด Guest)
 app.get(
     "/api/documents",
-    authenticateDocumentListAccess,
+    requireCognitoAuth,
+    loadUserRole,
     async (req, res) => {
         try {
             const userId = req.userId;
             const role = String(req.userRole || "").trim().toLowerCase();
 
-            if (role !== "guest" && (!userId || !DOCUMENT_ROLES.includes(role))) {
+            if (!userId || !DOCUMENT_ROLES.includes(role)) {
                 return res.status(403).json({
                     error: "Invalid or unauthorized user role"
                 });
-            }
-
-            if (role === "guest") {
-                const reference = req.query.reference_no ?? req.query.search;
-                const params = typeof reference === "string" && reference.trim() ? [`%${reference.trim()}%`] : [];
-                const [rows] = await pool.query(
-                    `SELECT reference_no, status FROM documents ${params.length ? "WHERE reference_no LIKE ?" : ""}
-                     ORDER BY created_at DESC`,
-                    params
-                );
-                return res.json({ data: rows, total: rows.length });
             }
 
             const {
@@ -534,7 +509,7 @@ app.get(
             const params = [];
 
             // Admin, Executive, and Document Officer roles can view all documents and their files across the system.
-            // Faculty/Responsible users are scoped to assignees (guest ถูกตอบกลับไปก่อนถึงตรงนี้แล้ว).
+            // Faculty/Responsible users are scoped to assignees.
             const userRoles = (req.userRoles || (role ? [role] : [])).map((r) => String(r || "").trim().toLowerCase());
             const canViewAll = userRoles.some((r) => ["admin", "executive", "document_officer"].includes(r));
             if (!canViewAll) {
@@ -1151,8 +1126,7 @@ app.get("/api/workflow/config", (req, res) => {
         transitions: V3_WORKFLOW_TRANSITIONS,
         permissions: {
             staff: { can_change_status: true, rule: "เปลี่ยนสถานะตามลำดับ Workflow ทีละขั้นตอน" },
-            admin: { can_change_status: true, rule: "เปลี่ยนสถานะตาม Workflow หรือปรับปรุงแก้ไขตามความเหมาะสม" },
-            guest: { can_change_status: false, rule: "ไม่มีสิทธิ์เปลี่ยนสถานะเอกสาร (Read-only)" }
+            admin: { can_change_status: true, rule: "เปลี่ยนสถานะตาม Workflow หรือปรับปรุงแก้ไขตามความเหมาะสม" }
         }
     });
 });
@@ -1876,7 +1850,9 @@ app.delete("/api/documents/:id", requireCognitoAuth, loadUserRole, requireAction
             await connection.query("DELETE FROM document_files WHERE document_id = ?", [docId]);
             await connection.query("DELETE FROM document_assignments WHERE document_id = ?", [docId]);
             await connection.query("DELETE FROM document_status_logs WHERE document_id = ?", [docId]);
-            await connection.query("DELETE FROM document_audit_trails WHERE document_id = ?", [docId]);
+            // ไม่ลบ document_audit_trails ตรง ๆ เพราะมี trigger ป้องกันการลบ (immutable)
+            // แถว audit ของเอกสารนี้จะถูกลบตาม FK ON DELETE CASCADE เมื่อลบ documents ด้านล่าง
+            // ข้อควรรู้: MySQL ไม่เรียก trigger กับแถวที่ถูกลบผ่าน CASCADE ประวัติของเอกสารที่ถูกลบจึงหายไปด้วย
 
             // ลบเอกสารจากตาราง documents
             const [deleteResult] = await connection.query("DELETE FROM documents WHERE id = ?", [docId]);

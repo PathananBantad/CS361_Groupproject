@@ -67,9 +67,9 @@ test("canAccessDocument ASSIGN: document_officer และ admin มอบหม
     assert.equal(canAccessDocument({ roles: ["executive"], userId: 1, document: doc, action: "assign" }), false);
 });
 
-test("canAccessDocument ปฏิเสธ role ที่ไม่รู้จัก (เช่น guest)", () => {
+test("canAccessDocument ปฏิเสธ role ที่ไม่รู้จัก", () => {
     const doc = { id: 5, owner_id: 7, assignee_id: 7 };
-    assert.equal(canAccessDocument({ roles: ["guest"], userId: 7, document: doc, action: "read" }), false);
+    assert.equal(canAccessDocument({ roles: ["unknown_role"], userId: 7, document: doc, action: "read" }), false);
 });
 
 test("ACTION_ROLES: upload จำกัดเฉพาะ document_officer และ admin", () => {

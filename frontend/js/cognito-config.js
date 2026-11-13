@@ -9,9 +9,14 @@ window.COGNITO_CONFIG = {
 // ชื่อ Role มาตรฐาน (ตรงกับ backend/documentAuthorization.js ROLE_PRIORITY)
 window.DOCUFLOW_ROLES = ["admin", "executive", "document_officer", "responsible_person", "faculty_staff"];
 // แปลงชื่อ Role เก่า ("staff") ที่อาจค้างใน localStorage ให้เป็นชื่อมาตรฐาน
+// และล้างค่า "guest" ที่ค้างจากเวอร์ชันเก่า (ระบบไม่มีโหมด Guest แล้ว)
 try {
-    if ((localStorage.getItem("docuflow_role") || "").toLowerCase().trim() === "staff") {
+    const legacyRole = (localStorage.getItem("docuflow_role") || "").toLowerCase().trim();
+    if (legacyRole === "staff") {
         localStorage.setItem("docuflow_role", "faculty_staff");
+    } else if (legacyRole === "guest") {
+        localStorage.removeItem("docuflow_role");
+        if (localStorage.getItem("docuflow_user") === "Guest") localStorage.removeItem("docuflow_user");
     }
 } catch (_) {}
 
@@ -19,7 +24,6 @@ try {
 // รองรับทั้ง localhost, 127.0.0.1 และ Live Server (เช่น port 5500) ที่ไม่ได้ใช้ port 3000
 window.IS_LOCAL = ["localhost", "127.0.0.1", "0.0.0.0", "::1"].includes(window.location.hostname);
 
-<<<<<<< HEAD
 // URL ของ Backend: AWS Lambda Function URL (Learner Lab)
 window.AWS_API_GATEWAY_URL = "https://htvtloifbzeywxdh4gawlqoxdq0tftsv.lambda-url.us-east-1.on.aws";
 window.API_GATEWAY_URL = window.AWS_API_GATEWAY_URL;
@@ -30,11 +34,6 @@ try {
 } catch (_) {}
 
 // Origin ของ API (Local ใช้ origin ของหน้าเว็บเอง)
-=======
-// API ที่ deploy ใช้ Lambda Function URL
-window.AWS_API_GATEWAY_URL = "https://htvtloifbzeywxdh4gawlqoxdq0tftsv.lambda-url.us-east-1.on.aws";
-window.API_GATEWAY_URL = window.AWS_API_GATEWAY_URL;
->>>>>>> 60c147792359647f4e394738830552fbcae04961
 window.API_BASE_URL = window.IS_LOCAL ? window.location.origin : window.AWS_API_GATEWAY_URL;
 
 // ฟังก์ชันกลางสำหรับหา Base URL ที่มี /api ต่อท้าย ใช้ร่วมกันทุกไฟล์
@@ -45,12 +44,7 @@ window.resolveApiBaseUrl = function () {
         // dev server ตั้ง proxy ให้ /api ชี้ไป backend อยู่แล้ว ใช้ path แบบ relative
         return "/api";
     }
-<<<<<<< HEAD
     const base = String(window.API_BASE_URL || "").replace(/\/+$/, "");
-=======
-    const rawBase = window.API_BASE_URL;
-    const base = String(rawBase || "").replace(/\/+$/, "");
->>>>>>> 60c147792359647f4e394738830552fbcae04961
     return base.endsWith("/api") ? base : `${base}/api`;
 };
 
@@ -118,10 +112,7 @@ window.apiFetch = async function (input, options = {}) {
 
     const headers = new Headers(options.headers || (input instanceof Request ? input.headers : undefined));
 
-    // Guest ไม่แนบ Token และไม่พยายาม refresh เมื่อเจอ 401 (ป้องกัน Token เก่าค้างและลูป refresh ที่ไม่จำเป็น)
-    const isGuest = (localStorage.getItem("docuflow_role") || "").toLowerCase().trim() === "guest";
-
-    const isProtectedApi = typeof rawUrl === "string" && rawUrl.includes("/api/") && !isGuest;
+    const isProtectedApi = typeof rawUrl === "string" && rawUrl.includes("/api/");
     if (isProtectedApi && !headers.has("Authorization")) {
         const token = localStorage.getItem("docuflow_access_token") ||
             localStorage.getItem("access_token") ||
@@ -131,18 +122,8 @@ window.apiFetch = async function (input, options = {}) {
     }
 
     const requestOptions = { ...options, headers };
-<<<<<<< HEAD
     const reqInput = input instanceof Request ? new Request(rawUrl, requestOptions) : rawUrl;
     const response = await fetch(reqInput, requestOptions);
-=======
-
-    const executeFetch = async (targetUrl) => {
-        const reqInput = input instanceof Request ? new Request(targetUrl, requestOptions) : targetUrl;
-        return fetch(reqInput, requestOptions);
-    };
-
-    const response = await executeFetch(rawUrl);
->>>>>>> 60c147792359647f4e394738830552fbcae04961
 
     // จัดการกรณี 401 Token หมดอายุ (Cognito Token Refresh)
     if (response.status === 401 && isProtectedApi) {
@@ -150,13 +131,9 @@ window.apiFetch = async function (input, options = {}) {
             const refreshedAccessToken = await refreshCognitoSession();
             const retryHeaders = new Headers(requestOptions.headers);
             retryHeaders.set("Authorization", `Bearer ${refreshedAccessToken}`);
-<<<<<<< HEAD
-            return fetch(rawUrl, { ...requestOptions, headers: retryHeaders });
-=======
             const retryOptions = { ...requestOptions, headers: retryHeaders };
             const retryInput = input instanceof Request ? new Request(rawUrl, retryOptions) : rawUrl;
             return fetch(retryInput, retryOptions);
->>>>>>> 60c147792359647f4e394738830552fbcae04961
         } catch (_) {
             return response;
         }

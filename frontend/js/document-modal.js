@@ -422,7 +422,7 @@
 
     // Helper ดึงสิทธิ์ปัจจุบัน
     function getCurrentAuth(doc = currentActiveDoc) {
-        const role = (doc?.viewer_role || localStorage.getItem("docuflow_role") || "guest").toLowerCase().trim();
+        const role = (doc?.viewer_role || localStorage.getItem("docuflow_role") || "").toLowerCase().trim();
         const user = localStorage.getItem("docuflow_user") || "";
         const internalRoles = [
             "admin",
@@ -439,8 +439,7 @@
             isAdmin: role === "admin",
             isOfficer: role === "document_officer",
             isStaff: role === "faculty_staff",
-            isExecutive: role === "executive",
-            isGuest: !hasPermission
+            isExecutive: role === "executive"
         };
     }
 
@@ -636,15 +635,10 @@
                 document_officer: "เจ้าหน้าที่รับเอกสาร",
                 faculty_staff: "อาจารย์ / บุคลากร (Staff)",
                 executive: "ผู้บริหาร",
-                responsible_person: "ผู้รับผิดชอบเรื่อง",
-                guest: "ผู้ใช้ทั่วไป"
+                responsible_person: "ผู้รับผิดชอบเรื่อง"
             };
-            const roleLabel = roleLabels[auth.role] || auth.role || "ผู้ใช้ทั่วไป";
-            if (auth.hasPermission) {
-                actionCurrentRoleDisplay.textContent = `${roleLabel} (${auth.user || "-"})`;
-            } else {
-                actionCurrentRoleDisplay.textContent = `ผู้ใช้ทั่วไป (Guest - ไม่มีสิทธิ์)`;
-            }
+            const roleLabel = roleLabels[auth.role] || auth.role || "ไม่ระบุบทบาท";
+            actionCurrentRoleDisplay.textContent = `${roleLabel} (${auth.user || "-"})`;
         }
 
         // 3. Update Stepper Circles & Connectors (Task 7)
@@ -677,18 +671,18 @@
         if (statusRemarksInput) statusRemarksInput.value = "";
         if (btnNextStatusSpinner) btnNextStatusSpinner.hidden = true;
 
-        const isGuest = auth.isGuest || !auth.hasPermission;
+        const noRole = !auth.hasPermission;
         const isExecutive = auth.isExecutive;
         const canChangeStatus = currentActiveDoc?.permissions?.status === true;
         const isAdmin = auth.isAdmin;
 
-        if (isGuest) {
-            // Guest role cannot change status
+        if (noRole) {
+            // ไม่มี Role ที่ระบบรู้จัก (เช่น session หมดอายุ) เปลี่ยนสถานะไม่ได้
             if (statusNextActionWrap) statusNextActionWrap.hidden = true;
             if (statusDisabledMessage) {
                 statusDisabledMessage.hidden = false;
                 if (statusDisabledIcon) statusDisabledIcon.textContent = "🔒";
-                if (statusDisabledText) statusDisabledText.textContent = "คุณอยู่ในบทบาท Guest ไม่มีสิทธิ์เปลี่ยนสถานะเอกสาร กรุณาเข้าสู่ระบบด้วยบัญชีเจ้าหน้าที่เพื่อดำเนินการ";
+                if (statusDisabledText) statusDisabledText.textContent = "ไม่พบสิทธิ์ของบัญชีนี้ กรุณาเข้าสู่ระบบใหม่";
             }
         } else if (isExecutive || !canChangeStatus) {
             if (statusNextActionWrap) statusNextActionWrap.hidden = true;
@@ -894,8 +888,7 @@
                 document_officer: "เจ้าหน้าที่รับเอกสาร",
                 faculty_staff: "อาจารย์ / บุคลากร",
                 executive: "ผู้บริหาร",
-                responsible_person: "ผู้รับผิดชอบเรื่อง",
-                guest: "ผู้ใช้ทั่วไป"
+                responsible_person: "ผู้รับผิดชอบเรื่อง"
             };
 
             statusHistoryTimeline.innerHTML = logs.map((log) => {
@@ -1035,8 +1028,8 @@
     }
 
     async function openDocumentModal(docOrId) {
-        if (getCurrentAuth(null).isGuest) {
-            alert("กรุณาเข้าสู่ระบบเพื่อดูรายละเอียดเอกสาร");
+        if (!getCurrentAuth(null).hasPermission) {
+            window.location.replace("login.html");
             return;
         }
 

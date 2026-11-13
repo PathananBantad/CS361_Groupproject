@@ -157,9 +157,9 @@ if (uploadBox) {
 registerForm.addEventListener("submit", async (event) => {
     event.preventDefault();
 
-    const role = (localStorage.getItem("docuflow_role") || "guest").toLowerCase().trim();
+    const role = (localStorage.getItem("docuflow_role") || "").toLowerCase().trim();
     if (role !== "document_officer") {
-        window.location.replace(role === "guest" ? "login.html" : "dashboard.html");
+        window.location.replace(role ? "dashboard.html" : "login.html");
         return;
     }
     if (submitBtn.disabled) return;

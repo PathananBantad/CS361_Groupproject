@@ -419,7 +419,7 @@ async function queryAuditTrails(options = {}, poolOrConn = defaultPool) {
  * - executive: ดูได้ทุกเอกสาร
  * - document_officer: ดูได้ทุกเอกสารที่รับเข้ามาในระบบ
  * - faculty_staff / responsible_person: ดูได้เฉพาะเอกสารที่เป็น Current หรือ Previous Assignee
- * - guest / unauthenticated: ไม่มีสิทธิ์เข้าถึง (403/401)
+ * - unauthenticated / role ที่ไม่รู้จัก: ไม่มีสิทธิ์เข้าถึง (401/403)
  *
  * @param {Object} actor { userId, role }
  * @param {Object} document ข้อมูลเอกสาร

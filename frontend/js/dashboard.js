@@ -23,7 +23,7 @@ let selectedUrgency = "";
 let sortKey = null;
 let sortDirection = 1;
 
-// บทบาทผู้ใช้ปัจจุบัน (staff, admin, guest) สำหรับตรวจสอบสิทธิ์
+// บทบาทผู้ใช้ปัจจุบัน สำหรับตรวจสอบสิทธิ์ฝั่ง UI (backend เป็นผู้ตัดสินสิทธิ์จริง)
 let currentRole = null;
 let currentUsername = null;
 
@@ -106,7 +106,6 @@ function updateRoleUI() {
         faculty_staff: "อาจารย์ / บุคลากร",
         executive: "ผู้บริหาร",
         responsible_person: "ผู้รับผิดชอบเรื่อง",
-        guest: "ผู้ใช้ทั่วไป"
     };
 
     const roleLabel = roleLabels[currentRole] || currentRole || "ไม่ระบุบทบาท";
@@ -119,8 +118,6 @@ function updateRoleUI() {
         userRoleDot.classList.add("role-executive");
     } else if (currentRole === "document_officer") {
         userRoleDot.classList.add("role-officer");
-    } else if (currentRole === "guest") {
-        userRoleDot.classList.add("role-guest");
     } else {
         userRoleDot.classList.add("role-staff");
     }
@@ -140,9 +137,7 @@ async function fetchDocuments() {
     const params = new URLSearchParams();
 
     const apiBase = getApiBaseUrl();
-    // Guest ต้องไม่แนบ Token ใด ๆ เพื่อให้ backend ปล่อยผ่านในฐานะ Guest (ป้องกัน 401 จาก Token เก่าที่ค้างอยู่)
-    const isGuest = currentRole === "guest";
-    const token = isGuest ? "" : (localStorage.getItem("docuflow_access_token") || localStorage.getItem("access_token") || localStorage.getItem("docuflow_id_token") || localStorage.getItem("id_token") || "");
+    const token = localStorage.getItem("docuflow_access_token") || localStorage.getItem("access_token") || localStorage.getItem("docuflow_id_token") || localStorage.getItem("id_token") || "";
 
     try {
         const headers = {};
@@ -167,7 +162,6 @@ async function fetchDocuments() {
         };
 
         documents = rows.map(row => {
-            if (isGuest) row = { reference_no: row.reference_no, status: row.status };
             const rawStatus = row.status || "Received";
             const cfg = V3_STATUS_CONFIG[rawStatus] || {
                 key: rawStatus.toLowerCase(),
@@ -385,12 +379,8 @@ function render() {
         });
     }
 
-    if (currentRole === "guest") {
-        renderGuestTracking(result);
-    } else {
-        renderTable(result);
-        renderMobile(result);
-    }
+    renderTable(result);
+    renderMobile(result);
 
     if (shownCount) {
         shownCount.textContent = result.length;
@@ -400,19 +390,6 @@ function render() {
 /* =====================================================
    RENDER TABLE (ปุ่มหลักเพียงปุ่มเดียว: เรียกดูเอกสาร)
 ===================================================== */
-function renderGuestTracking(list) {
-    const status = doc => `<span class="status-badge status-${escapeHtml(doc.statusKey)}">${escapeHtml(doc.statusLabel)}</span>`;
-    if (tableBody) {
-        tableBody.innerHTML = list.map(doc => `<tr><td>${escapeHtml(doc.code)}</td><td>${status(doc)}</td></tr>`).join("") ||
-            '<tr><td colspan="2" class="empty-table">ไม่พบข้อมูลเอกสารในระบบ</td></tr>';
-    }
-    if (mobileList) {
-        mobileList.innerHTML = list.map(doc =>
-            `<div class="mobile-document"><div class="mobile-top"><strong>${escapeHtml(doc.code)}</strong>${status(doc)}</div></div>`
-        ).join("") || '<div class="empty-table">ไม่พบข้อมูลเอกสารในระบบ</div>';
-    }
-}
-
 function renderTable(list) {
     if (!tableBody) return;
 
@@ -628,10 +605,6 @@ function renderMobile(list) {
 
 // Helper เรียกเปิด Modal ผ่านโมดูล document-modal.js
 function triggerOpenModal(id) {
-    if (currentRole === "guest") {
-        alert("ผู้ใช้ทั่วไป (Guest) ไม่มีสิทธิ์ในการเปิดดูรายละเอียดเอกสาร กรุณาเข้าสู่ระบบด้วยบัญชีเจ้าหน้าที่");
-        return;
-    }
     if (window.DocuFlowModal && typeof window.DocuFlowModal.open === "function") {
         window.DocuFlowModal.open(id);
     } else if (typeof window.openDocumentModal === "function") {
@@ -741,17 +714,17 @@ function escapeHtml(value) {
 function initializeDashboard() {
     const savedUser = localStorage.getItem("docuflow_user");
     const accessToken = localStorage.getItem("docuflow_access_token") || localStorage.getItem("access_token");
-    const savedRole = localStorage.getItem("docuflow_role");
+    const savedRole = (localStorage.getItem("docuflow_role") || "").toLowerCase().trim();
+    const knownRoles = window.DOCUFLOW_ROLES || ["admin", "executive", "document_officer", "responsible_person", "faculty_staff"];
 
-    // ตรวจสอบสถานะการเข้าสู่ระบบ
-    if (!savedUser && !accessToken) {
+    // ต้องเข้าสู่ระบบและมี Role ที่ระบบรู้จักเท่านั้น (ไม่มีโหมด Guest)
+    if (!accessToken || !knownRoles.includes(savedRole)) {
         window.location.replace("login.html");
         return;
     }
 
-    // ค่าเริ่มต้นเป็น guest เมื่อไม่มีบทบาทที่บันทึกไว้ เพื่อให้การ์ดสิทธิ์ฝั่ง Client ทำงานถูกต้อง
-    currentRole = savedRole || "guest";
-    currentUsername = savedUser || "Guest";
+    currentRole = savedRole;
+    currentUsername = savedUser || "-";
 
     // รองรับการส่งคำค้นหาข้ามหน้า (เช่น มาจาก register.html หรือ guide.html)
     const urlParams = new URLSearchParams(window.location.search);
@@ -761,15 +734,7 @@ function initializeDashboard() {
     }
 
     initRoleManagement();
-    document.getElementById("guestTrackingHint").hidden = currentRole !== "guest";
     document.getElementById("executiveReadOnly").hidden = currentRole !== "executive";
-    if (currentRole === "guest") {
-        const headings = tableBody.closest("table").tHead.rows[0];
-        headings.innerHTML = '<th scope="col">เลขอ้างอิง</th><th scope="col">สถานะ</th>';
-        typeFilter.hidden = true;
-        urgencyFilter.hidden = true;
-        if (globalSearch) globalSearch.placeholder = "ค้นหาด้วยเลขอ้างอิง";
-    }
     syncFilterButtons();
     setupSorting();
     fetchDocuments();

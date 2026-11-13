@@ -196,17 +196,6 @@ async function requireCognitoAuth(req, res, next) {
 
     const token = authorization.replace(/^Bearer\s+/i, "").trim();
 
-    // Guest ระบุตัวตนแล้วแต่ไม่มีสิทธิ์ใน API ที่ต้องยืนยันตัวตน
-    // (รายละเอียดเอกสาร, assignment, file metadata, preview/download, audit trail, ลงทะเบียน ฯลฯ)
-    // Guest ใช้ได้เฉพาะ GET /api/documents ที่คืนแค่ reference_no และ status
-    if (token.toLowerCase() === "guest") {
-        return res.status(403).json({
-            error: "Forbidden",
-            code: "GUEST_FORBIDDEN",
-            message: "Guest can only view document reference numbers and statuses."
-        });
-    }
-
     try {
         // 1. ตรวจสอบ HS256 Token (กรณีล็อกอินผ่าน TU AD สำเร็จในขณะที่ Cognito Admin ไม่พร้อมใช้งาน)
         const fallbackPayload = verifyHs256Jwt(token);

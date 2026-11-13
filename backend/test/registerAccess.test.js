@@ -1,4 +1,4 @@
-// ทดสอบ: จำกัดการลงทะเบียนเอกสารให้ Document Officer และจำกัด Guest ให้เห็นเฉพาะ reference_no + status
+// ทดสอบ: ลงทะเบียนเอกสารได้เฉพาะ Document Officer และทุก API เอกสารต้องเข้าสู่ระบบ (ไม่มีโหมด Guest)
 // ไม่ต้องใช้ฐานข้อมูลจริง — mock pool.query / pool.getConnection เพื่อจำลองผู้ใช้แต่ละ Role
 process.env.SESSION_SECRET ||= "test-only-session-secret";
 
@@ -10,10 +10,6 @@ const { signHs256Jwt } = require("../cognito-auth");
 const { requireAction } = require("../documentAuthorization");
 
 const ROLES = ["document_officer", "admin", "faculty_staff", "responsible_person", "executive"];
-const GUEST_DOCS = [
-    { reference_no: "REF-001", status: "Received" },
-    { reference_no: "REF-002", status: "Processing" }
-];
 
 // จำลอง DB: ผู้ใช้หนึ่งคนต่อ Role (id = index + 1) และบันทึก SQL ที่ถูกเรียก
 const executedSql = [];
@@ -42,10 +38,9 @@ function fakeConnection() {
 const originalQuery = pool.query;
 const originalGetConnection = pool.getConnection;
 pool.getConnection = async () => fakeConnection();
-pool.query = async (sql, params = []) => {
+pool.query = async (sql) => {
     executedSql.push(sql);
-    if (/SELECT reference_no, status FROM documents/.test(sql)) return [GUEST_DOCS];
-    throw new Error(`Unexpected query in guest test: ${sql}`);
+    throw new Error(`Unexpected query in register/auth test: ${sql}`);
 };
 
 const app = require("../server");
@@ -80,7 +75,7 @@ function request(server, { method = "GET", path, token, body }) {
     });
 }
 
-describe("Register restriction & Guest visibility", () => {
+describe("Register restriction & authentication required", () => {
     let server;
     before(() => { server = app.listen(0); });
     after(() => {
@@ -90,7 +85,7 @@ describe("Register restriction & Guest visibility", () => {
     });
 
     test("requireAction('register') อนุญาตเฉพาะ document_officer", () => {
-        for (const role of [...ROLES, "guest"]) {
+        for (const role of [...ROLES, "unknown_role"]) {
             let status = null;
             let passed = false;
             requireAction("register")(
@@ -115,29 +110,14 @@ describe("Register restriction & Guest visibility", () => {
         });
     }
 
-    test("POST /api/documents ด้วย Guest -> 403 และไม่มี Token -> 401", async () => {
-        const guest = await request(server, { method: "POST", path: "/api/documents", token: "guest", body: invalidBody });
-        assert.equal(guest.status, 403);
-        assert.equal(guest.body.code, "GUEST_FORBIDDEN");
-        const anonymous = await request(server, { method: "POST", path: "/api/documents", body: invalidBody });
-        assert.equal(anonymous.status, 401);
+    test("POST /api/documents ไม่มี Token -> 401", async () => {
+        const res = await request(server, { method: "POST", path: "/api/documents", body: invalidBody });
+        assert.equal(res.status, 401);
     });
 
-    test("GET /api/documents ของ Guest คืนเฉพาะ reference_no และ status", async () => {
-        for (const token of [undefined, "guest"]) {
-            executedSql.length = 0;
-            const res = await request(server, { path: "/api/documents?reference_no=REF&subject=secret", token });
-            assert.equal(res.status, 200);
-            assert.equal(res.body.data.length, GUEST_DOCS.length);
-            for (const row of res.body.data) {
-                assert.deepEqual(Object.keys(row).sort(), ["reference_no", "status"]);
-            }
-            assert.deepEqual(Object.keys(res.body).sort(), ["data", "total"]);
-            assert.ok(executedSql.every(sql => /SELECT reference_no, status FROM documents/.test(sql)), "guest must only query reference_no/status");
-        }
-    });
-
-    const guestBlockedPaths = [
+    // ไม่มีโหมด Guest แล้ว: ทุก API เอกสารต้องมี token จริง
+    const protectedPaths = [
+        ["GET", "/api/documents"],
         ["GET", "/api/documents/1"],
         ["GET", "/api/documents/1/status-history"],
         ["GET", "/api/documents/1/assignments"],
@@ -157,23 +137,20 @@ describe("Register restriction & Guest visibility", () => {
         ["DELETE", "/api/documents/1"]
     ];
 
-    for (const [method, path] of guestBlockedPaths) {
-        test(`Guest ถูกปฏิเสธ: ${method} ${path}`, async () => {
+    for (const [method, path] of protectedPaths) {
+        test(`ไม่ได้เข้าสู่ระบบ / token "guest" ถูกปฏิเสธ: ${method} ${path}`, async () => {
             executedSql.length = 0;
-            const guest = await request(server, { method, path, token: "guest", body: {} });
-            assert.equal(guest.status, 403, JSON.stringify(guest.body));
-            assert.equal(guest.body.code, "GUEST_FORBIDDEN");
-            assert.equal(guest.body.reference_no, undefined);
-
             const anonymous = await request(server, { method, path, body: {} });
-            assert.equal(anonymous.status, 401);
-            assert.equal(executedSql.length, 0, "no document data may be queried for guest");
+            assert.equal(anonymous.status, 401, JSON.stringify(anonymous.body));
+
+            const legacyGuest = await request(server, { method, path, token: "guest", body: {} });
+            assert.equal(legacyGuest.status, 401, JSON.stringify(legacyGuest.body));
+            assert.equal(executedSql.length, 0, "no document data may be queried without authentication");
         });
     }
 
-    test("Guest ส่ง token=guest ผ่าน query string (iframe preview) ก็ถูกปฏิเสธ", async () => {
-        const res = await request(server, { path: "/api/documents/1/preview-file?token=guest" });
-        assert.equal(res.status, 403);
-        assert.equal(res.body.code, "GUEST_FORBIDDEN");
+    test("POST /api/auth/guest ถูกลบแล้ว (404)", async () => {
+        const res = await request(server, { method: "POST", path: "/api/auth/guest", body: {} });
+        assert.equal(res.status, 404);
     });
 });

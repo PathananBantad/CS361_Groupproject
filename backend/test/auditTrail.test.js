@@ -64,10 +64,10 @@ test("verifyAuditTrailAccess: faculty_staff/responsible_person need current or p
     assert.equal(verifyAuditTrailAccess({ userId: 7, role: "responsible_person" }, current).allowed, true);
 });
 
-test("verifyAuditTrailAccess: guest และ unauthenticated ถูกปฏิเสธ", () => {
-    // guest ไม่มี DB user จริง userId จึงไม่ตรงกับ owner/assignee ของเอกสาร
+test("verifyAuditTrailAccess: role ที่ไม่รู้จัก และ unauthenticated ถูกปฏิเสธ", () => {
+    // role ที่ไม่อยู่ใน ROLES ต้องถูกปฏิเสธแม้ userId จะตรงกับ assignee
     const doc = { owner_id: 1, assignee_id: 1 };
-    assert.equal(verifyAuditTrailAccess({ userId: 777, role: "guest" }, doc).allowed, false);
+    assert.equal(verifyAuditTrailAccess({ userId: 1, role: "unknown_role" }, doc).allowed, false);
     assert.equal(verifyAuditTrailAccess({ userId: 777, role: null }, doc).allowed, false);
     assert.equal(verifyAuditTrailAccess(null, doc).allowed, false);
 });
