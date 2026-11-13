@@ -10,7 +10,6 @@
         admin: "ผู้ดูแลระบบ (Admin)",
         document_officer: "เจ้าหน้าที่รับเอกสาร",
         faculty_staff: "อาจารย์ / บุคลากร",
-        staff: "อาจารย์ / บุคลากร",
         executive: "ผู้บริหาร",
         responsible_person: "ผู้รับผิดชอบเรื่อง",
         guest: "ผู้ใช้ทั่วไป"
@@ -26,7 +25,8 @@
         const userRoleDropdownTitle = document.getElementById("userRoleDropdownTitle");
         const userRoleDropdownEmail = document.getElementById("userRoleDropdownEmail");
 
-        const savedRole = (localStorage.getItem("docuflow_role") || "guest").toLowerCase().trim();
+        let savedRole = (localStorage.getItem("docuflow_role") || "guest").toLowerCase().trim();
+        if (savedRole === "staff") savedRole = "faculty_staff"; // ชื่อ Role เก่า
         const savedUser = localStorage.getItem("docuflow_user") || "";
         const token = localStorage.getItem("docuflow_access_token") || localStorage.getItem("access_token") || "";
 
@@ -39,7 +39,7 @@
             }
         }
 
-        const canRegister = ["admin", "document_officer"].includes(savedRole);
+        const canRegister = savedRole === "document_officer";
         document.querySelectorAll('a[href="register.html"]').forEach(link => {
             link.hidden = !canRegister;
         });

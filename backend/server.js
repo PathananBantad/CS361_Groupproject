@@ -15,11 +15,13 @@ const crypto = require("crypto");
 const sessionMiddleware = require("./session");
 const authRouter = require("./auth");
 const { requireCognitoAuth } = require("./cognito-auth");
+const { getCorsAllowedOrigins } = require("./config");
 const {
     ROLES: DOCUMENT_ROLES,
     requireAction,
     canAccessDocument,
-    mapCognitoGroupsToRoles
+    mapCognitoGroupsToRoles,
+    resolvePrimaryRole
 } = require("./documentAuthorization");
 
 const {
@@ -117,13 +119,7 @@ async function loadUserRole(req, res, next) {
                 });
             }
 
-            const assignedRole = [
-                "admin",
-                "executive",
-                "document_officer",
-                "responsible_person",
-                "faculty_staff"
-            ].find(role => mappedRoles.includes(role));
+            const assignedRole = resolvePrimaryRole(mappedRoles);
 
             const [roleRows] = await connection.execute(
                 `SELECT id, name
@@ -237,13 +233,7 @@ async function loadUserRole(req, res, next) {
             });
         }
 
-        const activeRole = [
-            "admin",
-            "executive",
-            "document_officer",
-            "responsible_person",
-            "faculty_staff"
-        ].find(role => roles.includes(role));
+        const activeRole = resolvePrimaryRole(roles);
 
         if (user.role !== activeRole) {
             await connection.execute("UPDATE users SET role = ? WHERE id = ?", [activeRole, user.id]);
@@ -288,9 +278,44 @@ const {
 
 const app = express();
 
-app.use(cors({
-    origin: true,
-    credentials: true
+// CORS: อนุญาตเฉพาะ Origin ใน CORS_ALLOWED_ORIGINS (ค่าเริ่มต้น: Amplify + localhost) และ same-origin
+// - ไม่มี Origin header (curl, server-to-server, same-origin GET) -> ผ่าน
+// - Origin ไม่อยู่ในรายการ -> 403 CORS_ORIGIN_DENIED (รวมถึง OPTIONS preflight)
+// - Origin ที่อนุญาต -> ได้ CORS headers และ OPTIONS ตอบ 204
+const CORS_ALLOWED_METHODS = ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"];
+const CORS_ALLOWED_HEADERS = ["Content-Type", "Authorization"];
+
+function isSameOrigin(origin, req) {
+    try {
+        return new URL(origin).host.toLowerCase() === String(req.headers.host || "").toLowerCase();
+    } catch (_) {
+        return false;
+    }
+}
+
+function isOriginAllowed(origin, req) {
+    if (!origin) return true;
+    const normalized = String(origin).replace(/\/+$/, "").toLowerCase();
+    return getCorsAllowedOrigins().includes(normalized) || isSameOrigin(origin, req);
+}
+
+app.use((req, res, next) => {
+    const origin = req.headers.origin;
+    if (origin && !isOriginAllowed(origin, req)) {
+        return res.status(403).json({ error: "Origin not allowed", code: "CORS_ORIGIN_DENIED" });
+    }
+    return next();
+});
+
+app.use(cors((req, callback) => {
+    callback(null, {
+        origin: isOriginAllowed(req.headers.origin, req),
+        credentials: true,
+        methods: CORS_ALLOWED_METHODS,
+        allowedHeaders: CORS_ALLOWED_HEADERS,
+        maxAge: 600,
+        optionsSuccessStatus: 204
+    });
 }));
 
 app.use(express.json({ limit: "1mb" }));
@@ -763,7 +788,7 @@ app.get(
 // Create document
 app.post("/api/documents", requireCognitoAuth, loadUserRole, requireAction("register"), async (req, res) => {
     try {
-        // สิทธิ์ลงทะเบียนเอกสารตรวจแล้วโดย requireAction("register") (เฉพาะ document_officer และ admin)
+        // สิทธิ์ลงทะเบียนเอกสารตรวจแล้วโดย requireAction("register") (เฉพาะ document_officer เท่านั้น)
         let {
             reference_no,
             document_number,

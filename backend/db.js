@@ -5,7 +5,6 @@ require("dotenv").config();
 
 const { SecretsManagerClient, GetSecretValueCommand } = require("@aws-sdk/client-secrets-manager");
 const dbHost = (process.env.DB_HOST || "").trim();
-const isTiDB = dbHost.includes("tidbcloud.com");
 const dbSecretArn = process.env.DB_SECRET_ARN;
 
 const poolConfig = {
@@ -26,10 +25,9 @@ const poolConfig = {
 
 // Amazon RDS certificates are signed by the RDS CA, which Node.js does not trust by default.
 const rdsCaPath = path.join(__dirname, "certs", "rds-global-bundle.pem");
-const rdsCa = !isTiDB && fs.existsSync(rdsCaPath) ? fs.readFileSync(rdsCaPath, "utf8") : null;
+const rdsCa = fs.existsSync(rdsCaPath) ? fs.readFileSync(rdsCaPath, "utf8") : null;
 
-// TiDB Cloud Serverless requires SSL connection
-if (isTiDB || process.env.DB_SSL === "true") {
+if (process.env.DB_SSL === "true") {
     poolConfig.ssl = {
         minVersion: "TLSv1.2",
         rejectUnauthorized: true,

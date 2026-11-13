@@ -79,10 +79,10 @@ test("V5 UPLOAD: admin/officer upload ได้; executive/faculty/responsible u
     assert.equal(access(USER.responsible, DOC.assigned, "upload"), false);
 });
 
-test("V5 REGISTER: only admin and document_officer can register; executive is always blocked", () => {
-    assert.deepEqual([...ACTION_ROLES.register].sort(), ["admin", "document_officer"]);
+test("V5 REGISTER: only document_officer can register; admin/executive/others are blocked", () => {
+    assert.deepEqual([...ACTION_ROLES.register], ["document_officer"]);
     for (const [actor, expected] of [
-        [USER.admin, true],
+        [USER.admin, false],
         [USER.officer, true],
         [USER.executive, false],
         [USER.faculty, false],

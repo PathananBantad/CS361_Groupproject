@@ -14,6 +14,24 @@ const env = {
   AWS_REGION: envConfig.AWS_REGION || 'us-east-1'
 };
 
+// Origin ที่อนุญาตให้เรียก API/S3 (ตรงกับ backend/config.js) — ตั้งได้ด้วย CORS_ALLOWED_ORIGINS (คั่นด้วย ,)
+const DEFAULT_CORS_ALLOWED_ORIGINS = [
+  'https://main.d29fui7wfvh5a0.amplifyapp.com',
+  'http://localhost:3000',
+  'http://127.0.0.1:3000',
+  'http://localhost:5500',
+  'http://127.0.0.1:5500'
+];
+const corsAllowedOrigins = (envConfig.CORS_ALLOWED_ORIGINS || process.env.CORS_ALLOWED_ORIGINS || '')
+  .split(',').map(o => o.trim().replace(/\/+$/, '')).filter(Boolean);
+const allowedOrigins = corsAllowedOrigins.length ? corsAllowedOrigins : DEFAULT_CORS_ALLOWED_ORIGINS;
+
+function writeTempJson(name, data) {
+  const filePath = path.resolve(__dirname, name);
+  fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
+  return filePath;
+}
+
 function runAws(cmd, options = {}) {
   try {
     const res = execSync(cmd, { env, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], ...options });
@@ -70,9 +88,9 @@ async function main() {
   const corsRules = {
     CORSRules: [
       {
-        AllowedHeaders: ['*'],
+        AllowedHeaders: ['Content-Type', 'Authorization', 'x-amz-*'],
         AllowedMethods: ['GET', 'PUT', 'POST', 'DELETE', 'HEAD'],
-        AllowedOrigins: ['*'],
+        AllowedOrigins: allowedOrigins,
         ExposeHeaders: ['ETag', 'Content-Length', 'Content-Type', 'Access-Control-Allow-Origin']
       }
     ]
@@ -104,7 +122,10 @@ async function main() {
       DB_SSL: 'true',
       DB_TLS_SERVERNAME: envConfig.LAMBDA_DB_HOST,
       DB_NAME: envConfig.LAMBDA_DB_NAME || 'ems',
+      NODE_ENV: 'production',
       SESSION_SECRET: envConfig.SESSION_SECRET,
+      ...(envConfig.AUTH_JWT_SECRET ? { AUTH_JWT_SECRET: envConfig.AUTH_JWT_SECRET } : {}),
+      CORS_ALLOWED_ORIGINS: allowedOrigins.join(','),
       COGNITO_REGION: 'us-east-1',
       COGNITO_USER_POOL_ID: cognitoPoolId,
       COGNITO_APP_CLIENT_ID: cognitoClientId,
@@ -168,6 +189,14 @@ async function main() {
 
   // 6. Create / Configure Lambda Function URL
   console.log('[6/8] Configuring Lambda Function URL (Public HTTP Endpoint)...');
+  // CORS ของ Function URL ตอบ OPTIONS preflight แทน Express (index.js ลบ CORS headers ของ Express ออก)
+  const functionUrlCorsPath = writeTempJson('function-url-cors.json', {
+    AllowOrigins: allowedOrigins,
+    AllowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
+    AllowHeaders: ['content-type', 'authorization'],
+    AllowCredentials: true,
+    MaxAge: 600
+  });
   let functionUrl = '';
   try {
     const urlConfig = runAws(`aws lambda get-function-url-config --function-name ${lambdaFunctionName}`);
@@ -179,7 +208,7 @@ async function main() {
       `aws lambda create-function-url-config ` +
       `--function-name ${lambdaFunctionName} ` +
       `--auth-type NONE ` +
-      `--cors "AllowOrigins=*,AllowMethods=*,AllowHeaders=*,MaxAge=86400"`
+      `--cors file://${functionUrlCorsPath}`
     );
     functionUrl = urlConfig.FunctionUrl;
     console.log(` -> Function URL created: ${functionUrl}`);
@@ -190,8 +219,9 @@ async function main() {
     `aws lambda update-function-url-config ` +
     `--function-name ${lambdaFunctionName} ` +
     `--auth-type NONE ` +
-    `--cors "AllowOrigins=*,AllowMethods=*,AllowHeaders=*,MaxAge=86400"`
+    `--cors file://${functionUrlCorsPath}`
   );
+  fs.unlinkSync(functionUrlCorsPath);
 
   // Add permission for public Function URL invocation
   try {

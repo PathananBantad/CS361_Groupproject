@@ -2,9 +2,26 @@ const ROLES = Object.freeze([
     "document_officer", "faculty_staff", "responsible_person", "admin", "executive"
 ]);
 
+// ลำดับความสำคัญเมื่อผู้ใช้มีหลาย Role (ใช้เลือก Role หลักที่แสดง/บันทึกใน users.role)
+const ROLE_PRIORITY = Object.freeze([
+    "admin", "executive", "document_officer", "responsible_person", "faculty_staff"
+]);
+
+// ชื่อ Cognito Group มาตรฐานของแต่ละ Role (ตรงกับ Group ใน User Pool และ Lambda Post Authentication)
+const COGNITO_GROUP_BY_ROLE = Object.freeze({
+    admin: "Admin",
+    executive: "Executive",
+    document_officer: "DocumentReceiver",
+    responsible_person: "ResponsiblePerson",
+    faculty_staff: "Staff/Instructor"
+});
+
+const DEFAULT_ROLE = "faculty_staff";
+
 const ACTION_ROLES = Object.freeze({
     read: ROLES,
-    register: ["document_officer", "admin"],
+    // ลงทะเบียนเอกสารใหม่ได้เฉพาะ Document Officer เท่านั้น (Role อื่นรวมถึง admin ได้ 403)
+    register: ["document_officer"],
     upload: ["document_officer", "admin"],
     status: ["document_officer", "admin", "faculty_staff", "responsible_person"],
     assign: ["document_officer", "admin", "faculty_staff", "responsible_person"],
@@ -41,6 +58,16 @@ function mapCognitoGroupsToRoles(groups) {
             .map(group => groupToRole[group])
             .filter(Boolean)
     )];
+}
+
+// เลือก Role หลักตาม ROLE_PRIORITY; ไม่พบ Role ที่รู้จักให้คืน fallback
+function resolvePrimaryRole(roles, fallback = DEFAULT_ROLE) {
+    const normalized = normalizeRoles(roles);
+    return ROLE_PRIORITY.find(role => normalized.includes(role)) || fallback;
+}
+
+function cognitoGroupForRole(role) {
+    return COGNITO_GROUP_BY_ROLE[role] || COGNITO_GROUP_BY_ROLE[DEFAULT_ROLE];
 }
 
 function normalizeRoles(roles) {
@@ -122,6 +149,11 @@ function canAccessDocument({ roles, userId, document, action = "read", previousA
 
 module.exports = {
     ROLES,
+    ROLE_PRIORITY,
+    COGNITO_GROUP_BY_ROLE,
+    DEFAULT_ROLE,
+    resolvePrimaryRole,
+    cognitoGroupForRole,
     ACTION_ROLES,
     mapCognitoGroupsToRoles,
     normalizeRoles,

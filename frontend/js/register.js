@@ -199,7 +199,7 @@ registerForm.addEventListener("submit", async (event) => {
     event.preventDefault();
 
     const role = (localStorage.getItem("docuflow_role") || "guest").toLowerCase().trim();
-    if (!["admin", "document_officer"].includes(role)) {
+    if (role !== "document_officer") {
         window.location.replace(role === "guest" ? "login.html" : "dashboard.html");
         return;
     }

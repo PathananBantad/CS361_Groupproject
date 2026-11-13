@@ -1,5 +1,11 @@
 const crypto = require("node:crypto");
 const { CognitoJwtVerifier } = require("aws-jwt-verify");
+const {
+    getPublicCognitoConfig,
+    getAuthJwtSecret,
+    getFallbackTokenTtlSeconds,
+    FALLBACK_TOKEN_ISSUER
+} = require("./config");
 
 // Static JWKS keys for us-east-1_ySsGHRKUQ and us-east-1_1duzJEFfU (allows instant verification inside VPC without internet/NAT Gateway)
 const EMBEDDED_JWKS = {
@@ -41,29 +47,51 @@ const EMBEDDED_JWKS = {
 
 const cachedPublicKeys = new Map();
 
-// Helper ฟังก์ชันสำหรับสร้างและตรวจสอบ HS256 Token (สำหรับ TU Auth Fallback เมื่อ AWS Learner Lab ถูกระงับหรือรันบน Render)
+// Helper ฟังก์ชันสำหรับสร้างและตรวจสอบ HS256 Token (สำหรับ TU Auth Fallback เมื่อ AWS Learner Lab ถูกระงับ)
+// Secret มาจาก AUTH_JWT_SECRET (หรือ SESSION_SECRET เดิม) ใน Environment เท่านั้น
+const CLOCK_SKEW_SECONDS = 60;
+
+function decodeJwtPart(part) {
+    return JSON.parse(Buffer.from(part, "base64url").toString("utf8"));
+}
+
 function signHs256Jwt(payload, secret) {
-    const sec = secret || process.env.SESSION_SECRET;
-    if (!sec) throw new Error("SESSION_SECRET must be configured");
+    const sec = secret || getAuthJwtSecret();
+    if (!sec) throw new Error("AUTH_JWT_SECRET or SESSION_SECRET (>= 16 chars) must be configured");
+    const now = Math.floor(Date.now() / 1000);
+    const claims = {
+        iat: now,
+        exp: now + getFallbackTokenTtlSeconds(),
+        ...payload,
+        iss: FALLBACK_TOKEN_ISSUER,
+        token_use: "access"
+    };
     const header = Buffer.from(JSON.stringify({ alg: "HS256", typ: "JWT" })).toString("base64url");
-    const body = Buffer.from(JSON.stringify(payload)).toString("base64url");
+    const body = Buffer.from(JSON.stringify(claims)).toString("base64url");
     const sig = crypto.createHmac("sha256", sec).update(`${header}.${body}`).digest("base64url");
     return `${header}.${body}.${sig}`;
 }
 
 function verifyHs256Jwt(token, secret) {
-    const sec = secret || process.env.SESSION_SECRET;
+    const sec = secret || getAuthJwtSecret();
     if (!sec) return null;
     const parts = (token || "").split(".");
     if (parts.length !== 3) return null;
     try {
+        const header = decodeJwtPart(parts[0]);
+        if (header.alg !== "HS256") return null;
+
         const expectedSig = crypto.createHmac("sha256", sec).update(`${parts[0]}.${parts[1]}`).digest("base64url");
         const actual = Buffer.from(parts[2]);
         const expected = Buffer.from(expectedSig);
         if (actual.length !== expected.length || !crypto.timingSafeEqual(actual, expected)) return null;
-        const payload = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8"));
+
+        const payload = decodeJwtPart(parts[1]);
         const now = Math.floor(Date.now() / 1000);
-        if (!Number.isFinite(payload.exp) || payload.exp <= now || !payload.sub || !payload.username) return null;
+        if (payload.iss !== FALLBACK_TOKEN_ISSUER || payload.token_use !== "access") return null;
+        if (!Number.isFinite(payload.exp) || payload.exp <= now) return null;
+        if (Number.isFinite(payload.iat) && payload.iat > now + CLOCK_SKEW_SECONDS) return null;
+        if (typeof payload.sub !== "string" || !payload.sub || typeof payload.username !== "string" || !payload.username) return null;
         return payload;
     } catch (_) {
         return null;
@@ -74,27 +102,31 @@ function verifyWithEmbeddedJwks(token) {
     const parts = token.split(".");
     if (parts.length !== 3) throw new Error("Invalid JWT token format");
 
-    const header = JSON.parse(Buffer.from(parts[0], "base64url").toString("utf8"));
-    const payload = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8"));
+    const header = decodeJwtPart(parts[0]);
+    const payload = decodeJwtPart(parts[1]);
+
+    if (header.alg !== "RS256") {
+        throw new Error("Invalid token algorithm");
+    }
 
     const now = Math.floor(Date.now() / 1000);
-    if (payload.exp && payload.exp < now) {
+    if (!Number.isFinite(payload.exp) || payload.exp <= now) {
         throw new Error("Token expired");
+    }
+    if (Number.isFinite(payload.iat) && payload.iat > now + CLOCK_SKEW_SECONDS) {
+        throw new Error("Token issued in the future");
     }
 
     if (payload.token_use !== "access") {
         throw new Error("Invalid token_use: expected access token");
     }
 
-    const allowedClientIds = [
-        process.env.COGNITO_APP_CLIENT_ID,
-        "7onljgop56a811chbidtuppffq",
-        "454o0719rb9d6lkspv4m8tmb6i",
-        "7k0t8e6499bro55f8faso44m2c"
-    ].filter(Boolean);
-
-    if (allowedClientIds.length > 0 && !allowedClientIds.includes(payload.client_id)) {
-        throw new Error(`Client ID not allowed: ${payload.client_id}`);
+    const { allowedClientIds, allowedIssuers } = getPublicCognitoConfig();
+    if (!allowedIssuers.includes(payload.iss)) {
+        throw new Error("Issuer not allowed");
+    }
+    if (!allowedClientIds.includes(payload.client_id)) {
+        throw new Error("Client ID not allowed");
     }
 
     const jwk = EMBEDDED_JWKS.keys.find(k => k.kid === header.kid);
@@ -125,26 +157,18 @@ function verifyWithEmbeddedJwks(token) {
 let verifier;
 
 function getVerifier() {
-    const userPoolId = process.env.COGNITO_USER_POOL_ID || "us-east-1_ySsGHRKUQ";
-    const clientId = process.env.COGNITO_APP_CLIENT_ID || "7onljgop56a811chbidtuppffq";
+    // Public identifiers (ไม่ใช่ secret) มาจาก config.js — env มาก่อน แล้วจึงใช้ค่าเริ่มต้นของระบบเดิม
+    const { userPoolId, allowedClientIds } = getPublicCognitoConfig();
 
     if (!userPoolId) {
         throw new Error("Cognito environment variables are not configured");
     }
 
     if (!verifier) {
-        // รองรับทั้ง App Client ของ Frontend (7onljgop56a811chbidtuppffq / 454o0719rb9d6lkspv4m8tmb6i) และค่าจาก Environment
-        const allowedClientIds = [
-            clientId,
-            "7onljgop56a811chbidtuppffq",
-            "454o0719rb9d6lkspv4m8tmb6i",
-            "7k0t8e6499bro55f8faso44m2c"
-        ].filter(Boolean);
-
         verifier = CognitoJwtVerifier.create({
             userPoolId,
             tokenUse: "access",
-            clientId: allowedClientIds.length > 0 ? [...new Set(allowedClientIds)] : null
+            clientId: allowedClientIds
         });
     }
 
@@ -154,7 +178,8 @@ function getVerifier() {
 async function requireCognitoAuth(req, res, next) {
     // รองรับทั้ง Authorization Header และ Token ผ่าน Query Parameter (สำหรับ iframe/img preview)
     let authorization = req.headers.authorization;
-    if (!authorization && req.query?.token) {
+    // Token ผ่าน query string รับเฉพาะ GET (เช่น iframe/img preview) เพื่อลดโอกาส token รั่วใน log ของคำขอที่แก้ไขข้อมูล
+    if (!authorization && req.method === "GET" && typeof req.query?.token === "string") {
         authorization = `Bearer ${req.query.token}`;
     }
 
@@ -170,6 +195,17 @@ async function requireCognitoAuth(req, res, next) {
     }
 
     const token = authorization.replace(/^Bearer\s+/i, "").trim();
+
+    // Guest ระบุตัวตนแล้วแต่ไม่มีสิทธิ์ใน API ที่ต้องยืนยันตัวตน
+    // (รายละเอียดเอกสาร, assignment, file metadata, preview/download, audit trail, ลงทะเบียน ฯลฯ)
+    // Guest ใช้ได้เฉพาะ GET /api/documents ที่คืนแค่ reference_no และ status
+    if (token.toLowerCase() === "guest") {
+        return res.status(403).json({
+            error: "Forbidden",
+            code: "GUEST_FORBIDDEN",
+            message: "Guest can only view document reference numbers and statuses."
+        });
+    }
 
     try {
         // 1. ตรวจสอบ HS256 Token (กรณีล็อกอินผ่าน TU AD สำเร็จในขณะที่ Cognito Admin ไม่พร้อมใช้งาน)

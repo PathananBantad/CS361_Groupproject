@@ -16,6 +16,7 @@ const filesToCopy = [
   'auditTrail.js',
   'documentAuthorization.js',
   'session.js',
+  'config.js',
   'package.json'
 ];
 

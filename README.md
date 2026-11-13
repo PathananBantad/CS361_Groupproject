@@ -110,7 +110,7 @@ V5 มุ่งเน้นการทำให้ Infrastructure และ Dep
 ### External System
 - GitHub: จัดเก็บ Source Code และประวัติการเปลี่ยนแปลง รวมถึง Infrastructure Code และ Deployment Configuration ที่จะจัดทำใน V5
 - AWS: ให้บริการ AWS Amplify สำหรับ Web Application, Amazon Cognito สำหรับ Authentication, Amazon API Gateway สำหรับรับคำขอ API, AWS Lambda สำหรับประมวลผล และ Amazon S3 สำหรับจัดเก็บไฟล์เอกสาร
-- TiDB Cloud: จัดเก็บข้อมูลเอกสาร ผู้ใช้ Workflow สถานะ และประวัติการดำเนินงาน
+- Amazon RDS (MySQL): จัดเก็บข้อมูลเอกสาร ผู้ใช้ Workflow สถานะ และประวัติการดำเนินงาน
 - Automation / CI/CD Platform: รองรับขั้นตอนตรวจสอบ Build และ Deploy อัตโนมัติ โดยเครื่องมือที่ใช้ใน V5 อยู่ระหว่างยืนยันกับทีม
 - Secret / Configuration Store: จัดเก็บข้อมูลลับและค่าการเชื่อมต่อที่จำเป็น โดยวิธีและบริการที่ใช้ใน V5 อยู่ระหว่างยืนยันกับทีม
   

@@ -429,7 +429,6 @@
             "document_officer",
             "faculty_staff",
             "responsible_person",
-            "staff",
             "executive"
         ];
         const hasPermission = internalRoles.includes(role);
@@ -439,7 +438,7 @@
             hasPermission,
             isAdmin: role === "admin",
             isOfficer: role === "document_officer",
-            isStaff: role === "faculty_staff" || role === "staff",
+            isStaff: role === "faculty_staff",
             isExecutive: role === "executive",
             isGuest: !hasPermission
         };
@@ -636,7 +635,6 @@
                 admin: "ผู้ดูแลระบบ",
                 document_officer: "เจ้าหน้าที่รับเอกสาร",
                 faculty_staff: "อาจารย์ / บุคลากร (Staff)",
-                staff: "อาจารย์ / บุคลากร (Staff)",
                 executive: "ผู้บริหาร",
                 responsible_person: "ผู้รับผิดชอบเรื่อง",
                 guest: "ผู้ใช้ทั่วไป"
@@ -895,7 +893,6 @@
                 admin: "ผู้ดูแลระบบ",
                 document_officer: "เจ้าหน้าที่รับเอกสาร",
                 faculty_staff: "อาจารย์ / บุคลากร",
-                staff: "อาจารย์ / บุคลากร",
                 executive: "ผู้บริหาร",
                 responsible_person: "ผู้รับผิดชอบเรื่อง",
                 guest: "ผู้ใช้ทั่วไป"
