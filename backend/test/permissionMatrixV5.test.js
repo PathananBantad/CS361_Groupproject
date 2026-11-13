@@ -34,6 +34,14 @@ function access(actor, doc, action, previousAssignee = false) {
     return canAccessDocument({ roles: actor.roles, userId: actor.userId, document: doc, action, previousAssignee });
 }
 
+test("Officer who forwarded a document can read it but cannot forward again or change its status", () => {
+    const input = { ...USER.officer, document: DOC.assigned, forwardedByViewer: true };
+    assert.equal(canAccessDocument({ ...input, action: "read" }), true);
+    assert.equal(canAccessDocument({ ...input, action: "forward" }), false);
+    assert.equal(canAccessDocument({ ...input, action: "status" }), false);
+    assert.equal(canAccessDocument({ ...input, userId: DOC.assigned.assignee_id, action: "status" }), true);
+});
+
 // ---- READ ----
 test("V5 READ: admin/officer/executive เห็นเอกสารทุกรายการ แม้ไม่ใช่ assignee", () => {
     for (const actor of [USER.admin, USER.officer, USER.executive]) {

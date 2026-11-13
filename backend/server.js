@@ -385,7 +385,24 @@ async function wasPreviouslyAssigned(document, userId, db = pool) {
 async function checkDocumentAccess(req, document, action = "read", db = pool) {
     const roles = req.userRoles || [req.userRole];
     const previousAssignee = await wasPreviouslyAssigned(document, req.userId, db);
-    return { allowed: canAccessDocument({ roles, userId: req.userId, document, action, previousAssignee }) };
+    const forwardedByViewer = ["forward", "status"].includes(action)
+        && await didOfficerForward(req, document, db);
+    return { allowed: canAccessDocument({ roles, userId: req.userId, document, action, previousAssignee, forwardedByViewer }) };
+}
+
+async function didOfficerForward(req, document, db = pool) {
+    if (!(req.userRoles || [req.userRole]).includes("document_officer") ||
+        document.assignee_id == null || String(document.assignee_id) === String(req.userId)) return false;
+
+    const [rows] = await db.query(
+        `SELECT 1 FROM document_assignments
+         WHERE document_id = ? AND assigned_by_user_id = ?
+           AND action_type = 'FORWARD' AND new_assignee_id REGEXP '^[0-9]+$'
+           AND (previous_assignee_id IS NULL OR previous_assignee_id <> new_assignee_id)
+         LIMIT 1`,
+        [document.id, String(req.userId)]
+    );
+    return rows.length > 0;
 }
 
 // Redirect root to html/index.html before static middleware catches it
@@ -647,8 +664,9 @@ app.get(
 
             const doc = rows[0];
             const previousAssignee = await wasPreviouslyAssigned(doc, req.userId);
+            const forwardedByViewer = await didOfficerForward(req, doc);
             const can = action => canAccessDocument({
-                roles: req.userRoles, userId: req.userId, document: doc, action, previousAssignee
+                roles: req.userRoles, userId: req.userId, document: doc, action, previousAssignee, forwardedByViewer
             });
             if (!can("read")) {
                 return res.status(403).json({ error: "Permission Denied" });

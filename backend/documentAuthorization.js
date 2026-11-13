@@ -68,7 +68,7 @@ function requireAction(action) {
     };
 }
 
-function canAccessDocument({ roles, userId, document, action = "read", previousAssignee = false }) {
+function canAccessDocument({ roles, userId, document, action = "read", previousAssignee = false, forwardedByViewer = false }) {
     const normalized = normalizeRoles(roles);
 
     // ตรวจสอบ input พื้นฐาน — ต้องมี roles ที่รู้จัก, userId และ document
@@ -84,6 +84,10 @@ function canAccessDocument({ roles, userId, document, action = "read", previousA
     }
 
     if (!canPerformAction(normalized, action)) return false;
+
+    if (!currentAssignee && !normalized.includes("admin") &&
+        normalized.includes("document_officer") && (forwardedByViewer || previousAssignee) &&
+        ["forward", "status"].includes(action)) return false;
 
     // Previous assignees are read-only unless an officer/admin permission independently applies.
     const privilegedAssigneeRole = normalized.some(role => ["admin", "document_officer"].includes(role));
