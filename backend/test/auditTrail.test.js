@@ -4,15 +4,17 @@ const { test } = require("node:test");
 const assert = require("node:assert/strict");
 const {
     AUDIT_EVENTS,
+    AUDIT_EVENT_METADATA,
     sanitizeAuditData,
     verifyAuditTrailAccess
 } = require("../auditTrail");
 
-test("AUDIT_EVENTS มีครบ 4 ประเภทเหตุการณ์", () => {
+test("AUDIT_EVENTS มีครบ 5 ประเภทเหตุการณ์ รวมการมอบหมายใหม่", () => {
     assert.deepEqual(
         Object.keys(AUDIT_EVENTS).sort(),
-        ["ASSIGN", "DOCUMENT_CREATE", "FORWARD", "STATUS_CHANGE"].sort()
+        ["ASSIGN", "DOCUMENT_CREATE", "FORWARD", "REASSIGN", "STATUS_CHANGE"].sort()
     );
+    assert.equal(AUDIT_EVENT_METADATA.REASSIGN.label_th, "การมอบหมายเอกสารใหม่");
 });
 
 test("sanitizeAuditData ปิดบังฟิลด์ลับ (password, token, secret)", () => {

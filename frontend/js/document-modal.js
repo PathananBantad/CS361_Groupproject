@@ -917,11 +917,12 @@
                             <span class="status-badge ${badgeClass} inline">${escapeHtml(newLabel)}</span>
                         </span>
                     `;
-                } else if (eventType === "ASSIGN") {
+                } else if (eventType === "ASSIGN" || eventType === "REASSIGN") {
                     const assignee = details.assigned_to_name || details.assignee_name || details.new_assignee_id || "ผู้รับมอบหมาย";
+                    const actionLabel = eventType === "REASSIGN" ? "มอบหมายเอกสารใหม่" : "มอบหมายเอกสาร";
                     headerHtml = `
                         <span class="history-step-change">
-                            <span class="status-badge status-assigned inline">👤 มอบหมายเอกสาร</span>
+                            <span class="status-badge status-assigned inline">👤 ${actionLabel}</span>
                             <span class="arrow">➔</span>
                             <strong>${escapeHtml(formatPersonName(assignee))}</strong>
                         </span>

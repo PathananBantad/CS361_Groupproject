@@ -1407,6 +1407,8 @@ app.post("/api/documents/:id/assign", requireCognitoAuth, loadUserRole, requireA
         }
 
         const newStatus = oldStatus === "Received" ? "Assigned" : oldStatus;
+        const isReassignment = doc.assignee_id != null;
+        const assignmentAction = isReassignment ? "REASSIGN" : "ASSIGN";
 
         // ไม่แตะ owner_id เพื่อไม่ให้ผู้รับได้สิทธิ์เกินกว่าที่กำหนด
         await connection.query(
@@ -1417,13 +1419,14 @@ app.post("/api/documents/:id/assign", requireCognitoAuth, loadUserRole, requireA
         await connection.query(
             `INSERT INTO document_assignments
                 (document_id, assigned_by_user_id, assigned_by_username, previous_assignee_id, new_assignee_id, action_type, remarks)
-             VALUES (?, ?, ?, ?, ?, 'ASSIGN', ?)`,
+             VALUES (?, ?, ?, ?, ?, ?, ?)`,
             [
                 documentId,
                 String(actorId),
                 actorUsername,
                 doc.assignee_id != null ? String(doc.assignee_id) : null,
                 String(assigneeId),
+                assignmentAction,
                 remarks || null
             ]
         );
@@ -1441,7 +1444,7 @@ app.post("/api/documents/:id/assign", requireCognitoAuth, loadUserRole, requireA
             actorUserId: String(req.auth.sub),
             actorUsername,
             actorRole,
-            eventType: AUDIT_EVENTS.ASSIGN,
+            eventType: isReassignment ? AUDIT_EVENTS.REASSIGN : AUDIT_EVENTS.ASSIGN,
             beforeState: { assignee_id: doc.assignee_id, status: oldStatus },
             afterState: { assignee_id: assigneeId, status: newStatus },
             details: {
@@ -1456,6 +1459,7 @@ app.post("/api/documents/:id/assign", requireCognitoAuth, loadUserRole, requireA
                 assignee_name: assignee.full_name || assignee.username,   // คงไว้เพื่อ Backward Compatibility
                 previous_assignee_id: doc.assignee_id || null,
                 new_assignee_id: assigneeId,
+                action_type: assignmentAction,
                 remarks: remarks || null
             },
             ipAddress: req.ip,

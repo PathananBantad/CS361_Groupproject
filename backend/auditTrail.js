@@ -6,12 +6,12 @@
 // ดึงข้อมูลผู้ดำเนินการและวันเวลาจากฝั่ง Server เท่านั้น และมีระบบกรองข้อมูลลับ (Data Sanitization)
 // ============================================================================
 
-const defaultPool = require("./db");
 const { canAccessDocument } = require("./documentAuthorization");
 
 // 1. กำหนดประเภท Event มาตรฐาน (Task 1)
 const AUDIT_EVENTS = Object.freeze({
     ASSIGN: "ASSIGN",
+    REASSIGN: "REASSIGN",
     FORWARD: "FORWARD",
     STATUS_CHANGE: "STATUS_CHANGE",
     DOCUMENT_CREATE: "DOCUMENT_CREATE"
@@ -22,6 +22,12 @@ const AUDIT_EVENT_METADATA = Object.freeze({
     [AUDIT_EVENTS.ASSIGN]: {
         label_th: "การมอบหมายเอกสาร",
         label_en: "Document Assignment",
+        icon: "👤",
+        color: "blue"
+    },
+    [AUDIT_EVENTS.REASSIGN]: {
+        label_th: "การมอบหมายเอกสารใหม่",
+        label_en: "Document Reassignment",
         icon: "👤",
         color: "blue"
     },
@@ -173,7 +179,7 @@ async function recordAuditEvent({
     const sanitizedAfter = afterState ? sanitizeAuditData(afterState) : null;
     const sanitizedDetails = details ? sanitizeAuditData(details) : null;
 
-    const db = connection || defaultPool;
+    const db = connection || require("./db");
 
     const [result] = await db.query(
         `INSERT INTO document_audit_trails 
@@ -220,7 +226,8 @@ async function recordAuditEvent({
  * @param {any} [poolOrConn]
  * @returns {Promise<Array>} รายการประวัติที่จัดรูปแบบพร้อมแสดงผล
  */
-async function getAuditTrailByDocumentId(documentId, filters = {}, poolOrConn = defaultPool) {
+async function getAuditTrailByDocumentId(documentId, filters = {}, poolOrConn = null) {
+    const db = poolOrConn || require("./db");
     let sql = `
         SELECT 
             at.id AS audit_id,
@@ -262,7 +269,7 @@ async function getAuditTrailByDocumentId(documentId, filters = {}, poolOrConn = 
 
     sql += " ORDER BY at.created_at ASC, at.id ASC";
 
-    const [rows] = await poolOrConn.query(sql, params);
+    const [rows] = await db.query(sql, params);
 
     return rows.map((row) => {
         const meta = AUDIT_EVENT_METADATA[row.event_type] || {
@@ -309,7 +316,8 @@ async function getAuditTrailByDocumentId(documentId, filters = {}, poolOrConn = 
  * @param {string} [options.endDate]
  * @param {any} [poolOrConn]
  */
-async function queryAuditTrails(options = {}, poolOrConn = defaultPool) {
+async function queryAuditTrails(options = {}, poolOrConn = null) {
+    const db = poolOrConn || require("./db");
     const page = Math.max(1, parseInt(options.page, 10) || 1);
     const limit = Math.min(100, Math.max(1, parseInt(options.limit, 10) || 20));
     const offset = (page - 1) * limit;
@@ -343,7 +351,7 @@ async function queryAuditTrails(options = {}, poolOrConn = defaultPool) {
     }
 
     const countSql = `SELECT COUNT(*) AS total FROM document_audit_trails a ${whereClause}`;
-    const [countRows] = await poolOrConn.query(countSql, params);
+    const [countRows] = await db.query(countSql, params);
     const total = countRows[0].total;
 
     const listSql = `
@@ -374,7 +382,7 @@ async function queryAuditTrails(options = {}, poolOrConn = defaultPool) {
         LIMIT ? OFFSET ?
     `;
 
-    const [rows] = await poolOrConn.query(listSql, [...params, limit, offset]);
+    const [rows] = await db.query(listSql, [...params, limit, offset]);
 
     const enriched = rows.map((row) => {
         let beforeState = row.before_state;
