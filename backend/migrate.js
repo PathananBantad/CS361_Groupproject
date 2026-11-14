@@ -1,8 +1,9 @@
-const pool = require("./db");
+const { runV7Migration } = require("./database/migrations/v7");
 
-async function runMigration() {
-  try {
-    console.log("🚀 กำลังตรวจสอบและ Migrate โครงสร้างฐานข้อมูล DocuFlow (AWS RDS)...");
+// รันซ้ำได้ทุกขั้น: CREATE ... IF NOT EXISTS / ตรวจ INFORMATION_SCHEMA ก่อน ALTER / seed แบบไม่ซ้ำ
+// ไม่มีการ DROP หรือ RENAME column เดิม
+async function runMigration(pool, log = console.log) {
+    log("🚀 กำลังตรวจสอบและ Migrate โครงสร้างฐานข้อมูล DocuFlow (AWS RDS)...");
 
     // 0. ตาราง roles, users, users_roles (สิทธิ์และผู้ใช้งาน)
     await pool.query(`
@@ -18,7 +19,41 @@ async function runMigration() {
       INSERT INTO roles (name, description) VALUES (?, ?)
       ON DUPLICATE KEY UPDATE description = VALUES(description)
     `, ["responsible_person", "ผู้รับผิดชอบเรื่อง"]);
-    console.log("  + Verified 'responsible_person' role in roles table");
+    log("  + Verified 'responsible_person' role in roles table");
+
+    // Role อื่นตาม Role Matrix (INSERT IGNORE: ไม่แตะ description ของ DB ที่มีอยู่แล้ว)
+    await pool.query(`
+      INSERT IGNORE INTO roles (name, description) VALUES
+      ('document_officer', 'เจ้าหน้าที่รับเอกสาร'),
+      ('faculty_staff', 'อาจารย์ / เจ้าหน้าที่'),
+      ('admin', 'ผู้ดูแลระบบ'),
+      ('executive', 'ผู้บริหาร')
+    `);
+
+    // Baseline users / users_roles สำหรับ DB ว่างเท่านั้น (IF NOT EXISTS = ไม่แตะตารางเดิมบน RDS)
+    // คอลัมน์ตรงกับที่ server.js / auth.js ใช้จริง: username, email, full_name, password, role, cognito_sub, is_active
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS users (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        username VARCHAR(100) NOT NULL UNIQUE,
+        email VARCHAR(150) NULL,
+        full_name VARCHAR(150) NOT NULL,
+        password VARCHAR(255) NULL,
+        role VARCHAR(50) NULL,
+        cognito_sub VARCHAR(100) NULL,
+        is_active TINYINT(1) NOT NULL DEFAULT 1,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS users_roles (
+        user_id INT NOT NULL,
+        role_id INT NOT NULL,
+        PRIMARY KEY (user_id, role_id),
+        CONSTRAINT fk_ur_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        CONSTRAINT fk_ur_role FOREIGN KEY (role_id) REFERENCES roles(id) ON DELETE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
 
     // 1. ตาราง channels (ช่องทางการรับเอกสาร)
     await pool.query(`
@@ -103,16 +138,25 @@ async function runMigration() {
     `);
 
     // 7. เพิ่ม Master Data ประเภทเอกสาร 7 ประเภท
-    await pool.query(`
-      INSERT IGNORE INTO document_types (name, description) VALUES 
-      ('เอกสารประชาสัมพันธ์', 'ใช้สำหรับแจ้งข่าวสาร หรือกิจกรรมต่าง ๆ'),
-      ('เอกสารขออนุมัติ', 'ใช้สำหรับเสนอเรื่องเพื่อขออนุมัติ'),
-      ('เอกสารมอบหมายงาน', 'ใช้สำหรับมอบหมายงานหรือหน้าที่'),
-      ('เอกสารแจ้งเพื่อทราบ', 'ใช้สำหรับแจ้งข้อมูลให้ผู้รับทราบ'),
-      ('เอกสารรอการตอบกลับ', 'ใช้สำหรับรอการยืนยันหรือการตอบกลับ'),
-      ('เอกสารแจ้งกำหนดการ/การนัดหมาย', 'ใช้สำหรับแจ้งวัน เวลา และรายละเอียดการนัดหมาย'),
-      ('เอกสารรายงานผล', 'ใช้สำหรับสรุปผลการดำเนินงาน');
-    `);
+    // document_types.name ไม่มี UNIQUE จึงใช้ INSERT IGNORE ไม่ได้ (เดิมรันซ้ำแล้วได้แถวซ้ำ)
+    // ใส่เฉพาะชื่อที่ยังไม่มี เพื่อให้รันซ้ำได้โดยไม่ต้องเพิ่ม UNIQUE ให้ข้อมูลเดิมที่อาจซ้ำอยู่แล้ว
+    const documentTypes = [
+      ['เอกสารประชาสัมพันธ์', 'ใช้สำหรับแจ้งข่าวสาร หรือกิจกรรมต่าง ๆ'],
+      ['เอกสารขออนุมัติ', 'ใช้สำหรับเสนอเรื่องเพื่อขออนุมัติ'],
+      ['เอกสารมอบหมายงาน', 'ใช้สำหรับมอบหมายงานหรือหน้าที่'],
+      ['เอกสารแจ้งเพื่อทราบ', 'ใช้สำหรับแจ้งข้อมูลให้ผู้รับทราบ'],
+      ['เอกสารรอการตอบกลับ', 'ใช้สำหรับรอการยืนยันหรือการตอบกลับ'],
+      ['เอกสารแจ้งกำหนดการ/การนัดหมาย', 'ใช้สำหรับแจ้งวัน เวลา และรายละเอียดการนัดหมาย'],
+      ['เอกสารรายงานผล', 'ใช้สำหรับสรุปผลการดำเนินงาน']
+    ];
+    for (const [name, description] of documentTypes) {
+      await pool.query(
+        `INSERT INTO document_types (name, description)
+         SELECT ?, ? FROM DUAL
+         WHERE NOT EXISTS (SELECT 1 FROM document_types WHERE name = ?)`,
+        [name, description, name]
+      );
+    }
 
     // 8. ตรวจสอบและเพิ่ม assignee_id ในตาราง documents
     try {
@@ -129,7 +173,7 @@ async function runMigration() {
           ADD COLUMN assignee_id INT NULL,
           ADD INDEX idx_doc_assignee (assignee_id)
         `);
-        console.log("  + Added assignee_id column to documents table");
+        log("  + Added assignee_id column to documents table");
       }
     } catch (colErr) {
       console.warn("  ! Note on assignee_id column:", colErr.message);
@@ -198,20 +242,27 @@ async function runMigration() {
             SET MESSAGE_TEXT = 'Audit trail records are immutable and cannot be deleted.';
         END;
       `);
-      console.log("  + Immutability triggers (UPDATE + DELETE) on document_audit_trails active");
+      log("  + Immutability triggers (UPDATE + DELETE) on document_audit_trails active");
     } catch (trigErr) {
       console.warn("  ! Note on trigger creation:", trigErr.message);
     }
 
-    console.log("✅ ตรวจสอบและสร้างโครงสร้างตารางทุกส่วน (รวม Audit Trail & Workflow V3) สำเร็จเรียบร้อย!");
-    const [tables] = await pool.query("SHOW TABLES");
-    console.log("📋 รายการตารางทั้งหมดในฐานข้อมูล:", tables.map(t => Object.values(t)[0]));
+    // 12. V7: share link, pins, seen_at, หัวหน้าสาขา, index ของ Inbox (ดู docs/ERD-V7.md)
+    await runV7Migration(pool, log);
 
-    process.exit(0);
-  } catch (err) {
-    console.error("❌ เกิดข้อผิดพลาดในการ Migrate:", err.message);
-    process.exit(1);
-  }
+    log("✅ ตรวจสอบและสร้างโครงสร้างตารางทุกส่วน (รวม Audit Trail, Workflow V3 และ V7) สำเร็จเรียบร้อย!");
+    const [tables] = await pool.query("SHOW TABLES");
+    log("📋 รายการตารางทั้งหมดในฐานข้อมูล:", tables.map(t => Object.values(t)[0]));
 }
 
-runMigration();
+module.exports = { runMigration };
+
+if (require.main === module) {
+  const pool = require("./db");
+  runMigration(pool)
+    .then(() => process.exit(0))
+    .catch(err => {
+      console.error("❌ เกิดข้อผิดพลาดในการ Migrate:", err.message);
+      process.exit(1);
+    });
+}
