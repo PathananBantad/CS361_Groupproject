@@ -1939,13 +1939,13 @@ app.get("/api/documents/:id/audit-trail", requireCognitoAuth, loadUserRole, asyn
 // GET /api/audit-trails - เรียกดู Audit Trail รวมทั้งระบบ สำหรับผู้ดูแลระบบ (Admin) หรือ ผู้บริหาร (Executive) (Task 8)
 app.get("/api/audit-trails", requireCognitoAuth, loadUserRole, async (req, res) => {
     try {
-        const actor = extractServerActor(req);
-        const role = String(actor.actorRole || "").toLowerCase();
+        const roles = (req.userRoles || [req.userRole])
+            .map(role => String(role || "").trim().toLowerCase());
 
-        // จำกัดเฉพาะ Admin และ Executive
-        if (!["admin", "executive"].includes(role)) {
+        // System-wide audit is available to Admin, Document Officer, and Executive.
+        if (!roles.some(role => ["admin", "document_officer", "executive"].includes(role))) {
             return res.status(403).json({
-                error: "คุณไม่มีสิทธิ์เข้าถึงประวัติการตรวจสอบทั้งระบบ (ต้องการสิทธิ์ Admin หรือ Executive เท่านั้น)"
+                error: "คุณไม่มีสิทธิ์เข้าถึงประวัติการตรวจสอบทั้งระบบ (ต้องการสิทธิ์ Admin, Document Officer หรือ Executive เท่านั้น)"
             });
         }
 

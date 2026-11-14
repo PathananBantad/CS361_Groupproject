@@ -68,7 +68,8 @@ const SENSITIVE_KEY_PATTERNS = [
 // Regex สำหรับดักจับ Token, JWT และ API Key ในข้อความทั่วไป
 const JWT_PATTERN = /eyJ[a-zA-Z0-9_-]{10,}\.eyJ[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]+/g;
 const BEARER_PATTERN = /Bearer\s+[a-zA-Z0-9._~+/-]+=*/gi;
-const GENERIC_KEY_PATTERN = /(AKIA[0-9A-Z]{16})|(ghp_[a-zA-Z0-9]{36})/g;
+const SENSITIVE_TEXT_PATTERN = /\b(password|passwd|secret|access[_-]?token|refresh[_-]?token|id[_-]?token|authorization|api[_-]?key|client[_-]?secret|session[_-]?token|cookie|credential)\b\s*[:=]\s*(?:"[^"]*"|'[^']*'|[^\s,;]+)/gi;
+const GENERIC_KEY_PATTERN = /((?:AKIA|ASIA)[0-9A-Z]{16})|(ghp_[a-zA-Z0-9]{36})|(github_pat_[A-Za-z0-9_]{20,})|(AIza[0-9A-Za-z_-]{35})/g;
 
 /**
  * ฟังก์ชันทำความสะอาดข้อมูลเพื่อป้องกันรหัสผ่าน, Token และความลับรั่วไหล (Task 10)
@@ -82,6 +83,7 @@ function sanitizeAuditData(data, depth = 0) {
 
     if (typeof data === "string") {
         let clean = data
+            .replace(SENSITIVE_TEXT_PATTERN, "$1=[REDACTED]")
             .replace(JWT_PATTERN, "[REDACTED_JWT]")
             .replace(BEARER_PATTERN, "[REDACTED_BEARER_TOKEN]")
             .replace(GENERIC_KEY_PATTERN, "[REDACTED_KEY]");
@@ -181,6 +183,10 @@ async function recordAuditEvent({
 
     const db = connection || require("./db");
 
+    const safeActorUsername = actorUsername == null ? null : sanitizeAuditData(String(actorUsername));
+    const safeActorRole = actorRole == null ? null : sanitizeAuditData(String(actorRole));
+    const safeIpAddress = ipAddress == null ? null : sanitizeAuditData(String(ipAddress));
+
     const [result] = await db.query(
         `INSERT INTO document_audit_trails 
             (document_id, actor_user_id, actor_username, actor_role, event_type, before_state, after_state, details, ip_address, created_at)
@@ -188,13 +194,13 @@ async function recordAuditEvent({
         [
             documentId,
             String(actorUserId),
-            actorUsername ? String(actorUsername) : null,
-            actorRole ? String(actorRole) : null,
+            safeActorUsername,
+            safeActorRole,
             eventType,
             sanitizedBefore ? JSON.stringify(sanitizedBefore) : null,
             sanitizedAfter ? JSON.stringify(sanitizedAfter) : null,
             sanitizedDetails ? JSON.stringify(sanitizedDetails) : null,
-            ipAddress || null
+            safeIpAddress
         ]
     );
 
@@ -204,13 +210,13 @@ async function recordAuditEvent({
         audit_id: auditId,
         document_id: documentId,
         actor_user_id: actorUserId,
-        actor_username: actorUsername,
-        actor_role: actorRole,
+        actor_username: safeActorUsername,
+        actor_role: safeActorRole,
         event_type: eventType,
         before_state: sanitizedBefore,
         after_state: sanitizedAfter,
         details: sanitizedDetails,
-        ip_address: ipAddress,
+        ip_address: safeIpAddress,
         created_at: new Date()
     };
 }
@@ -295,10 +301,15 @@ async function getAuditTrailByDocumentId(documentId, filters = {}, poolOrConn = 
 
         return {
             ...row,
+            actor_username: sanitizeAuditData(row.actor_username),
+            actor_name: sanitizeAuditData(row.actor_name),
+            actor_full_name: sanitizeAuditData(row.actor_full_name),
+            actor_role: sanitizeAuditData(row.actor_role),
+            ip_address: sanitizeAuditData(row.ip_address),
             event_metadata: meta,
-            before_state: beforeState,
-            after_state: afterState,
-            details: details
+            before_state: sanitizeAuditData(beforeState),
+            after_state: sanitizeAuditData(afterState),
+            details: sanitizeAuditData(details)
         };
     });
 }
@@ -401,10 +412,17 @@ async function queryAuditTrails(options = {}, poolOrConn = null) {
 
         return {
             ...row,
+            reference_no: sanitizeAuditData(row.reference_no),
+            subject: sanitizeAuditData(row.subject),
+            actor_username: sanitizeAuditData(row.actor_username),
+            actor_name: sanitizeAuditData(row.actor_name),
+            actor_full_name: sanitizeAuditData(row.actor_full_name),
+            actor_role: sanitizeAuditData(row.actor_role),
+            ip_address: sanitizeAuditData(row.ip_address),
             event_metadata: AUDIT_EVENT_METADATA[row.event_type] || {},
-            before_state: beforeState,
-            after_state: afterState,
-            details: details
+            before_state: sanitizeAuditData(beforeState),
+            after_state: sanitizeAuditData(afterState),
+            details: sanitizeAuditData(details)
         };
     });
 
