@@ -116,9 +116,8 @@ function canAccessDocument({ roles, userId, document, action = "read", previousA
         normalized.includes("document_officer") && (forwardedByViewer || previousAssignee) &&
         ["assign", "forward", "status"].includes(action)) return false;
 
-    // Previous assignees are read-only unless an officer/admin permission independently applies.
-    const privilegedAssigneeRole = normalized.some(role => ["admin", "document_officer"].includes(role));
-    if (previousAssignee && !currentAssignee && !privilegedAssigneeRole) return false;
+    // Previous assignees are read-only for workflow actions, regardless of their role.
+    if (previousAssignee && !currentAssignee && ["assign", "forward", "status"].includes(action)) return false;
 
     if (action === "assign") {
         if (document.status === "Completed") return false;
