@@ -1,3 +1,7 @@
+const inbox = window.DocuFlowInbox;
+const inboxSort = document.getElementById("inboxSort");
+const inboxNewCount = document.getElementById("inboxNewCount");
+
 /* =====================================================
    DASHBOARD & DOCUMENT REGISTRY
    DocuFlow Electronic Mailbox & Document Flow System
@@ -135,6 +139,7 @@ function updateRoleUI() {
 ===================================================== */
 async function fetchDocuments() {
     const params = new URLSearchParams();
+    if (!document.getElementById("inboxSortControl").hidden) params.set("sort", inboxSort.value);
 
     const apiBase = getApiBaseUrl();
     if (!window.getDocuFlowAuthToken()) {
@@ -253,6 +258,10 @@ async function fetchDocuments() {
                 receive_date: safeFormatDate(row.receive_date),
                 deadline: safeFormatDate(row.deadline),
                 deadlineDate: dateOnly(row.deadline),
+                isNew: inbox.isFlagSet(row.is_new),
+                isPinned: inbox.isFlagSet(row.is_pinned),
+                actionGroup: row.action_group,
+                headNote: inbox.headNote(row),
                 receivedDateKey: dateOnly(row.receive_date || row.received_at || row.created_at),
                 remarks: row.remarks || "-",
                 channel: row.receiving_channel || "-",
@@ -312,12 +321,22 @@ function todayInThailand() {
     const get = type => parts.find(part => part.type === type).value;
     return `${get("year")}-${get("month")}-${get("day")}`;
 }
-function isOverdue(doc, today = todayInThailand()) {
-    return Boolean(doc.deadlineDate && doc.rawStatus !== "Completed" && doc.deadlineDate < today);
-}
-function deadlineLabel(doc) {
+function deadlineLabel(doc, today) {
     if (!doc.deadlineDate) return "";
-    return `<small class="deadline-label ${isOverdue(doc) ? "deadline-overdue" : ""}">ครบกำหนด: ${escapeHtml(doc.deadline)}${isOverdue(doc) ? " • เกินกำหนด" : ""}</small>`;
+    const days = inbox.deadlineDays(doc, today);
+    const label = days !== null && days <= 3 ? inbox.deadlineText(days) : `ครบกำหนด: ${doc.deadline}`;
+    return `<small class="deadline-label ${days !== null && days < 0 ? "deadline-overdue" : ""}">${escapeHtml(label)}</small>`;
+}
+
+function inboxLabels(doc) {
+    return (doc.isPinned ? '<span class="inbox-pin" aria-label="ปักดาว">★</span>' : "") +
+        (doc.isNew ? '<span class="inbox-new-badge">ใหม่</span>' : "");
+}
+
+function headNoteLabel(doc) {
+    return doc.headNote
+        ? `<small class="inbox-head-note"><strong>หมายเหตุจากหัวหน้าสาขา</strong> ${escapeHtml(doc.headNote)}</small>`
+        : "";
 }
 
 /* =====================================================
@@ -361,17 +380,12 @@ function render() {
         result = result.filter(doc => doc.type.toLocaleLowerCase().includes(selectedType));
     }
 
-    if (selectedUrgency === "overdue") {
-        const today = todayInThailand();
-        result = result.filter(doc => isOverdue(doc, today));
-    } else if (selectedUrgency === "due-soon") {
-        const today = todayInThailand();
-        const cutoff = new Date(`${today}T00:00:00Z`);
-        cutoff.setUTCDate(cutoff.getUTCDate() + 3);
-        const lastDate = cutoff.toISOString().slice(0, 10);
-        result = result.filter(doc =>
-            doc.rawStatus !== "Completed" && doc.deadlineDate >= today && doc.deadlineDate <= lastDate
-        );
+    const today = todayInThailand();
+    if (selectedUrgency) {
+        result = result.filter(doc => {
+            const days = inbox.deadlineDays(doc, today);
+            return days !== null && (selectedUrgency === "overdue" ? days < 0 : days >= 0 && days <= 3);
+        });
     }
 
     if (sortKey) {
@@ -389,8 +403,16 @@ function render() {
         });
     }
 
-    renderTable(result);
-    renderMobile(result);
+    if (!sortKey && !document.getElementById("inboxSortControl").hidden) {
+        result.sort(inboxSort.value === "priority" ? inbox.compareByPriority : inbox.compareByDeadline);
+    }
+
+    renderTable(result, today);
+    renderMobile(result, today);
+
+    const unread = documents.filter(doc => doc.isNew).length;
+    inboxNewCount.hidden = unread === 0;
+    inboxNewCount.textContent = `ใหม่ ${unread}`;
 
     if (shownCount) {
         shownCount.textContent = result.length;
@@ -400,7 +422,7 @@ function render() {
 /* =====================================================
    RENDER TABLE (ปุ่มหลักเพียงปุ่มเดียว: เรียกดูเอกสาร)
 ===================================================== */
-function renderTable(list) {
+function renderTable(list, today) {
     if (!tableBody) return;
 
     if (!list.length) {
@@ -436,13 +458,14 @@ function renderTable(list) {
             <tr data-id="${doc.id}">
                 <td>
                     <div class="doc-number">
-                        ${escapeHtml(doc.number)}
+                        ${escapeHtml(doc.number)} ${inboxLabels(doc)}
                         <span class="doc-code">${escapeHtml(doc.code)}</span>
                     </div>
                 </td>
                 <td>
                     <div class="type-name">${escapeHtml(doc.type)}</div>
                     <span class="type-desc">${escapeHtml(doc.description)}</span>
+                    ${headNoteLabel(doc)}
                 </td>
                 <td class="person-cell">${escapeHtml(doc.sender)}</td>
                 <td class="person-cell">${escapeHtml(doc.receiver)}</td>
@@ -450,7 +473,7 @@ function renderTable(list) {
                     <span class="status-badge status-${doc.statusKey}">
                         ${escapeHtml(doc.statusLabel)}
                     </span>
-                    ${deadlineLabel(doc)}
+                    ${deadlineLabel(doc, today)}
                 </td>
                 <td class="received">
                     <strong>${escapeHtml(doc.receivedDate)}</strong>
@@ -514,7 +537,7 @@ function renderTable(list) {
 /* =====================================================
    RENDER MOBILE
 ===================================================== */
-function renderMobile(list) {
+function renderMobile(list, today) {
     if (!mobileList) return;
 
     if (!list.length) {
@@ -544,14 +567,15 @@ function renderMobile(list) {
             <div class="mobile-document" data-id="${doc.id}">
                 <div class="mobile-top">
                     <div class="mobile-main">
-                        <div class="mobile-number">${escapeHtml(doc.number)}</div>
+                        <div class="mobile-number">${escapeHtml(doc.number)} ${inboxLabels(doc)}</div>
                         <div class="mobile-name"><strong>${escapeHtml(doc.type)}:</strong> ${escapeHtml(doc.description)}</div>
                     </div>
                     <span class="status-badge status-${doc.statusKey}">
                         ${escapeHtml(doc.statusLabel)}
                     </span>
-                    ${deadlineLabel(doc)}
+                    ${deadlineLabel(doc, today)}
                 </div>
+                ${headNoteLabel(doc)}
                 <div class="mobile-meta">
                     <div>
                         <small style="color: #92757c;">ผู้ส่ง: </small>
@@ -681,6 +705,11 @@ if (globalSearch) {
 }
 
 typeFilter.addEventListener("change", render);
+inboxSort.addEventListener("change", () => {
+    sortKey = null;
+    sortDirection = 1;
+    render();
+});
 const urgencyButtons = urgencyFilter.querySelectorAll("[data-urgency]");
 urgencyButtons.forEach(button => {
     button.addEventListener("click", () => {
@@ -734,6 +763,7 @@ function initializeDashboard() {
     }
 
     currentRole = savedRole;
+    document.getElementById("inboxSortControl").hidden = !["faculty_staff", "responsible_person"].includes(savedRole);
     currentUsername = savedUser || "-";
 
     // รองรับการส่งคำค้นหาข้ามหน้า (เช่น มาจาก register.html หรือ guide.html)
@@ -756,4 +786,12 @@ initializeDashboard();
 window.fetchDocuments = fetchDocuments;
 window.addEventListener("docuflow:statusChanged", () => {
     fetchDocuments();
+});
+
+// A denied or failed document request never emits this event.
+window.addEventListener("docuflow:documentOpened", ({ detail }) => {
+    const doc = documents.find(item => String(item.id) === String(detail.id));
+    if (!doc?.isNew) return;
+    doc.isNew = false;
+    render();
 });

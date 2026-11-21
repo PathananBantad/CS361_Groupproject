@@ -51,6 +51,7 @@
                     title="คลิกเพื่อดูข้อมูลผู้ใช้และออกจากระบบ">
                     <span class="profile-icon role-staff" id="userRoleDot" aria-hidden="true">●</span>
                     <span id="userRoleDisplay">เจ้าหน้าที่ (Staff)</span>
+                    <span class="inbox-new-badge" id="inboxNewCount" aria-live="polite" hidden></span>
                     <span class="chevron" aria-hidden="true">⌄</span>
                 </button>
                 <div class="role-dropdown" id="roleDropdown" hidden>
@@ -99,8 +100,15 @@
                 <option value="กำหนดการ/การนัดหมาย">เอกสารแจ้งกำหนดการ/การนัดหมาย</option>
                 <option value="รายงานผล">เอกสารรายงานผล</option>
             </select>
+            <label id="inboxSortControl" class="inbox-sort" hidden>
+                เรียงตาม
+                <select id="inboxSort">
+                    <option value="priority">ความสำคัญ</option>
+                    <option value="due">กำหนดส่ง</option>
+                </select>
+            </label>
             <div id="filterUrgency" class="urgency-filters" role="group" aria-label="กรองตามความเร่งด่วน">
-                <button type="button" class="urgency-filter" data-urgency="due-soon" aria-pressed="false" title="ครบกำหนดภายใน 3 วัน">เร่งด่วน</button>
+                <button type="button" class="urgency-filter" data-urgency="due-soon" aria-pressed="false" title="ครบกำหนดภายใน 3 วัน">ใกล้ครบกำหนด</button>
                 <button type="button" class="urgency-filter" data-urgency="overdue" aria-pressed="false">เกินกำหนด</button>
             </div>
         </div>
@@ -146,6 +154,7 @@
     <script src="../js/navbar-profile.js"></script>
     <script src="../js/document-assignment.js"></script>
     <script src="../js/share-links.js"></script>
+    <script src="../js/inbox.js"></script>
     <script src="../js/document-modal.js"></script>
     <script src="../js/dashboard.js"></script>
 

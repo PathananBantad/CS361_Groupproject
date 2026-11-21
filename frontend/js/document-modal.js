@@ -1135,9 +1135,19 @@
             `;
         }
 
+        const headReview = document.getElementById("modalHeadReview");
+        if (headReview) {
+            const note = window.DocuFlowInbox?.headNote(doc) || "";
+            document.getElementById("modalHeadReviewNote").textContent = note;
+            headReview.hidden = !note;
+        }
+
         // 3. แสดง Modal
         if (documentModal && !documentModal.open) {
             documentModal.showModal();
+        }
+        if (documentModal?.open) {
+            window.dispatchEvent(new CustomEvent("docuflow:documentOpened", { detail: { id: doc.id } }));
         }
 
         if (forwardHost && permissions.forward === true) {
