@@ -6,7 +6,8 @@ const { test, describe, before, after } = require("node:test");
 const assert = require("node:assert/strict");
 const http = require("node:http");
 const pool = require("../db");
-const { signHs256Jwt } = require("../cognito-auth");
+const { installCognitoTestVerifier } = require("./cognitoTestFixtures");
+const { tokenFor: cognitoTokenFor } = installCognitoTestVerifier();
 const { requireAction } = require("../documentAuthorization");
 
 const ROLES = ["document_officer", "admin", "faculty_staff", "responsible_person", "executive"];
@@ -46,11 +47,10 @@ pool.query = async (sql) => {
 const app = require("../server");
 
 function tokenFor(role) {
-    return signHs256Jwt({
+    return cognitoTokenFor({
         sub: `sub-${role}`,
         username: `${role}@test`,
-        "cognito:groups": [role],
-        exp: Math.floor(Date.now() / 1000) + 600
+        "cognito:groups": [role]
     });
 }
 

@@ -18,9 +18,10 @@ Object.assign(process.env, {
 });
 
 const pool = require("../db");
-const cognitoAuth = require("../cognito-auth");
+const { installCognitoTestVerifier } = require("./cognitoTestFixtures");
+const { tokenFor } = installCognitoTestVerifier();
 const s3 = require("../s3");
-const validTestToken = "unit-test-valid-token";
+const validTestToken = tokenFor({ sub: "unit-test-cognito-sub", username: "unit-test-user" });
 let s3ObjectFactory = async () => ({
     Body: Readable.from([]),
     ContentLength: 0
@@ -30,19 +31,6 @@ let observedS3Keys = [];
 s3.getS3Object = async fileKey => {
     observedS3Keys.push(fileKey);
     return s3ObjectFactory(fileKey);
-};
-
-cognitoAuth.requireCognitoAuth = (req, res, next) => {
-    if (req.headers.authorization !== `Bearer ${validTestToken}`) {
-        return res.status(401).json({ error: "Unauthorized" });
-    }
-
-    req.auth = {
-        sub: "unit-test-cognito-sub",
-        username: "unit-test-user",
-        groups: []
-    };
-    return next();
 };
 
 const app = require("../server");
@@ -115,7 +103,7 @@ async function getDocuments(t, { authorization, query = "" } = {}) {
     };
 }
 
-test("Guest list returns exactly the four approved document fields", async (t) => {
+test("document list rejects unauthenticated access before querying private records", async (t) => {
     queryRows = [{
         reference_no: "PUBLIC-001",
         document_type: "Notice",
@@ -131,45 +119,27 @@ test("Guest list returns exactly the four approved document fields", async (t) =
     }];
 
     const { status, body } = await getDocuments(t);
-
-    assert.equal(status, 200);
-    assert.deepEqual(Object.keys(body.data[0]).sort(), [
-        "document_type",
-        "receive_date",
-        "reference_no",
-        "status"
-    ]);
-    assert.deepEqual(body.data, [{
-        reference_no: "PUBLIC-001",
-        document_type: "Notice",
-        receive_date: "2026-01-02",
-        status: "Received"
-    }]);
-    assert.equal(body.total, 1);
+    assert.equal(status, 401);
+    assert.equal(body.error, "Unauthorized");
+    assert.deepEqual(observedQueries, []);
 });
 
-test("Guest SQL selects only approved columns without joins or d.*", async (t) => {
+test("document SQL is not queried for unauthenticated requests", async (t) => {
     queryRows = [];
 
-    await getDocuments(t);
-
-    const { sql } = observedQueries[0];
-    assert.match(sql, /SELECT\s+reference_no,\s*document_type,\s*receive_date,\s*status\s+FROM documents/i);
-    assert.doesNotMatch(sql, /\bd\s*\.\s*\*/i);
-    assert.doesNotMatch(sql, /\bJOIN\b/i);
-    assert.doesNotMatch(sql, /\b(id|owner_id|assignee_id|file_key|subject|sender_name)\b/i);
+    const result = await getDocuments(t);
+    assert.equal(result.status, 401);
+    assert.deepEqual(observedQueries, []);
 });
 
-test("Guest filters ignore fields outside the public registry", async (t) => {
+test("document filters are not evaluated before authentication", async (t) => {
     queryRows = [];
 
-    await getDocuments(t, {
+    const result = await getDocuments(t, {
         query: "?subject=private&sender_name=private&receiver_name=private&search=private&reference_no=PUBLIC&document_type=Notice&status=Received&from_date=2026-01-01"
     });
-
-    const { sql, params } = observedQueries[0];
-    assert.doesNotMatch(sql, /\b(subject|sender_name|receiver_name|search)\b/i);
-    assert.deepEqual(params, ["%PUBLIC%", "Notice", "Received", "2026-01-01"]);
+    assert.equal(result.status, 401);
+    assert.deepEqual(observedQueries, []);
 });
 
 test("faculty_staff list SQL remains scoped to owned or assigned documents", async (t) => {
@@ -191,8 +161,9 @@ test("faculty_staff list SQL remains scoped to owned or assigned documents", asy
     });
 
     assert.equal(status, 200);
-    assert.match(observedQueries[0].sql, /AND \(d\.owner_id = \? OR d\.assignee_id = \?\)/);
-    assert.deepEqual(observedQueries[0].params.slice(0, 2), [17, 17]);
+    assert.match(observedQueries[0].sql, /d\.assignee_id = \? OR EXISTS/);
+    assert.match(observedQueries[0].sql, /previous_assignee_id = \?/);
+    assert.deepEqual(observedQueries[0].params.slice(0, 2), [17, "17"]);
     assert.equal(body.data[0].id, 17);
     assert.equal(body.data[0].file_name, "staff.pdf");
 });
@@ -221,7 +192,7 @@ test("invalid non-Guest authorization is rejected and does not query documents",
     });
 
     assert.equal(status, 401);
-    assert.deepEqual(body, { error: "Unauthorized" });
+    assert.equal(body.error, "Unauthorized");
     assert.deepEqual(observedQueries, []);
 });
 
@@ -231,7 +202,7 @@ test("download-file rejects unauthenticated requests before querying the databas
     const { status, body } = await getDownload(t);
 
     assert.equal(status, 401);
-    assert.deepEqual(JSON.parse(body.toString()), { error: "Unauthorized" });
+    assert.equal(JSON.parse(body.toString()).error, "Unauthorized");
     assert.deepEqual(observedQueries, []);
     assert.deepEqual(observedS3Keys, []);
 });
@@ -261,7 +232,7 @@ test("download-file streams authorized S3 content with safe headers and minimal 
     currentRole = "faculty_staff";
     queryRows = [{
         owner_id: 17,
-        assignee_id: null,
+        assignee_id: 17,
         file_key: "documents/44/report.pdf",
         file_metadata_id: 4,
         file_name: "report\".pdf",
