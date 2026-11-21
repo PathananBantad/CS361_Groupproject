@@ -618,6 +618,8 @@ test("CloudFormation templates declare required protected and retained resources
         "ec2:UnassignPrivateIpAddresses"
     ]);
     assert.equal(applicationTemplate.Parameters.DatabasePassword.NoEcho, true);
+    assert.equal(applicationTemplate.Parameters.DatabaseHost.NoEcho, true);
+    assert.equal(applicationTemplate.Parameters.DatabaseUser.NoEcho, true);
     assert.equal(applicationTemplate.Parameters.SessionSecret.NoEcho, true);
     assert.equal(applicationTemplate.Parameters.TuApiKey.NoEcho, true);
     assert.equal(appResources.ApiFunctionUrl.Properties.AuthType, "NONE");
