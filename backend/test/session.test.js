@@ -57,14 +57,14 @@ test("session configuration requires an explicitly provided non-empty secret", a
             path.resolve(__dirname, "../../scripts/deploy-aws.js"),
             "utf8"
         );
-        const validationCall = deployScript.indexOf("const sessionSecret = getRequiredSessionSecret();");
-        const firstAwsCall = deployScript.indexOf("runAws('aws sts get-caller-identity')");
+        const validationCall = deployScript.indexOf("const sessionSecret = getRequiredSessionSecret(config);");
+        const firstAwsCall = deployScript.indexOf("verifyAwsIdentity(runAws, awsEnvironment");
 
         assert.doesNotMatch(deployScript, /SESSION_SECRET\s*:\s*envConfig\.SESSION_SECRET\s*\|\|/);
         assert.doesNotMatch(deployScript, /SESSION_SECRET\s*\|\|\s*['"`]/);
         assert.ok(validationCall >= 0);
         assert.ok(firstAwsCall > validationCall);
-        assert.match(deployScript, /SESSION_SECRET:\s*sessionSecret/);
+        assert.match(deployScript, /\["SessionSecret", config\.sessionSecret\]/);
     });
 
     await t.test("session middleware persists and reads a session when configured", async t => {

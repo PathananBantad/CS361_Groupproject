@@ -9,14 +9,14 @@ window.COGNITO_CONFIG = {
 window.IS_LOCAL = ["localhost", "127.0.0.1", "0.0.0.0", "::1"].includes(window.location.hostname);
 
 // URLs ของ Backend:
-// - Primary: AWS API Gateway + Lambda (Learner Lab)
+// - Primary: AWS Lambda Function URL (Learner Lab)
 // - Fallback: Render Web Service (รัน 24/7 เชื่อมต่อ TiDB Cloud ชุดเดียวกัน)
-window.AWS_API_GATEWAY_URL = "https://htvtloifbzeywxdh4gawlqoxdq0tftsv.lambda-url.us-east-1.on.aws";
+window.AWS_LAMBDA_FUNCTION_URL = "https://htvtloifbzeywxdh4gawlqoxdq0tftsv.lambda-url.us-east-1.on.aws";
 window.RENDER_API_URL = "https://docuflow-backend-z2md.onrender.com";
 
-window.PRIMARY_API_URL = window.AWS_API_GATEWAY_URL;
+window.PRIMARY_API_URL = window.AWS_LAMBDA_FUNCTION_URL;
 window.FALLBACK_API_URL = window.RENDER_API_URL;
-window.API_GATEWAY_URL = window.PRIMARY_API_URL;
+window.LAMBDA_FUNCTION_URL = window.PRIMARY_API_URL;
 
 // ตรวจสอบ endpoint ที่จำไว้ในเซสชัน เพื่อไม่ให้ต้องรอ timeout ซ้ำในหน้านั้นๆ
 let savedActiveApi = null;
@@ -134,7 +134,7 @@ function rewriteApiUrl(rawUrl) {
 
 // Add the Cognito access token to protected API requests. The server remains
 // the authority for identity, role, and document-level permissions.
-// พร้อมระบบ Smart Auto-Fallback: เมื่อ AWS API Gateway ล่ม/ส่ง 500 (เช่น Lab ดับ) จะสลับไปยิง Render อัตโนมัติทันที
+// พร้อมระบบ Smart Auto-Fallback: เมื่อ AWS Lambda Function URL ล่ม/ส่ง 500 (เช่น Lab ดับ) จะสลับไปยิง Render อัตโนมัติทันที
 window.apiFetch = async function (input, options = {}) {
     let rawUrl = input instanceof Request ? input.url : input;
     if (typeof rawUrl === "string" && !window.IS_LOCAL && rawUrl.startsWith("/api")) {
@@ -170,7 +170,7 @@ window.apiFetch = async function (input, options = {}) {
     try {
         response = await executeFetch(rawUrl);
 
-        // ตรวจสอบกรณีเซิร์ฟเวอร์หลัก (AWS) ส่ง Error 500/502/503/504
+        // ตรวจสอบกรณี Lambda Function URL ส่ง Error 500/502/503/504
         if (
             !window.IS_LOCAL &&
             response.status >= 500 &&
@@ -181,7 +181,7 @@ window.apiFetch = async function (input, options = {}) {
             primaryFailed = true;
         }
     } catch (networkErr) {
-        // กรณีเชื่อมต่อไม่ได้ (เช่น Network error, CORS error เมื่อ API Gateway ปิดตัวลง)
+        // กรณีเชื่อมต่อไม่ได้ (เช่น Network error หรือ CORS error)
         if (
             !window.IS_LOCAL &&
             typeof rawUrl === "string" &&

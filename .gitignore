@@ -4,3 +4,5 @@
 
 node_modules/
 *.zip
+backend/dist/
+scripts/aws-readonly-inspection-report.txt
