@@ -1,20 +1,68 @@
-// Integration test ของ Migration V7 — ต้องมี MySQL ทดสอบ (ไม่ใช่ RDS จริง)
-// รัน:  MIGRATION_TEST_DB_URL=mysql://root@127.0.0.1:3399 node --test test/migrationV7.test.js
+// Integration test ของ Migration V7 — ใช้ได้กับ isolated test MySQL/RDS เท่านั้น
+// ต้องตั้ง MIGRATION_TEST_DB_URL, MIGRATION_TEST_DB_CA และ MIGRATION_TEST_DB_ISOLATED
 // ไม่ตั้งตัวแปร = skip (npm test ปกติไม่ต่อ DB)
 // test สร้าง DB ชื่อ v7test_* ของตัวเอง แล้วลบทิ้งตอนจบ
 const { test, before, after } = require("node:test");
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
 const mysql = require("mysql2/promise");
 const { runMigration } = require("../migrate");
 const { buildInboxOrderBy, compareInboxPriority } = require("../inboxPriority");
 
-const URL = process.env.MIGRATION_TEST_DB_URL;
-const skip = URL ? false : "ตั้ง MIGRATION_TEST_DB_URL เพื่อรัน integration test";
+const rawUrl = process.env.MIGRATION_TEST_DB_URL;
+const ISOLATED_TARGET_ACK = "I_HAVE_VERIFIED_THIS_IS_AN_ISOLATED_TEST_INSTANCE";
+const skip = rawUrl ? false : "Set MIGRATION_TEST_DB_URL to run MySQL integration tests";
 const suffix = Date.now();
 const EMPTY_DB = `v7test_empty_${suffix}`;
 const LEGACY_DB = `v7test_legacy_${suffix}`;
 const quiet = () => {};
 let admin;
+
+function getMigrationConnectionConfig() {
+    if (!rawUrl) return null;
+    if (process.env.MIGRATION_TEST_DB_ISOLATED !== ISOLATED_TARGET_ACK) {
+        throw new Error("Migration tests require MIGRATION_TEST_DB_ISOLATED to confirm an isolated test instance");
+    }
+
+    let endpoint;
+    try {
+        endpoint = new URL(rawUrl);
+    } catch {
+        throw new Error("MIGRATION_TEST_DB_URL is not a valid mysql:// server URL");
+    }
+    if (endpoint.protocol !== "mysql:" || !endpoint.hostname || (endpoint.pathname && endpoint.pathname !== "/") || endpoint.search || endpoint.hash) {
+        throw new Error("MIGRATION_TEST_DB_URL must be a server-only mysql:// URL without a database, query, or fragment");
+    }
+    if (/(^|[._-])(prod(?:uction)?|live|shared|primary|main)([._-]|$)/i.test(endpoint.hostname)) {
+        throw new Error("Migration tests refuse production or shared database hostnames");
+    }
+
+    const caPath = process.env.MIGRATION_TEST_DB_CA;
+    if (!caPath || !fs.existsSync(caPath)) {
+        throw new Error("Set MIGRATION_TEST_DB_CA to the trusted MySQL/RDS CA bundle file");
+    }
+
+    const port = Number(endpoint.port || 3306);
+    if (!Number.isInteger(port) || port < 1 || port > 65535) {
+        throw new Error("MIGRATION_TEST_DB_URL has an invalid MySQL port");
+    }
+
+    return {
+        host: endpoint.hostname,
+        port,
+        user: decodeURIComponent(endpoint.username),
+        password: decodeURIComponent(endpoint.password),
+        charset: "utf8mb4",
+        ssl: {
+            ca: fs.readFileSync(path.resolve(caPath)),
+            minVersion: "TLSv1.2",
+            rejectUnauthorized: true
+        }
+    };
+}
+
+const connectionConfig = getMigrationConnectionConfig();
 
 // ค่าเริ่มต้น = sql_mode ของ RDS จริง (MySQL 8.4, ไม่ strict) เพื่อให้ผลเทสต์ตรงกับ production
 // ทดสอบแบบ strict ได้ด้วย MIGRATION_TEST_SQL_MODE=STRICT_TRANS_TABLES,NO_ENGINE_SUBSTITUTION
@@ -22,7 +70,7 @@ const SQL_MODE = process.env.MIGRATION_TEST_SQL_MODE || "IGNORE_SPACE,NO_ENGINE_
 const rejectedValue = e => ["ER_CHECK_CONSTRAINT_VIOLATED", "WARN_DATA_TRUNCATED", "ER_TRUNCATED_WRONG_VALUE_FOR_FIELD", "ER_NO_DEFAULT_FOR_FIELD"].includes(e.code);
 
 async function connect(db) {
-    const c = await mysql.createConnection(`${URL}/${db}?charset=utf8mb4`);
+    const c = await mysql.createConnection({ ...connectionConfig, database: db });
     await c.query("SET SESSION sql_mode = ?", [SQL_MODE]);
     return c;
 }
@@ -123,7 +171,7 @@ async function seedLegacy(c) {
 
 before(async () => {
     if (skip) return;
-    admin = await mysql.createConnection(URL);
+    admin = await mysql.createConnection(connectionConfig);
     await admin.query(`CREATE DATABASE ${EMPTY_DB} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`);
     await admin.query(`CREATE DATABASE ${LEGACY_DB} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`);
 });
