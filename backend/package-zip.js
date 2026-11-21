@@ -14,6 +14,7 @@ const filesToCopy = [
   "auth.js",
   "auditTrail.js",
   "documentAuthorization.js",
+  "shareLinks.js",
   "session.js",
   "config.js",
   "package.json"

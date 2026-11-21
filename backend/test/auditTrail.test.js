@@ -9,11 +9,15 @@ const {
     verifyAuditTrailAccess
 } = require("../auditTrail");
 
-test("AUDIT_EVENTS มีครบ 5 ประเภทเหตุการณ์ รวมการมอบหมายใหม่", () => {
+test("AUDIT_EVENTS มีครบ 8 ประเภทเหตุการณ์ รวมการมอบหมายใหม่และ Share Link", () => {
     assert.deepEqual(
         Object.keys(AUDIT_EVENTS).sort(),
-        ["ASSIGN", "DOCUMENT_CREATE", "FORWARD", "REASSIGN", "STATUS_CHANGE"].sort()
+        ["ASSIGN", "DOCUMENT_CREATE", "FORWARD", "REASSIGN", "STATUS_CHANGE",
+            "SHARE_LINK_CREATE", "SHARE_LINK_OPEN", "SHARE_LINK_REVOKE"].sort()
     );
+    for (const event of ["SHARE_LINK_CREATE", "SHARE_LINK_OPEN", "SHARE_LINK_REVOKE"]) {
+        assert.ok(AUDIT_EVENT_METADATA[event]?.label_th, `${event} needs metadata`);
+    }
     assert.equal(AUDIT_EVENT_METADATA.REASSIGN.label_th, "การมอบหมายเอกสารใหม่");
 });
 

@@ -31,6 +31,7 @@ const {
     getAuditTrailByDocumentId,
     queryAuditTrails
 } = require("./auditTrail");
+const { createShareLinkRouter } = require("./shareLinks");
 
 
 async function loadUserRole(req, res, next) {
@@ -474,79 +475,6 @@ app.get(
                 });
             }
 
-            if (role === "guest") {
-                const {
-                    reference_no,
-                    document_type,
-                    status,
-                    from_date,
-                    to_date,
-                    type,
-                    month
-                } = req.query;
-
-                let guestSql = `
-                    SELECT reference_no, document_type, receive_date, status
-                    FROM documents
-                    WHERE 1 = 1
-                `;
-                const guestParams = [];
-
-                if (reference_no) {
-                    guestSql += " AND reference_no LIKE ?";
-                    guestParams.push(`%${reference_no}%`);
-                }
-
-                if (document_type) {
-                    guestSql += " AND document_type = ?";
-                    guestParams.push(document_type);
-                }
-
-                if (status) {
-                    const statuses = Array.isArray(status) ? status : [status];
-                    if (statuses.length > 0) {
-                        const placeholders = statuses.map(() => "?").join(",");
-                        guestSql += ` AND status IN (${placeholders})`;
-                        guestParams.push(...statuses);
-                    }
-                }
-
-                if (from_date) {
-                    guestSql += " AND receive_date >= ?";
-                    guestParams.push(from_date);
-                }
-
-                if (to_date) {
-                    guestSql += " AND receive_date <= ?";
-                    guestParams.push(to_date);
-                }
-
-                if (type) {
-                    guestSql += " AND document_type = ?";
-                    guestParams.push(type);
-                }
-
-                if (month) {
-                    guestSql += " AND MONTH(receive_date) = ?";
-                    guestParams.push(month);
-                }
-
-                guestSql += " ORDER BY receive_date DESC";
-
-                const [guestRows] = await pool.query(guestSql, guestParams);
-                const publicDocuments = guestRows.map((doc) => ({
-                    reference_no: doc.reference_no,
-                    document_type: doc.document_type,
-                    receive_date: doc.receive_date,
-                    status: doc.status
-                }));
-
-                return res.json({
-                    data: publicDocuments,
-                    total: publicDocuments.length
-                });
-            }
-
             const {
                 reference_no,
                 subject,
@@ -779,7 +707,8 @@ app.get(
                     assign: can("assign"),
                     forward: can("forward"),
                     status: can("status"),
-                    deadline: can("deadline")
+                    deadline: can("deadline"),
+                    share: can("share")
                 },
                 display_file_name: finalFileName,
                 file_extension: ext,
@@ -2910,6 +2839,16 @@ app.get(
             });
         }
     });
+
+// Share Link (ADR #72): สร้าง/ดู/ยกเลิกต้อง login; /api/shared/:token อ่านอย่างเดียว + rate limit
+app.use(createShareLinkRouter({
+    pool,
+    requireAuth: requireCognitoAuth,
+    loadUserRole,
+    checkDocumentAccess,
+    s3: require("./s3"),
+    audit: { AUDIT_EVENTS, recordAuditEvent, extractServerActor }
+}));
 
 // ดักจับกรณีส่ง Request เกิน 1MB
 app.use((err, req, res, next) => {

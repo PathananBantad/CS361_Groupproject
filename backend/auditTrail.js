@@ -14,7 +14,10 @@ const AUDIT_EVENTS = Object.freeze({
     REASSIGN: "REASSIGN",
     FORWARD: "FORWARD",
     STATUS_CHANGE: "STATUS_CHANGE",
-    DOCUMENT_CREATE: "DOCUMENT_CREATE"
+    DOCUMENT_CREATE: "DOCUMENT_CREATE",
+    SHARE_LINK_CREATE: "SHARE_LINK_CREATE",
+    SHARE_LINK_OPEN: "SHARE_LINK_OPEN",
+    SHARE_LINK_REVOKE: "SHARE_LINK_REVOKE"
 });
 
 // คำอธิบายและ Metadata ของแต่ละ Event Type
@@ -48,6 +51,24 @@ const AUDIT_EVENT_METADATA = Object.freeze({
         label_en: "Document Creation",
         icon: "📄",
         color: "green"
+    },
+    [AUDIT_EVENTS.SHARE_LINK_CREATE]: {
+        label_th: "การสร้างลิงก์แชร์เอกสาร",
+        label_en: "Share Link Created",
+        icon: "🔗",
+        color: "indigo"
+    },
+    [AUDIT_EVENTS.SHARE_LINK_OPEN]: {
+        label_th: "การเปิดดูเอกสารผ่านลิงก์แชร์",
+        label_en: "Share Link Opened",
+        icon: "👁️",
+        color: "gray"
+    },
+    [AUDIT_EVENTS.SHARE_LINK_REVOKE]: {
+        label_th: "การยกเลิกลิงก์แชร์เอกสาร",
+        label_en: "Share Link Revoked",
+        icon: "⛔",
+        color: "red"
     }
 });
 
