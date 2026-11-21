@@ -157,6 +157,11 @@ if (uploadBox) {
 registerForm.addEventListener("submit", async (event) => {
     event.preventDefault();
 
+    if (!window.getDocuFlowAuthToken()) {
+        window.location.replace("login.html");
+        return;
+    }
+
     const role = (localStorage.getItem("docuflow_role") || "").toLowerCase().trim();
     if (role !== "document_officer") {
         window.location.replace(role ? "dashboard.html" : "login.html");

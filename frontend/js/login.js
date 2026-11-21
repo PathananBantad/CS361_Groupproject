@@ -32,7 +32,7 @@ function resolveLoginRole(responseRole, groups = []) {
 document.addEventListener("DOMContentLoaded", () => {
     const savedUser = localStorage.getItem("docuflow_user");
 
-    if (savedUser) {
+    if (savedUser && window.getDocuFlowAuthToken()) {
         usernameInput.value = savedUser;
     }
 });

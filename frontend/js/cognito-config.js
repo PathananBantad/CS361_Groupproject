@@ -101,6 +101,13 @@ function refreshCognitoSession() {
     return cognitoRefreshPromise;
 }
 
+window.getDocuFlowAuthToken = function () {
+    return localStorage.getItem("docuflow_access_token") ||
+        localStorage.getItem("access_token") ||
+        localStorage.getItem("docuflow_id_token") ||
+        localStorage.getItem("id_token") || "";
+};
+
 // Add the Cognito access token to protected API requests. The server remains
 // the authority for identity, role, and document-level permissions.
 window.apiFetch = async function (input, options = {}) {
@@ -114,10 +121,7 @@ window.apiFetch = async function (input, options = {}) {
 
     const isProtectedApi = typeof rawUrl === "string" && rawUrl.includes("/api/");
     if (isProtectedApi && !headers.has("Authorization")) {
-        const token = localStorage.getItem("docuflow_access_token") ||
-            localStorage.getItem("access_token") ||
-            localStorage.getItem("docuflow_id_token") ||
-            localStorage.getItem("id_token") || "";
+        const token = window.getDocuFlowAuthToken();
         if (token) headers.set("Authorization", `Bearer ${token}`);
     }
 

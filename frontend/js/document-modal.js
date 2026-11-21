@@ -638,7 +638,11 @@
                 responsible_person: "ผู้รับผิดชอบเรื่อง"
             };
             const roleLabel = roleLabels[auth.role] || auth.role || "ไม่ระบุบทบาท";
-            actionCurrentRoleDisplay.textContent = `${roleLabel} (${auth.user || "-"})`;
+            if (auth.hasPermission) {
+                actionCurrentRoleDisplay.textContent = `${roleLabel} (${auth.user || "-"})`;
+            } else {
+                actionCurrentRoleDisplay.textContent = "ไม่มีสิทธิ์ดำเนินการ";
+            }
         }
 
         // 3. Update Stepper Circles & Connectors (Task 7)
@@ -1029,7 +1033,7 @@
     }
 
     async function openDocumentModal(docOrId) {
-        if (!getCurrentAuth(null).hasPermission) {
+        if (!window.getDocuFlowAuthToken() || !getCurrentAuth(null).hasPermission) {
             window.location.replace("login.html");
             return;
         }

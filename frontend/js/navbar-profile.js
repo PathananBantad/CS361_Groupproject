@@ -27,12 +27,9 @@
         let savedRole = (localStorage.getItem("docuflow_role") || "").toLowerCase().trim();
         if (savedRole === "staff") savedRole = "faculty_staff"; // ชื่อ Role เก่า
         const savedUser = localStorage.getItem("docuflow_user") || "";
-        const token = localStorage.getItem("docuflow_access_token") || localStorage.getItem("access_token") || "";
-
-        // Authentication guard for protected pages
         const currentPath = window.location.pathname.toLowerCase();
         const knownRoles = ["admin", "executive", "document_officer", "responsible_person", "faculty_staff"];
-        if (!token || !knownRoles.includes(savedRole)) {
+        if (!window.getDocuFlowAuthToken?.() || !knownRoles.includes(savedRole)) {
             if (currentPath.includes("register.html") || currentPath.includes("dashboard.html")) {
                 window.location.replace("login.html");
                 return;

@@ -130,43 +130,6 @@ function updateRoleUI() {
     }
 }
 
-function configureGuestDashboard() {
-    if (currentRole !== "guest") return;
-
-    if (globalSearch) {
-        globalSearch.placeholder = "ค้นหาจากเลขอ้างอิง ประเภท วันที่รับ หรือสถานะ";
-    }
-
-    for (const id of ["filterSubject", "filterSender", "filterReceiver", "filterDeadline"]) {
-        const input = document.getElementById(id);
-        const label = input?.closest("label");
-        if (label) {
-            label.hidden = true;
-            label.style.display = "none";
-            input.value = "";
-        }
-    }
-
-    const filterDescription = document.querySelector(".document-search-filters p");
-    if (filterDescription) {
-        filterDescription.textContent = "ทะเบียนสาธารณะแสดงเฉพาะเลขอ้างอิง ประเภทเอกสาร วันที่รับ และสถานะ";
-    }
-
-    const table = document.querySelector(".document-table");
-    const header = table?.querySelector("thead");
-    if (table) table.style.minWidth = "650px";
-    if (header) {
-        header.innerHTML = `
-            <tr>
-                <th data-sort="reference_no">เลขอ้างอิง <small>Reference</small><span>↕</span></th>
-                <th data-sort="document_type">ประเภทเอกสาร <small>Type</small><span>↕</span></th>
-                <th data-sort="receive_date">วันที่รับ <small>Received</small><span>↕</span></th>
-                <th data-sort="status">สถานะ <small>Status</small><span>↕</span></th>
-            </tr>
-        `;
-    }
-}
-
 /* =====================================================
    FETCH DOCUMENTS
 ===================================================== */
@@ -174,43 +137,31 @@ async function fetchDocuments() {
     const params = new URLSearchParams();
 
     const apiBase = getApiBaseUrl();
-    const token = localStorage.getItem("docuflow_access_token") || localStorage.getItem("access_token") || localStorage.getItem("docuflow_id_token") || localStorage.getItem("id_token") || "";
+    if (!window.getDocuFlowAuthToken()) {
+        window.location.replace("login.html");
+        return;
+    }
 
     documents = [];
     window.docuflowDocuments = documents;
     showDocumentRequestState("กำลังโหลดข้อมูลเอกสาร...");
 
     try {
-        const headers = {};
-        if (token) {
-            headers["Authorization"] = `Bearer ${token}`;
+        const response = await window.apiFetch(`${apiBase}/documents?${params.toString()}`);
+        if (response.status === 401) {
+            window.location.replace("login.html");
+            return;
         }
-
-        const response = await window.apiFetch(`${apiBase}/documents?${params.toString()}`, { headers });
 
         if (!response.ok) {
             throw new Error(`เซิร์ฟเวอร์ตอบกลับรหัสข้อผิดพลาด: ${response.status}`);
         }
 
         const data = await response.json();
-        const rows = isGuest
-            ? (data && typeof data === "object" ? data.data : null)
-            : (Array.isArray(data) ? data : (data?.documents || data?.data));
+        const rows = Array.isArray(data) ? data : (data?.documents || data?.data);
 
         if (!Array.isArray(rows) || rows.some(row => !row || typeof row !== "object" || Array.isArray(row))) {
             throw new Error("รูปแบบรายการเอกสารไม่ถูกต้อง");
-        }
-
-        if (isGuest) {
-            documents = rows.map(row => ({
-                reference_no: typeof row.reference_no === "string" ? row.reference_no : "",
-                document_type: typeof row.document_type === "string" ? row.document_type : "",
-                receive_date: row.receive_date == null ? "" : String(row.receive_date),
-                status: typeof row.status === "string" ? row.status : ""
-            }));
-            window.docuflowDocuments = documents;
-            render();
-            return;
         }
 
         const V3_STATUS_CONFIG = {
@@ -333,9 +284,8 @@ async function fetchDocuments() {
 
 function showDocumentRequestState(message, isError = false) {
     const stateClass = isError ? "empty-table error-state" : "empty-table loading-state";
-    const columnCount = currentRole === "guest" ? 4 : 7;
     if (tableBody) {
-        tableBody.innerHTML = `<tr><td colspan="${columnCount}" class="${stateClass}">${escapeHtml(message)}</td></tr>`;
+        tableBody.innerHTML = `<tr><td colspan="7" class="${stateClass}">${escapeHtml(message)}</td></tr>`;
     }
     if (mobileList) {
         mobileList.innerHTML = `<div class="${stateClass}">${escapeHtml(message)}</div>`;
@@ -374,11 +324,6 @@ function deadlineLabel(doc) {
    RENDER
 ===================================================== */
 function render() {
-    if (currentRole === "guest") {
-        renderGuestDocuments();
-        return;
-    }
-
     let result = [...documents];
     const keyword = globalSearch ? globalSearch.value.trim().toLowerCase() : "";
 
@@ -450,111 +395,6 @@ function render() {
     if (shownCount) {
         shownCount.textContent = result.length;
     }
-}
-
-function renderGuestDocuments() {
-    let result = [...documents];
-    const keyword = globalSearch ? globalSearch.value.trim().toLocaleLowerCase() : "";
-
-    if (keyword) {
-        result = result.filter(doc => [
-            doc.reference_no,
-            doc.document_type,
-            doc.receive_date,
-            doc.status
-        ].some(value => value.toLocaleLowerCase().includes(keyword)));
-    }
-
-    if (!currentFilters.has("all")) {
-        result = result.filter(doc => [...currentFilters].some(filter =>
-            doc.status.toLocaleLowerCase() === String(filter).toLocaleLowerCase()
-        ));
-    }
-
-    const referenceFilter = document.getElementById("filterReference")?.value.trim().toLocaleLowerCase() || "";
-    const typeFilter = document.getElementById("filterType")?.value.trim().toLocaleLowerCase() || "";
-    if (referenceFilter) {
-        result = result.filter(doc => doc.reference_no.toLocaleLowerCase().includes(referenceFilter));
-    }
-    if (typeFilter) {
-        result = result.filter(doc => doc.document_type.toLocaleLowerCase().includes(typeFilter));
-    }
-
-    const from = document.getElementById("filterFrom")?.value || "";
-    const to = document.getElementById("filterTo")?.value || "";
-    if (from) result = result.filter(doc => dateOnly(doc.receive_date) && dateOnly(doc.receive_date) >= from);
-    if (to) result = result.filter(doc => dateOnly(doc.receive_date) && dateOnly(doc.receive_date) <= to);
-
-    const sortableFields = ["reference_no", "document_type", "receive_date", "status"];
-    if (sortableFields.includes(sortKey)) {
-        result.sort((a, b) => String(a[sortKey]).localeCompare(String(b[sortKey])) * sortDirection);
-    }
-
-    renderGuestTable(result);
-    renderGuestMobile(result);
-    if (shownCount) shownCount.textContent = result.length;
-}
-
-function formatGuestDate(value) {
-    if (!value) return "-";
-    if (/^\d{4}-\d{2}-\d{2}$/.test(value.trim())) {
-        const [year, month, day] = value.trim().split("-").map(Number);
-        const date = new Date(year, month - 1, day);
-        return Number.isNaN(date.getTime()) ? "-" : date.toLocaleDateString("th-TH");
-    }
-    const date = new Date(value);
-    return Number.isNaN(date.getTime()) ? "-" : date.toLocaleDateString("th-TH");
-}
-
-function guestStatusClass(status) {
-    const normalized = status.trim().toLowerCase();
-    const knownStatuses = {
-        received: "received",
-        assigned: "assigned",
-        processing: "processing",
-        completed: "completed"
-    };
-    return knownStatuses[normalized] || "unknown";
-}
-
-function renderGuestTable(list) {
-    if (!tableBody) return;
-    if (!list.length) {
-        tableBody.innerHTML = `<tr><td colspan="4" class="empty-table">ไม่พบข้อมูลเอกสารในระบบ</td></tr>`;
-        return;
-    }
-
-    tableBody.innerHTML = list.map(doc => `
-        <tr class="guest-document" style="cursor: default">
-            <td>${escapeHtml(doc.reference_no || "-")}</td>
-            <td>${escapeHtml(doc.document_type || "-")}</td>
-            <td class="received"><strong>${escapeHtml(formatGuestDate(doc.receive_date))}</strong></td>
-            <td><span class="status-badge status-${guestStatusClass(doc.status)}">${escapeHtml(doc.status || "ไม่ระบุ")}</span></td>
-        </tr>
-    `).join("");
-}
-
-function renderGuestMobile(list) {
-    if (!mobileList) return;
-    if (!list.length) {
-        mobileList.innerHTML = `<div class="empty-table">ไม่พบข้อมูลเอกสารในระบบ</div>`;
-        return;
-    }
-
-    mobileList.innerHTML = list.map(doc => `
-        <article class="mobile-document guest-document">
-            <div class="mobile-top">
-                <div class="mobile-main">
-                    <div class="mobile-number">${escapeHtml(doc.reference_no || "-")}</div>
-                    <div class="mobile-name">${escapeHtml(doc.document_type || "-")}</div>
-                </div>
-                <span class="status-badge status-${guestStatusClass(doc.status)}">${escapeHtml(doc.status || "ไม่ระบุ")}</span>
-            </div>
-            <div class="mobile-meta">
-                <span>วันที่รับ: ${escapeHtml(formatGuestDate(doc.receive_date))}</span>
-            </div>
-        </article>
-    `).join("");
 }
 
 /* =====================================================
