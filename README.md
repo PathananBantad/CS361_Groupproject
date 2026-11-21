@@ -136,7 +136,7 @@ The CloudFormation templates are in `infra/cloudformation/`:
 |---|---|
 | `artifact-bucket.json` | Creates the private, versioned deployment-artifact bucket in a separate CloudFormation stack. Public access is blocked and deletion/replacement retains the bucket. |
 | `docuflow.json` Lambda, execution role, log group, Function URL and invoke permissions | Managed by the application stack. Names, environment, origins, Cognito pool, and runtime configuration are parameters. The public Function URL is `NONE` auth so the browser can call it; application endpoints continue to enforce Cognito JWT and authorization middleware. |
-| Lambda VPC configuration | The application stack passes `VpcSubnetIds` and `VpcSecurityGroupIds` to the Lambda. Defaults are `subnet-01fc484b0fe3e3911`, `subnet-074752d005c6e61bc`, and `sg-0450285f801a51cab`; the existing execution role receives the ENI permissions required by Lambda VPC networking. |
+| Lambda VPC configuration | The application stack requires environment-specific `VPC_SUBNET_IDS` and `VPC_SECURITY_GROUP_IDS`; there are no subnet or security-group defaults. The execution role receives the ENI permissions required by Lambda VPC networking. Lambda RDS connections enable verified TLS with the bundled RDS CA. |
 | Document S3 bucket | `DOCUMENT_BUCKET_MODE=Existing` references the supplied bucket without importing, changing, or deleting it. `Create` provisions a new private/versioned bucket with `DeletionPolicy: Retain` and `UpdateReplacePolicy: Retain`. |
 | Existing Cognito User Pool and Amplify app | Remain externally managed. CloudFormation grants the configured pool permission to invoke Lambda but does not replace the pool's `LambdaConfig` or change the Amplify app. |
 | Amazon RDS for MySQL | Remains external; only connection settings are passed to Lambda. No RDS instance is provisioned and no database migration is run by this deployment. |
@@ -153,6 +153,7 @@ An AWS read-only inspection was attempted before designing this deployment, but 
 - AWS permissions for CloudFormation stack operations, Lambda, S3 artifact upload, IAM role creation, and `sts:GetCallerIdentity`. The Lambda execution role created by the template is scoped to the configured document bucket and Cognito pool.
 - An existing Cognito User Pool and App Client.
 - An existing Amazon RDS for MySQL database, reachable by the Lambda VPC configuration, and its connection settings (MySQL port `3306`). This deployment does not create the database.
+- Set `VPC_SUBNET_IDS` and `VPC_SECURITY_GROUP_IDS` to IDs in the selected AWS environment; no account-specific network IDs are assumed.
 - An existing document bucket (recommended for the current deployment) or a globally unique name for a new bucket.
 - An Amplify frontend origin for CORS. For a new document bucket, direct browser uploads/downloads also use the S3 CORS rule in the template. Existing bucket CORS is not changed by this deployment and must be reviewed/configured separately if needed.
 
@@ -175,6 +176,7 @@ The deployment script accepts terminal environment variables and optionally read
 | `COGNITO_REGION` | No | Defaults to the region prefix of `COGNITO_USER_POOL_ID`. |
 | `COGNITO_USER_POOL_ID`, `COGNITO_APP_CLIENT_ID` | Yes | Existing Cognito pool and client identifiers. These identifiers are not secrets. |
 | `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME` | Yes | Existing Amazon RDS for MySQL connection; set `DB_PORT=3306`. `DB_USERNAME` and `DB_DATABASE` are accepted aliases. |
+| `VPC_SUBNET_IDS`, `VPC_SECURITY_GROUP_IDS` | Yes | Comma-separated subnet and security-group IDs for the target environment's Lambda VPC. |
 | `SESSION_SECRET` | Yes | Session signing secret. |
 | `COGNITO_CLIENT_SECRET` | No | Only if the existing Cognito App Client has a client secret. |
 | `TU_API_URL` | No | Defaults to the existing TU API endpoint. |
@@ -215,6 +217,8 @@ $env:DB_PORT = "3306"
 $env:DB_USER = "<rds-mysql-user>"
 $env:DB_PASSWORD = "<rds-mysql-password>"
 $env:DB_NAME = "<rds-mysql-database>"
+$env:VPC_SUBNET_IDS = "<private-subnet-id-1>,<private-subnet-id-2>"
+$env:VPC_SECURITY_GROUP_IDS = "<lambda-security-group-id>"
 $env:SESSION_SECRET = "<session-secret>"
 node scripts\deploy-aws.js
 ```
@@ -229,7 +233,7 @@ The frontend's primary endpoint is configured as `AWS_LAMBDA_FUNCTION_URL` in `f
 
 `.github/workflows/ci.yml` runs on pushes, pull requests, or manual dispatch. It installs backend dependencies with `npm ci`, checks JavaScript syntax, and runs all backend tests. `.github/workflows/deploy.yml` is manual (`workflow_dispatch`) with `dev`, `staging`, and `production` choices. It installs dependencies, runs tests and deployment-configuration validation, blocks production deployments from branches other than `main`, configures AWS credentials, verifies the caller identity, and invokes `node scripts/deploy-aws.js`. Configure required reviewers on the GitHub `production` Environment.
 
-Create GitHub Environments named `dev`, `staging`, and/or `production`. Configure these environment variables as appropriate: `AWS_REGION`, `AWS_S3_REGION`, `AWS_EXPECTED_ACCOUNT_ID`, `CLOUDFORMATION_STACK_NAME`, `LAMBDA_FUNCTION_NAME`, `ARTIFACT_BUCKET_NAME`, `DOCUMENT_BUCKET_NAME`, `DOCUMENT_BUCKET_MODE`, `FRONTEND_ALLOWED_ORIGINS`, `COGNITO_REGION`, `COGNITO_USER_POOL_ID`, `COGNITO_APP_CLIENT_ID`, `DB_PORT`, `DB_NAME`, and `TU_API_URL`.
+Create GitHub Environments named `dev`, `staging`, and/or `production`. Configure these environment variables as appropriate: `AWS_REGION`, `AWS_S3_REGION`, `AWS_EXPECTED_ACCOUNT_ID`, `CLOUDFORMATION_STACK_NAME`, `LAMBDA_FUNCTION_NAME`, `ARTIFACT_BUCKET_NAME`, `DOCUMENT_BUCKET_NAME`, `DOCUMENT_BUCKET_MODE`, `FRONTEND_ALLOWED_ORIGINS`, `VPC_SUBNET_IDS`, `VPC_SECURITY_GROUP_IDS`, `COGNITO_REGION`, `COGNITO_USER_POOL_ID`, `COGNITO_APP_CLIENT_ID`, `DB_PORT`, `DB_NAME`, and `TU_API_URL`.
 
 Configure these environment secrets: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`, `DB_HOST`, `DB_USER`, `DB_PASSWORD`, `SESSION_SECRET`, `COGNITO_CLIENT_SECRET` (if applicable), and `TU_API_KEY` (if TU login is enabled). AWS Academy environments commonly issue temporary credentials and may not permit configuring an OIDC provider/role. This workflow therefore uses GitHub Environment secrets for the temporary three-part credentials; refresh them after expiry. OIDC is not assumed to be available. If the AWS account later supports OIDC, prefer a narrowly scoped role and GitHub repository/branch trust over long-lived credentials.
 
@@ -245,6 +249,10 @@ npm --prefix backend test
 The deployment tests cover environment validation, AWS Academy session-token propagation, caller identity validation, CloudFormation parameter mapping and resource safeguards, template security/outputs, and health-check failure handling. They do not contact AWS.
 
 The deployment script's health check requires both HTTP success and `{ "ok": true, "database": "connected" }`. After a successful deploy, verify the CloudFormation outputs (`LambdaArn`, `FunctionUrl`, and `DocumentBucketName`), test the health URL, then run authenticated smoke tests for login, document listing/authorization, upload/download, assignments, status changes, and audit history. Protected APIs should reject requests without a valid Cognito access token.
+
+The optional `scripts/verify-services.js` smoke test requires `DEPLOY_ENVIRONMENT`, `AWS_REGION`, `AWS_EXPECTED_ACCOUNT_ID`, `V5_VERIFY_S3_BUCKET`, and `V5_VERIFY_FUNCTION_URL`. It checks the AWS caller account before writing a temporary object, refuses V2 targets, and removes the object in a `finally` cleanup path.
+
+The optional RDS tunnel helper requires explicit `-Region`, `-ExpectedAccountId`, `-RdsInstanceIdentifier`, and `-BastionInstanceId` parameters. It uses the AWS CLI credential provider chain and verifies the caller account before opening the SSM tunnel.
 
 To roll back application code, identify a previously uploaded package key in the retained/versioned artifact bucket and update the application stack's `LambdaPackageKey` to that key using a reviewed CloudFormation change. Database migrations and existing document files are not rolled back by this procedure. Buckets and logs have retention policies; deletion/replacement does not purge their data automatically.
 

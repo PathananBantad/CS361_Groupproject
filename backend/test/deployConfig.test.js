@@ -38,7 +38,9 @@ const validConfig = {
     DB_USER: "unit-test-user",
     DB_PASSWORD: "unit-test-password",
     DB_NAME: "unit_test",
-    SESSION_SECRET: "unit-test-session-secret"
+    SESSION_SECRET: "unit-test-session-secret",
+    VPC_SUBNET_IDS: "subnet-0123456789abcdef0,subnet-0abcdef0123456789",
+    VPC_SECURITY_GROUP_IDS: "sg-0123456789abcdef0"
 };
 
 const validDeploymentConfig = getRequiredDeploymentConfig(validConfig);
@@ -213,17 +215,27 @@ test("deployment configuration validates environment-specific resources and orig
         assert.throws(
             () => getRequiredDeploymentConfig({
                 ...validConfig,
-                VPC_SUBNET_IDS: "subnet-invalid,subnet-074752d005c6e61bc"
+                VPC_SUBNET_IDS: `subnet-invalid,${validConfig.VPC_SUBNET_IDS.split(",")[1]}`
             }),
             /VPC_SUBNET_IDS/
         );
         assert.throws(
             () => getRequiredDeploymentConfig({
                 ...validConfig,
-                VPC_SUBNET_IDS: "subnet-01fc484b0fe3e3911,subnet-01fc484b0fe3e3911"
+                VPC_SUBNET_IDS: `${validConfig.VPC_SUBNET_IDS.split(",")[0]},${validConfig.VPC_SUBNET_IDS.split(",")[0]}`
             }),
             /VPC_SUBNET_IDS/
         );
+    });
+
+    await t.test("requires explicit VPC resources for each target environment", () => {
+        const withoutSubnets = { ...validConfig };
+        delete withoutSubnets.VPC_SUBNET_IDS;
+        assert.throws(() => getRequiredDeploymentConfig(withoutSubnets), /VPC_SUBNET_IDS/);
+
+        const withoutSecurityGroups = { ...validConfig };
+        delete withoutSecurityGroups.VPC_SECURITY_GROUP_IDS;
+        assert.throws(() => getRequiredDeploymentConfig(withoutSecurityGroups), /VPC_SECURITY_GROUP_IDS/);
     });
 
     await t.test("rejects unsupported environment and invalid CORS origins", () => {
@@ -315,9 +327,9 @@ test("CloudFormation parameter mapping and stack preflight are explicit and fail
     assert.equal(values.LambdaPackageKey, "lambda/dev/abc123.zip");
     assert.equal(
         values.VpcSubnetIds,
-        "subnet-01fc484b0fe3e3911,subnet-074752d005c6e61bc"
+        validConfig.VPC_SUBNET_IDS
     );
-    assert.equal(values.VpcSecurityGroupIds, "sg-0450285f801a51cab");
+    assert.equal(values.VpcSecurityGroupIds, validConfig.VPC_SECURITY_GROUP_IDS);
     assert.equal(values.DocumentBucketName, validConfig.DOCUMENT_BUCKET_NAME);
     assert.equal(values.CognitoUserPoolId, validConfig.COGNITO_USER_POOL_ID);
     assert.equal(values.DatabasePassword, validConfig.DB_PASSWORD);
@@ -473,9 +485,9 @@ test("VPC parameters are included in CloudFormation request parameters", () => {
     }) => [ParameterKey, ParameterValue]));
     assert.equal(
         values.VpcSubnetIds,
-        "subnet-01fc484b0fe3e3911,subnet-074752d005c6e61bc"
+        validConfig.VPC_SUBNET_IDS
     );
-    assert.equal(values.VpcSecurityGroupIds, "sg-0450285f801a51cab");
+    assert.equal(values.VpcSecurityGroupIds, validConfig.VPC_SECURITY_GROUP_IDS);
 });
 
 test("CloudFormation failures propagate and temporary parameter files are cleaned up", () => {
@@ -586,18 +598,13 @@ test("CloudFormation templates declare required protected and retained resources
     assert.ok(applicationTemplate.Parameters.CognitoAppClientId);
     assert.equal(applicationTemplate.Parameters.VpcSubnetIds.Type, "CommaDelimitedList");
     assert.equal(applicationTemplate.Parameters.VpcSecurityGroupIds.Type, "CommaDelimitedList");
-    assert.equal(
-        applicationTemplate.Parameters.VpcSubnetIds.Default,
-        "subnet-01fc484b0fe3e3911,subnet-074752d005c6e61bc"
-    );
-    assert.equal(
-        applicationTemplate.Parameters.VpcSecurityGroupIds.Default,
-        "sg-0450285f801a51cab"
-    );
+    assert.equal(Object.hasOwn(applicationTemplate.Parameters.VpcSubnetIds, "Default"), false);
+    assert.equal(Object.hasOwn(applicationTemplate.Parameters.VpcSecurityGroupIds, "Default"), false);
     assert.deepEqual(appResources.ApiFunction.Properties.VpcConfig, {
         SubnetIds: { Ref: "VpcSubnetIds" },
         SecurityGroupIds: { Ref: "VpcSecurityGroupIds" }
     });
+    assert.equal(appResources.ApiFunction.Properties.Environment.Variables.DB_SSL, "true");
     const executionPolicy = appResources.LambdaExecutionRole.Properties.Policies[0]
         .PolicyDocument.Statement;
     const vpcPermissions = executionPolicy.find(statement =>

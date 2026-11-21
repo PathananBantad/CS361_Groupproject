@@ -165,10 +165,19 @@ RDS (MySQL 8.4.11) ใช้ `sql_mode = IGNORE_SPACE,NO_ENGINE_SUBSTITUTION` �
 ```bash
 cd backend
 npm run migrate                      # รันซ้ำได้
-# integration test บน MySQL ทดสอบ (ห้ามชี้ไป RDS จริง) — สร้าง/ลบ DB v7test_* ของตัวเอง
-MIGRATION_TEST_DB_URL=mysql://root@127.0.0.1:3399 node --test test/migrationV7.test.js
+# Integration tests are destructive: use an isolated MySQL/RDS test instance only.
+# The migration suite creates and drops timestamped v7test_* databases and requires CREATE/DROP DATABASE.
+export MIGRATION_TEST_DB_URL='mysql://<encoded-user>:<encoded-password>@<isolated-test-rds-endpoint>:3306'
+export MIGRATION_TEST_DB_CA='/path/to/rds-global-bundle.pem'
+export MIGRATION_TEST_DB_ISOLATED='I_HAVE_VERIFIED_THIS_IS_AN_ISOLATED_TEST_INSTANCE'
+node --test test/migrationV7.test.js
 # ค่าเริ่มต้นใช้ sql_mode เดียวกับ RDS; ทดสอบแบบ strict เพิ่มด้วย MIGRATION_TEST_SQL_MODE=STRICT_TRANS_TABLES,NO_ENGINE_SUBSTITUTION
-npm test                             # unit test (integration ด้านบนจะ skip ถ้าไม่ตั้งตัวแปร)
+npm test                             # unit tests; migration tests skip when MIGRATION_TEST_DB_URL is absent
+
+# Live API tests use separate RESPONSIBLE_PERSON_TEST_DB_HOST/PORT/NAME/USER/PASSWORD settings,
+# a test-named database, TLS through the bundled RDS CA, and
+# RESPONSIBLE_PERSON_TEST_DB_ISOLATED=I_HAVE_VERIFIED_THIS_IS_AN_ISOLATED_TEST_DATABASE.
+# Without this dedicated configuration all live API cases are reported as skipped.
 ```
 
 `test/migrationV7.test.js` ครอบคลุม: DB ว่าง (migrate 3 ครั้งแล้ว schema และ seed เหมือนเดิม), DB ที่มีข้อมูลเดิม (คอลัมน์/index เดิมไม่หายและไม่เปลี่ยน, จำนวนแถวเดิมครบ, query Inbox เดิมให้ผลเหมือนเดิม) และกรณีที่ต้องถูกปฏิเสธ (token_hash ซ้ำ, ไม่มี expires_at, FK ไม่มีจริง, ปักดาวซ้ำ, review_state/decision นอก ENUM, UPDATE/DELETE head review)
