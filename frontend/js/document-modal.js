@@ -189,6 +189,7 @@
                 hideAlert();
                 currentActiveDoc = null;
                 openRequest++;
+                document.getElementById("documentShareLinks")?.replaceChildren();
             });
         }
     }
@@ -1026,6 +1027,7 @@
     function disableWorkflowActions() {
         if (!currentActiveDoc) return;
         currentActiveDoc.permissions = {};
+        document.getElementById("documentShareLinks")?.replaceChildren();
         renderWorkflowUI(currentActiveDoc.status, getCurrentAuth());
         document.getElementById("forwardSectionContainer")?.replaceChildren();
         const deadlineButton = document.getElementById("editDeadlineButton");
@@ -1060,6 +1062,7 @@
         currentActiveDoc = doc;
         const auth = getCurrentAuth(doc);
         const permissions = doc.permissions || {};
+        window.DocuFlowShareLinks?.mount(document.getElementById("documentShareLinks"), doc);
         const forwardHost = document.getElementById("forwardSectionContainer");
         forwardHost?.replaceChildren();
         if (window.DocuFlowAssignment) {

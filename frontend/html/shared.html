@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="referrer" content="no-referrer">
+    <meta name="robots" content="noindex, nofollow">
+    <title>เอกสารที่แชร์ | DocuFlow</title>
+    <link rel="stylesheet" href="../css/common.css">
+    <link rel="stylesheet" href="../css/shared.css">
+    <script src="../js/cognito-config.js" defer></script>
+    <script src="../js/share-links.js" defer></script>
+    <script src="../js/shared.js" defer></script>
+</head>
+<body>
+    <main class="shared-page">
+        <header>
+            <p class="shared-brand">DocuFlow</p>
+            <h1>เอกสารที่แชร์</h1>
+        </header>
+        <p id="sharedStatus" role="status">กำลังโหลดเอกสาร…</p>
+        <section id="sharedDocument" aria-labelledby="sharedSubject" hidden>
+            <h2 id="sharedSubject"></h2>
+            <dl>
+                <dt>เลขอ้างอิง</dt><dd id="sharedReference"></dd>
+                <dt>ประเภทเอกสาร</dt><dd id="sharedType"></dd>
+                <dt>ชื่อไฟล์</dt><dd id="sharedFilename"></dd>
+            </dl>
+            <div id="sharedActions" class="shared-actions" hidden>
+                <button type="button" id="sharedPreview">แสดงตัวอย่าง</button>
+                <button type="button" id="sharedDownload">ดาวน์โหลด</button>
+            </div>
+            <p id="sharedPreviewFallback" hidden><a id="sharedPreviewLink" target="_blank"
+                rel="noopener noreferrer">เปิดตัวอย่างในแท็บใหม่</a></p>
+            <iframe id="sharedFilePreview" referrerpolicy="no-referrer"
+                sandbox="allow-scripts" title="ตัวอย่างเอกสาร" hidden></iframe>
+        </section>
+    </main>
+</body>
+</html>
