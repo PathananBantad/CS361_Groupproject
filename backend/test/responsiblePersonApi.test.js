@@ -4,6 +4,10 @@ const { test, describe, before, after } = require("node:test");
 const assert = require("node:assert/strict");
 const http = require("node:http");
 
+// This integration test runs with an isolated, non-production session secret.
+// Set it before loading the server, which validates session configuration at import time.
+process.env.SESSION_SECRET = "test-only-session-secret";
+
 const LIVE_DB_ENV = {
     host: "RESPONSIBLE_PERSON_TEST_DB_HOST",
     port: "RESPONSIBLE_PERSON_TEST_DB_PORT",
