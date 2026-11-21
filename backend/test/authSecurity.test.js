@@ -4,6 +4,8 @@
 // - CORS allow/deny และ OPTIONS preflight
 // ไม่เรียก TU API / AWS / ฐานข้อมูลจริง: stub fetch, Cognito client และ pool
 process.env.SESSION_SECRET ||= "test-only-session-secret";
+process.env.COGNITO_USER_POOL_ID ||= "us-east-1_testPool";
+process.env.COGNITO_APP_CLIENT_ID ||= "test-app-client";
 
 const { test, describe, before, after, beforeEach } = require("node:test");
 const assert = require("node:assert/strict");
@@ -39,6 +41,8 @@ global.fetch = async (url, options) => {
     return tuFetchHandler(url, options);
 };
 
+const { installCognitoTestVerifier } = require("./cognitoTestFixtures");
+installCognitoTestVerifier();
 const app = require("../server");
 
 
