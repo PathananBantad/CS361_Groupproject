@@ -10,9 +10,8 @@
         admin: "ผู้ดูแลระบบ (Admin)",
         document_officer: "เจ้าหน้าที่รับเอกสาร",
         faculty_staff: "อาจารย์ / บุคลากร",
-        staff: "อาจารย์ / บุคลากร",
         executive: "ผู้บริหาร",
-        guest: "ผู้ใช้ทั่วไป"
+        responsible_person: "ผู้รับผิดชอบเรื่อง",
     };
 
     function initNavbarProfile() {
@@ -25,27 +24,29 @@
         const userRoleDropdownTitle = document.getElementById("userRoleDropdownTitle");
         const userRoleDropdownEmail = document.getElementById("userRoleDropdownEmail");
 
-        const savedRole = (localStorage.getItem("docuflow_role") || "guest").toLowerCase().trim();
+        let savedRole = (localStorage.getItem("docuflow_role") || "").toLowerCase().trim();
+        if (savedRole === "staff") savedRole = "faculty_staff"; // ชื่อ Role เก่า
         const savedUser = localStorage.getItem("docuflow_user") || "";
         const token = localStorage.getItem("docuflow_access_token") || localStorage.getItem("access_token") || "";
 
         // Authentication guard for protected pages
         const currentPath = window.location.pathname.toLowerCase();
-        if (!savedUser && !token) {
+        const knownRoles = ["admin", "executive", "document_officer", "responsible_person", "faculty_staff"];
+        if (!token || !knownRoles.includes(savedRole)) {
             if (currentPath.includes("register.html") || currentPath.includes("dashboard.html")) {
                 window.location.replace("login.html");
                 return;
             }
         }
 
-        const canRegister = ["admin", "document_officer"].includes(savedRole);
+        const canRegister = savedRole === "document_officer";
         document.querySelectorAll('a[href="register.html"]').forEach(link => {
             link.hidden = !canRegister;
         });
         if (currentPath.endsWith("/register.html") && !canRegister) {
             const form = document.getElementById("registerForm");
             if (form) form.hidden = true;
-            window.location.replace(savedRole === "guest" ? "login.html" : "dashboard.html");
+            window.location.replace(knownRoles.includes(savedRole) ? "dashboard.html" : "login.html");
             return;
         }
 
@@ -70,8 +71,8 @@
                 userRoleDot.classList.add("role-executive");
             } else if (savedRole === "document_officer") {
                 userRoleDot.classList.add("role-officer");
-            } else if (savedRole === "guest") {
-                userRoleDot.classList.add("role-guest");
+            } else if (savedRole === "responsible_person") {
+                userRoleDot.classList.add("role-responsible");
             } else {
                 userRoleDot.classList.add("role-staff");
             }

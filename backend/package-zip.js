@@ -15,6 +15,7 @@ const filesToCopy = [
   "auditTrail.js",
   "documentAuthorization.js",
   "session.js",
+  "config.js",
   "package.json"
 ];
 
@@ -68,6 +69,10 @@ function createPackage({ stagingPath = staging, outputPath = zipTarget } = {}) {
     for (const file of filesToCopy) {
       fs.copyFileSync(path.join(__dirname, file), path.join(stagingPath, file));
     }
+
+    fs.cpSync(path.join(__dirname, "certs"), path.join(stagingPath, "certs"), {
+      recursive: true
+    });
 
     console.log("Copying node_modules (excluding bcrypt and cache)...");
     fs.cpSync(path.join(__dirname, "node_modules"), path.join(stagingPath, "node_modules"), {

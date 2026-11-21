@@ -7,6 +7,8 @@
 const tableBody = document.getElementById("documentTableBody");
 const mobileList = document.getElementById("mobileList");
 const globalSearch = document.getElementById("globalSearch");
+const typeFilter = document.getElementById("filterType");
+const urgencyFilter = document.getElementById("filterUrgency");
 const shownCount = document.getElementById("shownCount");
 
 // Role Selector Elements
@@ -17,10 +19,11 @@ const userRoleDisplay = document.getElementById("userRoleDisplay");
 
 let documents = [];
 let currentFilters = new Set(["all"]);
+let selectedUrgency = "";
 let sortKey = null;
 let sortDirection = 1;
 
-// บทบาทผู้ใช้ปัจจุบัน (staff, admin, guest) สำหรับตรวจสอบสิทธิ์
+// บทบาทผู้ใช้ปัจจุบัน สำหรับตรวจสอบสิทธิ์ฝั่ง UI (backend เป็นผู้ตัดสินสิทธิ์จริง)
 let currentRole = null;
 let currentUsername = null;
 
@@ -101,9 +104,8 @@ function updateRoleUI() {
         admin: "ผู้ดูแลระบบ (Admin)",
         document_officer: "เจ้าหน้าที่รับเอกสาร",
         faculty_staff: "อาจารย์ / บุคลากร",
-        staff: "อาจารย์ / บุคลากร",
         executive: "ผู้บริหาร",
-        guest: "ผู้ใช้ทั่วไป"
+        responsible_person: "ผู้รับผิดชอบเรื่อง",
     };
 
     const roleLabel = roleLabels[currentRole] || currentRole || "ไม่ระบุบทบาท";
@@ -116,8 +118,6 @@ function updateRoleUI() {
         userRoleDot.classList.add("role-executive");
     } else if (currentRole === "document_officer") {
         userRoleDot.classList.add("role-officer");
-    } else if (currentRole === "guest") {
-        userRoleDot.classList.add("role-guest");
     } else {
         userRoleDot.classList.add("role-staff");
     }
@@ -174,9 +174,7 @@ async function fetchDocuments() {
     const params = new URLSearchParams();
 
     const apiBase = getApiBaseUrl();
-    // Guest ต้องไม่แนบ Token ใด ๆ เพื่อให้ backend ปล่อยผ่านในฐานะ Guest (ป้องกัน 401 จาก Token เก่าที่ค้างอยู่)
-    const isGuest = currentRole === "guest";
-    const token = isGuest ? "" : (localStorage.getItem("docuflow_access_token") || localStorage.getItem("access_token") || localStorage.getItem("docuflow_id_token") || localStorage.getItem("id_token") || "");
+    const token = localStorage.getItem("docuflow_access_token") || localStorage.getItem("access_token") || localStorage.getItem("docuflow_id_token") || localStorage.getItem("id_token") || "";
 
     documents = [];
     window.docuflowDocuments = documents;
@@ -364,8 +362,8 @@ function todayInThailand() {
     const get = type => parts.find(part => part.type === type).value;
     return `${get("year")}-${get("month")}-${get("day")}`;
 }
-function isOverdue(doc) {
-    return Boolean(doc.deadlineDate && doc.rawStatus !== "Completed" && doc.deadlineDate < todayInThailand());
+function isOverdue(doc, today = todayInThailand()) {
+    return Boolean(doc.deadlineDate && doc.rawStatus !== "Completed" && doc.deadlineDate < today);
 }
 function deadlineLabel(doc) {
     if (!doc.deadlineDate) return "";
@@ -413,16 +411,23 @@ function render() {
         });
     }
 
-    const fields = { filterReference: "code", filterSubject: "description", filterType: "type", filterSender: "sender", filterReceiver: "receiver" };
-    for (const [id, field] of Object.entries(fields)) {
-        const query = document.getElementById(id).value.trim().toLocaleLowerCase();
-        if (query) result = result.filter(doc => String(doc[field]).toLocaleLowerCase().includes(query));
+    const selectedType = typeFilter.value.toLocaleLowerCase();
+    if (selectedType) {
+        result = result.filter(doc => doc.type.toLocaleLowerCase().includes(selectedType));
     }
-    const from = document.getElementById("filterFrom").value;
-    const to = document.getElementById("filterTo").value;
-    if (from) result = result.filter(doc => doc.receivedDateKey && doc.receivedDateKey >= from);
-    if (to) result = result.filter(doc => doc.receivedDateKey && doc.receivedDateKey <= to);
-    if (document.getElementById("filterDeadline").value === "overdue") result = result.filter(isOverdue);
+
+    if (selectedUrgency === "overdue") {
+        const today = todayInThailand();
+        result = result.filter(doc => isOverdue(doc, today));
+    } else if (selectedUrgency === "due-soon") {
+        const today = todayInThailand();
+        const cutoff = new Date(`${today}T00:00:00Z`);
+        cutoff.setUTCDate(cutoff.getUTCDate() + 3);
+        const lastDate = cutoff.toISOString().slice(0, 10);
+        result = result.filter(doc =>
+            doc.rawStatus !== "Completed" && doc.deadlineDate >= today && doc.deadlineDate <= lastDate
+        );
+    }
 
     if (sortKey) {
         result.sort((a, b) => {
@@ -569,34 +574,23 @@ function renderTable(list) {
         return;
     }
 
-    const isGuest = currentRole === "guest";
-
     tableBody.innerHTML = list.map(doc => {
         const hasFile = Boolean(doc.file_key);
         let actionButtonHtml = "";
         // Add delete button for admin role
-        if (!isGuest && currentRole === "admin") {
+        if (currentRole === "admin") {
             actionButtonHtml += `<button class="btn-delete" data-delete="${doc.id}" title="ลบเอกสาร"><svg class="btn-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6v14a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2V6"/><line x1="10" y1="11" x2="14" y2="11"/></svg>ลบ</button>`;
         }
 
-        if (isGuest) {
-            actionButtonHtml = `
-                <button class="btn-preview btn-locked" type="button" disabled title="ผู้ใช้ทั่วไปไม่มีสิทธิ์ดูเอกสาร" style="opacity: 0.65; cursor: not-allowed; background: #f3f4f6; color: #6b7280; border: 1px solid #d1d5db;">
-                    <svg class="btn-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
-                    <span>ไม่มีสิทธิ์ดู</span>
-                </button>
-            `;
-        } else {
-            actionButtonHtml += hasFile
-                ? `<button class="btn-preview" data-open="${doc.id}" type="button" title="เรียกดูรายละเอียดและเนื้อหาเอกสาร">
-                       <svg class="btn-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
-                       <span>เรียกดูเอกสาร</span>
-                   </button>`
-                : `<button class="btn-preview" data-open="${doc.id}" type="button" title="เรียกดูรายละเอียดเอกสาร">
-                       <svg class="btn-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
-                       <span>ดูรายละเอียด</span>
-                   </button>`;
-        }
+        actionButtonHtml += hasFile
+            ? `<button class="btn-preview" data-open="${doc.id}" type="button" title="เรียกดูรายละเอียดและเนื้อหาเอกสาร">
+                   <svg class="btn-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
+                   <span>เรียกดูเอกสาร</span>
+               </button>`
+            : `<button class="btn-preview" data-open="${doc.id}" type="button" title="เรียกดูรายละเอียดเอกสาร">
+                   <svg class="btn-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+                   <span>ดูรายละเอียด</span>
+               </button>`;
 
         return `
             <tr data-id="${doc.id}">
@@ -631,26 +625,20 @@ function renderTable(list) {
         `;
     }).join("");
 
-    if (!isGuest) {
-        // คลิกปุ่มเรียกดูเอกสารเพื่อเปิด Modal จาก document-modal.js
-        tableBody.querySelectorAll("[data-open]").forEach(button => {
-            button.addEventListener("click", (e) => {
-                e.stopPropagation();
-                triggerOpenModal(button.dataset.open);
-            });
+    // คลิกปุ่มเรียกดูเอกสารเพื่อเปิด Modal จาก document-modal.js
+    tableBody.querySelectorAll("[data-open]").forEach(button => {
+        button.addEventListener("click", (e) => {
+            e.stopPropagation();
+            triggerOpenModal(button.dataset.open);
         });
+    });
 
-        // คลิกที่แถวเพื่อเปิด Modal
-        tableBody.querySelectorAll("tr[data-id]").forEach(row => {
-            row.addEventListener("click", () => {
-                triggerOpenModal(row.dataset.id);
-            });
+    // คลิกที่แถวเพื่อเปิด Modal
+    tableBody.querySelectorAll("tr[data-id]").forEach(row => {
+        row.addEventListener("click", () => {
+            triggerOpenModal(row.dataset.id);
         });
-    } else {
-        tableBody.querySelectorAll("tr[data-id]").forEach(row => {
-            row.style.cursor = "default";
-        });
-    }
+    });
 
     // ปุ่มลบเอกสาร (เฉพาะ admin)
     tableBody.querySelectorAll("[data-delete]").forEach(btn => {
@@ -694,34 +682,23 @@ function renderMobile(list) {
         return;
     }
 
-    const isGuest = currentRole === "guest";
-
     mobileList.innerHTML = list.map(doc => {
         const hasFile = Boolean(doc.file_key);
         let actionButtonHtml = "";
         // Add delete button for admin role
-        if (!isGuest && currentRole === "admin") {
+        if (currentRole === "admin") {
             actionButtonHtml += `<button class="btn-delete" data-delete="${doc.id}" title="ลบเอกสาร"><svg class="btn-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6v14a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2V6"/><line x1="10" y1="11" x2="14" y2="11"/></svg>ลบ</button>`;
         }
 
-        if (isGuest) {
-            actionButtonHtml = `
-                <button class="btn-preview btn-locked" type="button" disabled title="ผู้ใช้ทั่วไปไม่มีสิทธิ์ดูเอกสาร" style="opacity: 0.65; cursor: not-allowed; background: #f3f4f6; color: #6b7280; border: 1px solid #d1d5db;">
-                    <svg class="btn-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
-                    <span>ไม่มีสิทธิ์ดู</span>
-                </button>
-            `;
-        } else {
-            actionButtonHtml += hasFile
-                ? `<button class="btn-preview" data-open="${doc.id}" type="button">
-                       <svg class="btn-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
-                       <span>เรียกดูเอกสาร</span>
-                   </button>`
-                : `<button class="btn-preview" data-open="${doc.id}" type="button">
-                       <svg class="btn-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
-                       <span>ดูรายละเอียด</span>
-                   </button>`;
-        }
+        actionButtonHtml += hasFile
+            ? `<button class="btn-preview" data-open="${doc.id}" type="button">
+                   <svg class="btn-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
+                   <span>เรียกดูเอกสาร</span>
+               </button>`
+            : `<button class="btn-preview" data-open="${doc.id}" type="button">
+                   <svg class="btn-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+                   <span>ดูรายละเอียด</span>
+               </button>`;
 
         return `
             <div class="mobile-document" data-id="${doc.id}">
@@ -752,24 +729,18 @@ function renderMobile(list) {
         `;
     }).join("");
 
-    if (!isGuest) {
-        mobileList.querySelectorAll("[data-open]").forEach(button => {
-            button.addEventListener("click", (e) => {
-                e.stopPropagation();
-                triggerOpenModal(button.dataset.open);
-            });
+    mobileList.querySelectorAll("[data-open]").forEach(button => {
+        button.addEventListener("click", (e) => {
+            e.stopPropagation();
+            triggerOpenModal(button.dataset.open);
         });
+    });
 
-        mobileList.querySelectorAll(".mobile-document").forEach(card => {
-            card.addEventListener("click", () => {
-                triggerOpenModal(card.dataset.id);
-            });
+    mobileList.querySelectorAll(".mobile-document").forEach(card => {
+        card.addEventListener("click", () => {
+            triggerOpenModal(card.dataset.id);
         });
-    } else {
-        mobileList.querySelectorAll(".mobile-document").forEach(card => {
-            card.style.cursor = "default";
-        });
-    }
+    });
 
     // ปุ่มลบเอกสาร (เฉพาะ admin) - mobile
     mobileList.querySelectorAll("[data-delete]").forEach(btn => {
@@ -804,10 +775,6 @@ function renderMobile(list) {
 
 // Helper เรียกเปิด Modal ผ่านโมดูล document-modal.js
 function triggerOpenModal(id) {
-    if (currentRole === "guest") {
-        alert("ผู้ใช้ทั่วไป (Guest) ไม่มีสิทธิ์ในการเปิดดูรายละเอียดเอกสาร กรุณาเข้าสู่ระบบด้วยบัญชีเจ้าหน้าที่");
-        return;
-    }
     if (window.DocuFlowModal && typeof window.DocuFlowModal.open === "function") {
         window.DocuFlowModal.open(id);
     } else if (typeof window.openDocumentModal === "function") {
@@ -873,8 +840,17 @@ if (globalSearch) {
     });
 }
 
-document.querySelectorAll(".document-search-filters input, .document-search-filters select").forEach(input => {
-    input.addEventListener("input", render);
+typeFilter.addEventListener("change", render);
+const urgencyButtons = urgencyFilter.querySelectorAll("[data-urgency]");
+urgencyButtons.forEach(button => {
+    button.addEventListener("click", () => {
+        const urgency = button.dataset.urgency;
+        selectedUrgency = selectedUrgency === urgency ? "" : urgency;
+        urgencyButtons.forEach(option => {
+            option.setAttribute("aria-pressed", String(option.dataset.urgency === selectedUrgency));
+        });
+        render();
+    });
 });
 // Re-evaluate deadlines when returning to the dashboard and across midnight.
 window.addEventListener("focus", render);
@@ -908,18 +884,17 @@ function escapeHtml(value) {
 function initializeDashboard() {
     const savedUser = localStorage.getItem("docuflow_user");
     const accessToken = localStorage.getItem("docuflow_access_token") || localStorage.getItem("access_token");
-    const savedRole = localStorage.getItem("docuflow_role");
+    const savedRole = (localStorage.getItem("docuflow_role") || "").toLowerCase().trim();
+    const knownRoles = window.DOCUFLOW_ROLES || ["admin", "executive", "document_officer", "responsible_person", "faculty_staff"];
 
-    // ตรวจสอบสถานะการเข้าสู่ระบบ
-    if (!savedUser && !accessToken) {
+    // ต้องเข้าสู่ระบบและมี Role ที่ระบบรู้จักเท่านั้น (ไม่มีโหมด Guest)
+    if (!accessToken || !knownRoles.includes(savedRole)) {
         window.location.replace("login.html");
         return;
     }
 
-    // ค่าเริ่มต้นเป็น guest เมื่อไม่มีบทบาทที่บันทึกไว้ เพื่อให้การ์ดสิทธิ์ฝั่ง Client ทำงานถูกต้อง
-    currentRole = savedRole || "guest";
-    currentUsername = savedUser || "Guest";
-    configureGuestDashboard();
+    currentRole = savedRole;
+    currentUsername = savedUser || "-";
 
     // รองรับการส่งคำค้นหาข้ามหน้า (เช่น มาจาก register.html หรือ guide.html)
     const urlParams = new URLSearchParams(window.location.search);
@@ -929,6 +904,7 @@ function initializeDashboard() {
     }
 
     initRoleManagement();
+    document.getElementById("executiveReadOnly").hidden = currentRole !== "executive";
     syncFilterButtons();
     setupSorting();
     fetchDocuments();

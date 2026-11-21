@@ -13,23 +13,20 @@ const {
     AdminListGroupsForUserCommand
 } = require("@aws-sdk/client-cognito-identity-provider");
 const AmazonCognitoIdentity = require("amazon-cognito-identity-js");
-const { mapCognitoGroupsToRoles } = require("./documentAuthorization");
+const {
+    ROLES,
+    mapCognitoGroupsToRoles,
+    resolvePrimaryRole,
+    cognitoGroupForRole,
+    DEFAULT_ROLE
+} = require("./documentAuthorization");
+const { getPublicCognitoConfig } = require("./config");
 
 const router = express.Router();
 
-const cognitoConfig = {
-    region: process.env.COGNITO_REGION || "us-east-1"
-};
-const envAccessKey = process.env.aws_access_key_id || process.env.AWS_ACCESS_KEY_ID;
-const envSecretKey = process.env.aws_secret_access_key || process.env.AWS_SECRET_ACCESS_KEY;
-if (envAccessKey && envSecretKey) {
-    cognitoConfig.credentials = {
-        accessKeyId: envAccessKey,
-        secretAccessKey: envSecretKey,
-        sessionToken: process.env.aws_session_token || process.env.AWS_SESSION_TOKEN
-    };
-}
-const cognito = new CognitoIdentityProviderClient(cognitoConfig);
+const cognito = new CognitoIdentityProviderClient({
+    region: getPublicCognitoConfig().region
+});
 
 // ตรวจว่า error เกิดจาก AWS credentials ของเซิร์ฟเวอร์หมดอายุ/ไม่ถูกต้อง (ไม่ใช่ความผิดของผู้ใช้)
 function isAwsCredentialError(error) {
@@ -48,12 +45,27 @@ function isAwsCredentialError(error) {
 }
 
 // สร้าง SECRET_HASH สำหรับ Cognito App client ที่มี Client secret
-function createSecretHash(username) {
+function createSecretHash(username, clientId = getPublicCognitoConfig().appClientId) {
     if (!process.env.COGNITO_CLIENT_SECRET) return null;
     return crypto
         .createHmac("sha256", process.env.COGNITO_CLIENT_SECRET)
-        .update(username + process.env.COGNITO_APP_CLIENT_ID)
+        .update(username + clientId)
         .digest("base64");
+}
+
+function withSecretHash(authParameters, username, clientId) {
+    const secretHash = createSecretHash(username, clientId);
+    return secretHash ? { ...authParameters, SECRET_HASH: secretHash } : authParameters;
+}
+
+// ผลลัพธ์เมื่อ TU SSO ใช้งานไม่ได้ (ไม่ได้ตั้งค่า key หรือเชื่อมต่อ TU API ไม่ได้) — ปฏิเสธเสมอ (fail closed)
+function tuUnavailable(message) {
+    return {
+        success: false,
+        status: 503,
+        code: "TU_AUTH_UNAVAILABLE",
+        message
+    };
 }
 
 // ฟังก์ชันตรวจสอบสิทธิ์กับ TU REST API (Thammasat University Active Directory)
@@ -143,15 +155,15 @@ async function verifyWithTuApi(username, password) {
 
 // ฟังก์ชันยืนยันตัวตนกับ AWS Cognito User Pool โดยตรง (สำหรับบัญชีที่มีใน Cognito เช่น v3test.*, Officer, Executive, Admin)
 async function authenticateWithCognito(username, password) {
-    const clientId = process.env.COGNITO_APP_CLIENT_ID || "7onljgop56a811chbidtuppffq";
+    const { appClientId: clientId } = getPublicCognitoConfig();
     try {
         const authRes = await cognito.send(new InitiateAuthCommand({
             AuthFlow: "USER_PASSWORD_AUTH",
             ClientId: clientId,
-            AuthParameters: {
+            AuthParameters: withSecretHash({
                 USERNAME: username,
                 PASSWORD: password
-            }
+            }, username, clientId)
         }));
 
         const result = authRes.AuthenticationResult;
@@ -198,7 +210,7 @@ router.post("/tu-login", async (req, res) => {
 
         if (directCognitoAuth) {
             const mappedRoles = mapCognitoGroupsToRoles(directCognitoAuth.groups);
-            const resolvedRole = mappedRoles[0] || "faculty_staff";
+            const resolvedRole = resolvePrimaryRole(mappedRoles);
 
             try {
                 await pool.query(
@@ -207,6 +219,23 @@ router.post("/tu-login", async (req, res) => {
                      ON DUPLICATE KEY UPDATE cognito_sub = VALUES(cognito_sub), role = VALUES(role), is_active = 1`,
                     [directCognitoAuth.email, resolvedRole, directCognitoAuth.userSub, directCognitoAuth.displayName || directCognitoAuth.email]
                 );
+
+                const [userRows] = await pool.query("SELECT id FROM users WHERE username = ?", [directCognitoAuth.email]);
+                if (userRows.length > 0) {
+                    const userId = userRows[0].id;
+                    if (mappedRoles.includes("responsible_person") && !mappedRoles.includes("faculty_staff")) {
+                        await pool.query(
+                            "DELETE ur FROM users_roles ur JOIN roles r ON r.id = ur.role_id WHERE ur.user_id = ? AND r.name = 'faculty_staff'",
+                            [userId]
+                        );
+                    }
+                    for (const rName of mappedRoles) {
+                        const [rRows] = await pool.query("SELECT id FROM roles WHERE name = ?", [rName]);
+                        if (rRows.length > 0) {
+                            await pool.query("INSERT IGNORE INTO users_roles (user_id, role_id) VALUES (?, ?)", [userId, rRows[0].id]);
+                        }
+                    }
+                }
             } catch (dbErr) {
                 console.warn("Database user synchronization failed after Cognito login.");
             }
@@ -218,6 +247,7 @@ router.post("/tu-login", async (req, res) => {
                 id_token: directCognitoAuth.idToken,
                 username: directCognitoAuth.email,
                 role: resolvedRole,
+                roles: mappedRoles,
                 groups: directCognitoAuth.groups,
                 displayName: directCognitoAuth.displayName
             });
@@ -238,8 +268,7 @@ router.post("/tu-login", async (req, res) => {
         // กำหนด Target Email ที่เป็นอีเมลที่ถูกต้องเสมอ (สำหรับ Cognito User Pool ที่ใช้ UsernameAttributes = ['email'])
         targetEmail = (tuResult.email || targetEmail).trim().toLowerCase();
 
-        const userPoolId = process.env.COGNITO_USER_POOL_ID || "us-east-1_ySsGHRKUQ";
-        const clientId = process.env.COGNITO_APP_CLIENT_ID || "7onljgop56a811chbidtuppffq";
+        const { userPoolId, appClientId: clientId } = getPublicCognitoConfig();
 
         // 2. ตรวจสอบและซิงค์ผู้ใช้กับ AWS Cognito
         let userSub = null;
@@ -273,7 +302,7 @@ router.post("/tu-login", async (req, res) => {
                     await cognito.send(new AdminAddUserToGroupCommand({
                         UserPoolId: userPoolId,
                         Username: cognitoUsername,
-                        GroupName: "Staff/Instructor"
+                        GroupName: cognitoGroupForRole(DEFAULT_ROLE)
                     }));
                 } catch (createErr) {
                     console.warn("Cognito Admin create user failed during TU login.");
@@ -297,9 +326,9 @@ router.post("/tu-login", async (req, res) => {
                     await cognito.send(new AdminAddUserToGroupCommand({
                         UserPoolId: userPoolId,
                         Username: cognitoUsername,
-                        GroupName: "Staff/Instructor"
+                        GroupName: cognitoGroupForRole(DEFAULT_ROLE)
                     }));
-                    currentGroups = ["Staff/Instructor"];
+                    currentGroups = [cognitoGroupForRole(DEFAULT_ROLE)];
                 }
 
                 // 4. ซิงค์รหัสผ่านใน Cognito เพื่อให้ออก JWT Token จาก AWS Cognito แท้ได้
@@ -361,7 +390,7 @@ router.post("/tu-login", async (req, res) => {
         }
 
         const mappedRoles = mapCognitoGroupsToRoles(tokens.groups);
-        const resolvedRole = mappedRoles[0] || "faculty_staff";
+        const resolvedRole = resolvePrimaryRole(mappedRoles);
 
         try {
             await pool.query(
@@ -370,6 +399,23 @@ router.post("/tu-login", async (req, res) => {
                  ON DUPLICATE KEY UPDATE cognito_sub = VALUES(cognito_sub), role = VALUES(role), is_active = 1`,
                 [targetEmail, resolvedRole, userSub, tuResult.displayName || targetEmail]
             );
+
+            const [userRows] = await pool.query("SELECT id FROM users WHERE username = ?", [targetEmail]);
+            if (userRows.length > 0) {
+                const userId = userRows[0].id;
+                if (mappedRoles.includes("responsible_person") && !mappedRoles.includes("faculty_staff")) {
+                    await pool.query(
+                        "DELETE ur FROM users_roles ur JOIN roles r ON r.id = ur.role_id WHERE ur.user_id = ? AND r.name = 'faculty_staff'",
+                        [userId]
+                    );
+                }
+                for (const rName of mappedRoles) {
+                    const [rRows] = await pool.query("SELECT id FROM roles WHERE name = ?", [rName]);
+                    if (rRows.length > 0) {
+                        await pool.query("INSERT IGNORE INTO users_roles (user_id, role_id) VALUES (?, ?)", [userId, rRows[0].id]);
+                    }
+                }
+            }
         } catch (dbErr) {
             console.warn("Database user synchronization failed after TU login.");
         }
@@ -381,6 +427,7 @@ router.post("/tu-login", async (req, res) => {
             id_token: tokens.idToken,
             username: targetEmail,
             role: resolvedRole,
+            roles: mappedRoles,
             groups: tokens.groups,
             displayName: tuResult.displayName || targetEmail.split("@")[0]
         });
@@ -397,6 +444,7 @@ router.post("/tu-login", async (req, res) => {
             });
         }
 
+        // ไม่ส่งรายละเอียด error ภายในกลับไปให้ผู้ใช้
         return res.status(500).json({
             ok: false,
             message: "Unable to complete sign-in. Please try again later."
@@ -423,15 +471,15 @@ router.post("/login", async (req, res) => {
 
         // ตรวจสอบว่า Backend โหลดค่า Cognito ครบหรือไม่
         // 1. ให้ Cognito ตรวจสอบ Email และ Password
+        const { appClientId } = getPublicCognitoConfig();
         const authResult = await cognito.send(
             new InitiateAuthCommand({
                 AuthFlow: "USER_PASSWORD_AUTH",
-                ClientId: process.env.COGNITO_APP_CLIENT_ID,
-                AuthParameters: {
+                ClientId: appClientId,
+                AuthParameters: withSecretHash({
                     USERNAME: username.trim(),
-                    PASSWORD: password,
-                    SECRET_HASH: createSecretHash(username.trim())
-                }
+                    PASSWORD: password
+                }, username.trim(), appClientId)
             })
         );
 
@@ -485,7 +533,7 @@ router.post("/login", async (req, res) => {
         }
 
         const user = users[0];
-        const roles = (user.roles || "").split(",").map((role) => role.trim()).filter((role) => ["document_officer", "faculty_staff", "admin", "executive"].includes(role));
+        const roles = (user.roles || "").split(",").map((role) => role.trim()).filter((role) => ROLES.includes(role));
         if (!roles.length) return res.status(403).json({ ok: false, message: "บัญชีนี้ยังไม่มีบทบาทที่ได้รับอนุญาต" });
 
         // 5. สร้าง Session หลังยืนยันตัวตนสำเร็จ
@@ -548,48 +596,6 @@ router.post("/login", async (req, res) => {
                 : "ไม่สามารถเข้าสู่ระบบผ่าน Cognito ได้ กรุณาตรวจสอบการตั้งค่าหรือสถานะบัญชี"
         });
     }
-});
-
-// Guest Login (เข้าสู่ระบบในฐานะ Guest)
-router.post("/guest", (req, res) => {
-    if (!req.session) {
-        return res.status(500).json({
-            ok: false,
-            message: "ระบบ Session ยังไม่พร้อมใช้งาน"
-        });
-    }
-
-    req.session.regenerate((error) => {
-        if (error) {
-            console.error("Guest session error:", error.message);
-            return res.status(500).json({
-                ok: false,
-                message: "ไม่สามารถเข้าสู่ระบบในฐานะ Guest ได้"
-            });
-        }
-
-        req.session.user = {
-            id: 0,
-            username: "Guest",
-            roles: ["guest"]
-        };
-
-        req.session.save((saveError) => {
-            if (saveError) {
-                console.error("Guest session save error:", saveError.message);
-                return res.status(500).json({
-                    ok: false,
-                    message: "ไม่สามารถบันทึก Session Guest ได้"
-                });
-            }
-
-            return res.json({
-                ok: true,
-                message: "เข้าสู่ระบบในฐานะ Guest สำเร็จ",
-                user: req.session.user
-            });
-        });
-    });
 });
 
 // Check current user

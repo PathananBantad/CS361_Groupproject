@@ -4,15 +4,17 @@ const { test } = require("node:test");
 const assert = require("node:assert/strict");
 const {
     AUDIT_EVENTS,
+    AUDIT_EVENT_METADATA,
     sanitizeAuditData,
     verifyAuditTrailAccess
 } = require("../auditTrail");
 
-test("AUDIT_EVENTS มีครบ 4 ประเภทเหตุการณ์", () => {
+test("AUDIT_EVENTS มีครบ 5 ประเภทเหตุการณ์ รวมการมอบหมายใหม่", () => {
     assert.deepEqual(
         Object.keys(AUDIT_EVENTS).sort(),
-        ["ASSIGN", "DOCUMENT_CREATE", "FORWARD", "STATUS_CHANGE"].sort()
+        ["ASSIGN", "DOCUMENT_CREATE", "FORWARD", "REASSIGN", "STATUS_CHANGE"].sort()
     );
+    assert.equal(AUDIT_EVENT_METADATA.REASSIGN.label_th, "การมอบหมายเอกสารใหม่");
 });
 
 test("sanitizeAuditData ปิดบังฟิลด์ลับ (password, token, secret)", () => {
@@ -53,16 +55,21 @@ test("verifyAuditTrailAccess: admin/executive/document_officer เข้าถ�
     }
 });
 
-test("verifyAuditTrailAccess: faculty_staff เข้าถึงได้เฉพาะเอกสารที่เกี่ยวข้อง", () => {
-    assert.equal(verifyAuditTrailAccess({ userId: 7, role: "faculty_staff" }, { owner_id: 7, assignee_id: null }).allowed, true);
-    assert.equal(verifyAuditTrailAccess({ userId: 7, role: "faculty_staff" }, { owner_id: 99, assignee_id: 7 }).allowed, true);
-    assert.equal(verifyAuditTrailAccess({ userId: 7, role: "faculty_staff" }, { owner_id: 99, assignee_id: 88 }).allowed, false);
+test("verifyAuditTrailAccess: faculty_staff/responsible_person need current or previous assignment", () => {
+    const ownerOnly = { owner_id: 7, assignee_id: null };
+    const current = { owner_id: 99, assignee_id: 7 };
+    const unrelated = { owner_id: 99, assignee_id: 88 };
+    assert.equal(verifyAuditTrailAccess({ userId: 7, role: "faculty_staff" }, ownerOnly).allowed, false);
+    assert.equal(verifyAuditTrailAccess({ userId: 7, role: "faculty_staff" }, current).allowed, true);
+    assert.equal(verifyAuditTrailAccess({ userId: 7, role: "faculty_staff" }, unrelated).allowed, false);
+    assert.equal(verifyAuditTrailAccess({ userId: 7, role: "faculty_staff" }, unrelated, true).allowed, true);
+    assert.equal(verifyAuditTrailAccess({ userId: 7, role: "responsible_person" }, current).allowed, true);
 });
 
-test("verifyAuditTrailAccess: guest และ unauthenticated ถูกปฏิเสธ", () => {
-    // guest ไม่มี DB user จริง userId จึงไม่ตรงกับ owner/assignee ของเอกสาร
+test("verifyAuditTrailAccess: role ที่ไม่รู้จัก และ unauthenticated ถูกปฏิเสธ", () => {
+    // role ที่ไม่อยู่ใน ROLES ต้องถูกปฏิเสธแม้ userId จะตรงกับ assignee
     const doc = { owner_id: 1, assignee_id: 1 };
-    assert.equal(verifyAuditTrailAccess({ userId: 777, role: "guest" }, doc).allowed, false);
+    assert.equal(verifyAuditTrailAccess({ userId: 1, role: "unknown_role" }, doc).allowed, false);
     assert.equal(verifyAuditTrailAccess({ userId: 777, role: null }, doc).allowed, false);
     assert.equal(verifyAuditTrailAccess(null, doc).allowed, false);
 });

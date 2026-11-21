@@ -6,13 +6,33 @@ const loginButton = document.getElementById("loginButton");
 const loginButtonText = document.getElementById("loginButtonText");
 const loginMessage = document.getElementById("loginMessage");
 const togglePassword = document.getElementById("togglePassword");
-const guestLoginBtn = document.getElementById("guestLoginBtn");
+function resolveLoginRole(responseRole, groups = []) {
+    const aliases = {
+        documentreceiver: "document_officer",
+        "staff/instructor": "faculty_staff",
+        instructor: "faculty_staff",
+        staff: "faculty_staff",
+        responsibleperson: "responsible_person",
+        responsible_person: "responsible_person"
+    };
+    const normalize = value => {
+        const role = String(value || "").trim().toLowerCase();
+        return Object.hasOwn(aliases, role) ? aliases[role] : role;
+    };
+    const groupRoles = (Array.isArray(groups) ? groups : [groups]).map(normalize).filter(Boolean);
+    const candidateRoles = [...groupRoles];
+    if (responseRole) candidateRoles.push(normalize(responseRole));
+
+    return ["admin", "executive", "document_officer", "responsible_person", "faculty_staff"]
+        .find(role => candidateRoles.includes(role)) || (responseRole ? normalize(responseRole) : groupRoles[0]) || "faculty_staff";
+}
+
 
 // โหลด Username ล่าสุด
 document.addEventListener("DOMContentLoaded", () => {
     const savedUser = localStorage.getItem("docuflow_user");
 
-    if (savedUser && savedUser !== "Guest") {
+    if (savedUser) {
         usernameInput.value = savedUser;
     }
 });
@@ -93,7 +113,7 @@ if (loginForm) {
                 localStorage.setItem("access_token", tuData.access_token);
                 localStorage.setItem("id_token", tuData.id_token);
                 localStorage.setItem("docuflow_user", tuData.username || username);
-                localStorage.setItem("docuflow_role", tuData.role || "faculty_staff");
+                localStorage.setItem("docuflow_role", resolveLoginRole(tuData.role, tuData.groups));
 
                 navigateToDashboard();
                 return;
@@ -167,36 +187,10 @@ if (loginForm) {
                 localStorage.setItem("id_token", idToken);
                 localStorage.setItem("docuflow_user", username);
 
-                // ตรวจสอบ Role จาก Cognito Groups ใน Token
-                let role = "faculty_staff"; // ค่าเริ่มต้นสำหรับผู้ใช้ทั่วไป
-                try {
-                    const idPayload = session.getIdToken().decodePayload();
-                    const groups = (idPayload["cognito:groups"] || []).map(group => {
-                        const name = String(group).trim().toLowerCase();
-                        const aliases = {
-                            documentreceiver: "document_officer",
-                            "staff/instructor": "faculty_staff",
-                            instructor: "faculty_staff"
-                        };
-                        return aliases[name] || name;
-                    });
-
-                    if (groups.includes("admin")) {
-                        role = "admin";
-                    } else if (groups.includes("document_officer")) {
-                        role = "document_officer";
-                    } else if (groups.includes("faculty_staff") || groups.includes("staff")) {
-                        role = "faculty_staff";
-                    } else if (groups.includes("executive")) {
-                        role = "executive";
-                    } else if (groups.length > 0) {
-                        role = groups[0];
-                    }
-                } catch (e) {
-                    console.warn("Could not decode Cognito ID token:", e);
-                }
-
-                localStorage.setItem("docuflow_role", role);
+                localStorage.setItem("docuflow_role", resolveLoginRole(
+                    null, session.getAccessToken().decodePayload()["cognito:groups"] ||
+                        session.getIdToken().decodePayload()["cognito:groups"]
+                ));
 
                 navigateToDashboard();
             },
@@ -221,20 +215,5 @@ if (loginForm) {
                 loginButtonText.textContent = "SIGN IN";
             }
         });
-    });
-}
-
-// เข้าสู่ระบบในฐานะ Guest
-if (guestLoginBtn) {
-    guestLoginBtn.addEventListener("click", (event) => {
-        event.preventDefault();
-        localStorage.setItem("docuflow_role", "guest");
-        localStorage.setItem("docuflow_user", "Guest");
-        // ล้าง Token ทุกคีย์ที่อาจค้างจากการล็อกอินครั้งก่อน เพื่อไม่ให้ Guest ส่ง Token เก่าที่หมดอายุ (ป้องกัน 401)
-        localStorage.removeItem("docuflow_access_token");
-        localStorage.removeItem("docuflow_id_token");
-        localStorage.removeItem("access_token");
-        localStorage.removeItem("id_token");
-        navigateToDashboard();
     });
 }

@@ -6,11 +6,12 @@
 // ดึงข้อมูลผู้ดำเนินการและวันเวลาจากฝั่ง Server เท่านั้น และมีระบบกรองข้อมูลลับ (Data Sanitization)
 // ============================================================================
 
-const defaultPool = require("./db");
+const { canAccessDocument } = require("./documentAuthorization");
 
 // 1. กำหนดประเภท Event มาตรฐาน (Task 1)
 const AUDIT_EVENTS = Object.freeze({
     ASSIGN: "ASSIGN",
+    REASSIGN: "REASSIGN",
     FORWARD: "FORWARD",
     STATUS_CHANGE: "STATUS_CHANGE",
     DOCUMENT_CREATE: "DOCUMENT_CREATE"
@@ -21,6 +22,12 @@ const AUDIT_EVENT_METADATA = Object.freeze({
     [AUDIT_EVENTS.ASSIGN]: {
         label_th: "การมอบหมายเอกสาร",
         label_en: "Document Assignment",
+        icon: "👤",
+        color: "blue"
+    },
+    [AUDIT_EVENTS.REASSIGN]: {
+        label_th: "การมอบหมายเอกสารใหม่",
+        label_en: "Document Reassignment",
         icon: "👤",
         color: "blue"
     },
@@ -61,7 +68,8 @@ const SENSITIVE_KEY_PATTERNS = [
 // Regex สำหรับดักจับ Token, JWT และ API Key ในข้อความทั่วไป
 const JWT_PATTERN = /eyJ[a-zA-Z0-9_-]{10,}\.eyJ[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]+/g;
 const BEARER_PATTERN = /Bearer\s+[a-zA-Z0-9._~+/-]+=*/gi;
-const GENERIC_KEY_PATTERN = /(AKIA[0-9A-Z]{16})|(ghp_[a-zA-Z0-9]{36})/g;
+const SENSITIVE_TEXT_PATTERN = /\b(password|passwd|secret|access[_-]?token|refresh[_-]?token|id[_-]?token|authorization|api[_-]?key|client[_-]?secret|session[_-]?token|cookie|credential)\b\s*[:=]\s*(?:"[^"]*"|'[^']*'|[^\s,;]+)/gi;
+const GENERIC_KEY_PATTERN = /((?:AKIA|ASIA)[0-9A-Z]{16})|(ghp_[a-zA-Z0-9]{36})|(github_pat_[A-Za-z0-9_]{20,})|(AIza[0-9A-Za-z_-]{35})/g;
 
 /**
  * ฟังก์ชันทำความสะอาดข้อมูลเพื่อป้องกันรหัสผ่าน, Token และความลับรั่วไหล (Task 10)
@@ -75,6 +83,7 @@ function sanitizeAuditData(data, depth = 0) {
 
     if (typeof data === "string") {
         let clean = data
+            .replace(SENSITIVE_TEXT_PATTERN, "$1=[REDACTED]")
             .replace(JWT_PATTERN, "[REDACTED_JWT]")
             .replace(BEARER_PATTERN, "[REDACTED_BEARER_TOKEN]")
             .replace(GENERIC_KEY_PATTERN, "[REDACTED_KEY]");
@@ -172,7 +181,11 @@ async function recordAuditEvent({
     const sanitizedAfter = afterState ? sanitizeAuditData(afterState) : null;
     const sanitizedDetails = details ? sanitizeAuditData(details) : null;
 
-    const db = connection || defaultPool;
+    const db = connection || require("./db");
+
+    const safeActorUsername = actorUsername == null ? null : sanitizeAuditData(String(actorUsername));
+    const safeActorRole = actorRole == null ? null : sanitizeAuditData(String(actorRole));
+    const safeIpAddress = ipAddress == null ? null : sanitizeAuditData(String(ipAddress));
 
     const [result] = await db.query(
         `INSERT INTO document_audit_trails 
@@ -181,13 +194,13 @@ async function recordAuditEvent({
         [
             documentId,
             String(actorUserId),
-            actorUsername ? String(actorUsername) : null,
-            actorRole ? String(actorRole) : null,
+            safeActorUsername,
+            safeActorRole,
             eventType,
             sanitizedBefore ? JSON.stringify(sanitizedBefore) : null,
             sanitizedAfter ? JSON.stringify(sanitizedAfter) : null,
             sanitizedDetails ? JSON.stringify(sanitizedDetails) : null,
-            ipAddress || null
+            safeIpAddress
         ]
     );
 
@@ -197,13 +210,13 @@ async function recordAuditEvent({
         audit_id: auditId,
         document_id: documentId,
         actor_user_id: actorUserId,
-        actor_username: actorUsername,
-        actor_role: actorRole,
+        actor_username: safeActorUsername,
+        actor_role: safeActorRole,
         event_type: eventType,
         before_state: sanitizedBefore,
         after_state: sanitizedAfter,
         details: sanitizedDetails,
-        ip_address: ipAddress,
+        ip_address: safeIpAddress,
         created_at: new Date()
     };
 }
@@ -219,7 +232,8 @@ async function recordAuditEvent({
  * @param {any} [poolOrConn]
  * @returns {Promise<Array>} รายการประวัติที่จัดรูปแบบพร้อมแสดงผล
  */
-async function getAuditTrailByDocumentId(documentId, filters = {}, poolOrConn = defaultPool) {
+async function getAuditTrailByDocumentId(documentId, filters = {}, poolOrConn = null) {
+    const db = poolOrConn || require("./db");
     let sql = `
         SELECT 
             at.id AS audit_id,
@@ -261,7 +275,7 @@ async function getAuditTrailByDocumentId(documentId, filters = {}, poolOrConn = 
 
     sql += " ORDER BY at.created_at ASC, at.id ASC";
 
-    const [rows] = await poolOrConn.query(sql, params);
+    const [rows] = await db.query(sql, params);
 
     return rows.map((row) => {
         const meta = AUDIT_EVENT_METADATA[row.event_type] || {
@@ -287,10 +301,15 @@ async function getAuditTrailByDocumentId(documentId, filters = {}, poolOrConn = 
 
         return {
             ...row,
+            actor_username: sanitizeAuditData(row.actor_username),
+            actor_name: sanitizeAuditData(row.actor_name),
+            actor_full_name: sanitizeAuditData(row.actor_full_name),
+            actor_role: sanitizeAuditData(row.actor_role),
+            ip_address: sanitizeAuditData(row.ip_address),
             event_metadata: meta,
-            before_state: beforeState,
-            after_state: afterState,
-            details: details
+            before_state: sanitizeAuditData(beforeState),
+            after_state: sanitizeAuditData(afterState),
+            details: sanitizeAuditData(details)
         };
     });
 }
@@ -308,7 +327,8 @@ async function getAuditTrailByDocumentId(documentId, filters = {}, poolOrConn = 
  * @param {string} [options.endDate]
  * @param {any} [poolOrConn]
  */
-async function queryAuditTrails(options = {}, poolOrConn = defaultPool) {
+async function queryAuditTrails(options = {}, poolOrConn = null) {
+    const db = poolOrConn || require("./db");
     const page = Math.max(1, parseInt(options.page, 10) || 1);
     const limit = Math.min(100, Math.max(1, parseInt(options.limit, 10) || 20));
     const offset = (page - 1) * limit;
@@ -342,7 +362,7 @@ async function queryAuditTrails(options = {}, poolOrConn = defaultPool) {
     }
 
     const countSql = `SELECT COUNT(*) AS total FROM document_audit_trails a ${whereClause}`;
-    const [countRows] = await poolOrConn.query(countSql, params);
+    const [countRows] = await db.query(countSql, params);
     const total = countRows[0].total;
 
     const listSql = `
@@ -373,7 +393,7 @@ async function queryAuditTrails(options = {}, poolOrConn = defaultPool) {
         LIMIT ? OFFSET ?
     `;
 
-    const [rows] = await poolOrConn.query(listSql, [...params, limit, offset]);
+    const [rows] = await db.query(listSql, [...params, limit, offset]);
 
     const enriched = rows.map((row) => {
         let beforeState = row.before_state;
@@ -392,10 +412,17 @@ async function queryAuditTrails(options = {}, poolOrConn = defaultPool) {
 
         return {
             ...row,
+            reference_no: sanitizeAuditData(row.reference_no),
+            subject: sanitizeAuditData(row.subject),
+            actor_username: sanitizeAuditData(row.actor_username),
+            actor_name: sanitizeAuditData(row.actor_name),
+            actor_full_name: sanitizeAuditData(row.actor_full_name),
+            actor_role: sanitizeAuditData(row.actor_role),
+            ip_address: sanitizeAuditData(row.ip_address),
             event_metadata: AUDIT_EVENT_METADATA[row.event_type] || {},
-            before_state: beforeState,
-            after_state: afterState,
-            details: details
+            before_state: sanitizeAuditData(beforeState),
+            after_state: sanitizeAuditData(afterState),
+            details: sanitizeAuditData(details)
         };
     });
 
@@ -417,36 +444,26 @@ async function queryAuditTrails(options = {}, poolOrConn = defaultPool) {
  * - admin: ดูได้ทุกเอกสาร และดูประวัติรวมทั้งระบบได้
  * - executive: ดูได้ทุกเอกสาร
  * - document_officer: ดูได้ทุกเอกสารที่รับเข้ามาในระบบ
- * - faculty_staff / staff: ดูได้เฉพาะเอกสารที่ตนเองเกี่ยวข้อง
- * - guest / unauthenticated: ไม่มีสิทธิ์เข้าถึง (403/401)
+ * - faculty_staff / responsible_person: ดูได้เฉพาะเอกสารที่เป็น Current หรือ Previous Assignee
+ * - unauthenticated / role ที่ไม่รู้จัก: ไม่มีสิทธิ์เข้าถึง (401/403)
  *
  * @param {Object} actor { userId, role }
  * @param {Object} document ข้อมูลเอกสาร
  * @returns {{ allowed: boolean, reason?: string }}
  */
-function verifyAuditTrailAccess(actor, document) {
-    if (!actor || !actor.role) {
+function verifyAuditTrailAccess(actor, document, previousAssignee = false) {
+    if (!actor || !(actor.roles || actor.role)) {
         return { allowed: false, reason: "Authentication required" };
     }
 
-    const role = String(actor.role).trim().toLowerCase();
-    const userId = String(actor.userId || "");
-
-    // 1. Admin, Executive และ Document Officer สามารถดูประวัติของเอกสารได้ทุกฉบับ
-    if (["admin", "executive", "document_officer"].includes(role)) {
-        return { allowed: true };
-    }
-
-    // 2. หากเป็น faculty_staff ต้องเป็นเจ้าของหรือผู้รับมอบหมายเอกสาร
-    if (document) {
-        const docOwnerId = document.owner_id ? String(document.owner_id) : null;
-        const docAssigneeId = document.assignee_id ? String(document.assignee_id) : null;
-
-        if (docOwnerId === userId || docAssigneeId === userId) {
-            return { allowed: true };
-        }
-
-    }
+    const allowed = canAccessDocument({
+        roles: actor.roles || actor.role,
+        userId: actor.userId,
+        document,
+        action: "read",
+        previousAssignee
+    });
+    if (allowed) return { allowed: true };
 
     return {
         allowed: false,

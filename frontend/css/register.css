@@ -59,6 +59,7 @@
 }
 
 .field input[type="text"],
+.field input[type="search"],
 .field input[type="date"],
 .field select,
 .field textarea {
@@ -79,6 +80,7 @@
 }
 
 .field input[type="text"],
+.field input[type="search"],
 .field input[type="date"],
 .field select {
     height: 46px;
@@ -262,3 +264,26 @@
 .assignee-results { max-height: 240px; overflow-y: auto; border: 1px solid #d8cdd0; border-radius: 10px; background: #fff; padding: 6px; }
 .assignee-results button { display: block; width: 100%; text-align: left; padding: 12px; background: white; border: 0; border-radius: 6px; font: inherit; cursor: pointer; }
 .assignee-results button:hover, .assignee-results button:focus-visible { background: #f3edf0; }
+
+#assigneeSearch:focus-visible,
+.copy-assignee-button:focus-visible {
+    outline: 2px solid var(--wine);
+    outline-offset: 2px;
+}
+
+.copy-assignee-button {
+    margin-top: 8px;
+    padding: 7px 12px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--cream-2);
+    color: var(--wine-dark);
+    font: inherit;
+    font-size: 14px;
+    cursor: pointer;
+}
+
+.copy-assignee-button:disabled {
+    opacity: .6;
+    cursor: default;
+}

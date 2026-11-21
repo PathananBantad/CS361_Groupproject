@@ -1,8 +1,11 @@
+const fs = require("fs");
+const path = require("path");
 const mysql = require("mysql2/promise");
 require("dotenv").config();
 
+const { SecretsManagerClient, GetSecretValueCommand } = require("@aws-sdk/client-secrets-manager");
 const dbHost = (process.env.DB_HOST || "").trim();
-const isTiDB = dbHost.includes("tidbcloud.com");
+const dbSecretArn = process.env.DB_SECRET_ARN;
 
 const poolConfig = {
     host: dbHost,
@@ -20,14 +23,72 @@ const poolConfig = {
     keepAliveInitialDelay: 10000
 };
 
-// TiDB Cloud Serverless requires SSL connection
-if (isTiDB || process.env.DB_SSL === "true") {
+// Amazon RDS certificates are signed by the RDS CA, which Node.js does not trust by default.
+const rdsCaPath = path.join(__dirname, "certs", "rds-global-bundle.pem");
+const rdsCa = fs.existsSync(rdsCaPath) ? fs.readFileSync(rdsCaPath, "utf8") : null;
+
+if (process.env.DB_SSL === "true") {
     poolConfig.ssl = {
         minVersion: "TLSv1.2",
-        rejectUnauthorized: true
+        rejectUnauthorized: true,
+        ...(rdsCa ? { ca: rdsCa } : {}),
+        ...(process.env.DB_TLS_SERVERNAME ? { servername: process.env.DB_TLS_SERVERNAME } : {})
     };
 }
 
-const pool = mysql.createPool(poolConfig);
+function createSecretBackedPool(secretArn) {
+    let poolPromise;
+
+    async function getPool() {
+        if (!poolPromise) {
+            poolPromise = (async () => {
+                const region = process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION;
+                if (!region) {
+                    throw new Error("AWS_REGION is required when DB_SECRET_ARN is configured");
+                }
+
+                const client = new SecretsManagerClient({ region });
+                const response = await client.send(new GetSecretValueCommand({ SecretId: secretArn }));
+                if (!response.SecretString) {
+                    throw new Error("The configured database secret has no SecretString");
+                }
+
+                let credentials;
+                try {
+                    credentials = JSON.parse(response.SecretString);
+                } catch (error) {
+                    throw new Error("The configured database secret is not valid JSON", { cause: error });
+                }
+
+                if (!credentials.username || !credentials.password) {
+                    throw new Error("The configured database secret must contain username and password");
+                }
+
+                return mysql.createPool({
+                    ...poolConfig,
+                    user: credentials.username,
+                    password: credentials.password
+                });
+            })();
+
+            poolPromise.catch(() => {
+                poolPromise = null;
+            });
+        }
+
+        return poolPromise;
+    }
+
+    return {
+        query: (...args) => getPool().then(pool => pool.query(...args)),
+        execute: (...args) => getPool().then(pool => pool.execute(...args)),
+        getConnection: () => getPool().then(pool => pool.getConnection()),
+        end: () => getPool().then(pool => pool.end())
+    };
+}
+
+const pool = dbSecretArn
+    ? createSecretBackedPool(dbSecretArn)
+    : mysql.createPool(poolConfig);
 
 module.exports = pool;
