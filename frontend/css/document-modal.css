@@ -1190,3 +1190,8 @@ dialog.document-modal::backdrop {
 .assignment-action-panel button:disabled {
     opacity: 0.55;
 }
+
+.modal-head-review-note {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}

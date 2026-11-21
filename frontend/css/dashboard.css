@@ -718,3 +718,40 @@
 
 .deadline-label { display: block; margin-top: 6px; color: #68565b; }
 .deadline-overdue { color: #a15b00; font-weight: 700; }
+
+.inbox-sort:not([hidden]) {
+    display: inline-flex;
+    align-items: center;
+    gap: .5rem;
+    flex-wrap: wrap;
+}
+
+.inbox-sort select {
+    font: inherit;
+    padding: .4rem .65rem;
+    border: 1px solid #d9c6cb;
+    border-radius: .5rem;
+    background: #fff;
+}
+
+.inbox-new-badge:not([hidden]) {
+    display: inline-block;
+    padding: .12rem .48rem;
+    border-radius: 1rem;
+    background: #e2f4ec;
+    color: #145846;
+    font-size: .75rem;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.inbox-pin {
+    color: #875809;
+}
+
+.inbox-head-note {
+    display: block;
+    margin-top: .35rem;
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+}
