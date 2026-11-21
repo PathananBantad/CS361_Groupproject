@@ -10,11 +10,6 @@ const BACKEND_ROOT = path.join(REPOSITORY_ROOT, "backend");
 const CLOUDFORMATION_ROOT = path.join(REPOSITORY_ROOT, "infra", "cloudformation");
 const ENVIRONMENTS = new Set(["dev", "staging", "production"]);
 const PROTECTED_V2_LAMBDA_NAME = "cs361-v2-documentflow-api";
-const DEFAULT_VPC_SUBNET_IDS = [
-  "subnet-01fc484b0fe3e3911",
-  "subnet-074752d005c6e61bc"
-];
-const DEFAULT_VPC_SECURITY_GROUP_IDS = ["sg-0450285f801a51cab"];
 const READY_STACK_STATUSES = new Set([
   "CREATE_COMPLETE",
   "UPDATE_COMPLETE",
@@ -36,6 +31,9 @@ function getFirstConfiguredValue(...values) {
 }
 
 function parseVpcResourceIds(value, variableName, prefix, minimumCount) {
+  if (typeof value !== "string" || !value.trim()) {
+    throw new Error(`${variableName} must be configured for the target environment.`);
+  }
   const resourceIds = value.split(",").map(resourceId => resourceId.trim()).filter(Boolean);
   if (resourceIds.length < minimumCount ||
       new Set(resourceIds).size !== resourceIds.length ||
@@ -187,14 +185,13 @@ function getRequiredDeploymentConfig(config) {
     allowedOrigins: parseAllowedOrigins(config.FRONTEND_ALLOWED_ORIGINS),
     expectedAccountId,
     vpcSubnetIds: parseVpcResourceIds(
-      getFirstConfiguredValue(config.VPC_SUBNET_IDS) || DEFAULT_VPC_SUBNET_IDS.join(","),
+      config.VPC_SUBNET_IDS,
       "VPC_SUBNET_IDS",
       "subnet",
       2
     ),
     vpcSecurityGroupIds: parseVpcResourceIds(
-      getFirstConfiguredValue(config.VPC_SECURITY_GROUP_IDS) ||
-        DEFAULT_VPC_SECURITY_GROUP_IDS.join(","),
+      config.VPC_SECURITY_GROUP_IDS,
       "VPC_SECURITY_GROUP_IDS",
       "sg",
       1
