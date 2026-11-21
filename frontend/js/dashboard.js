@@ -727,7 +727,7 @@ function initializeDashboard() {
     const savedRole = (localStorage.getItem("docuflow_role") || "").toLowerCase().trim();
     const knownRoles = window.DOCUFLOW_ROLES || ["admin", "executive", "document_officer", "responsible_person", "faculty_staff"];
 
-    // ต้องเข้าสู่ระบบและมี Role ที่ระบบรู้จักเท่านั้น (ไม่มีโหมด Guest)
+    // ต้องเข้าสู่ระบบและมี Role ที่ระบบรู้จักเท่านั้น
     if (!accessToken || !knownRoles.includes(savedRole)) {
         window.location.replace("login.html");
         return;

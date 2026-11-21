@@ -1,0 +1,36 @@
+.shared-page {
+    max-width: 64rem;
+    margin: 3rem auto;
+    padding: clamp(1rem, 4vw, 2.5rem);
+    background: #fff;
+    color: #152d41;
+    border: 1px solid #d6e0e7;
+    border-radius: 1rem;
+}
+.shared-brand { font-weight: 700; color: #16645e; }
+.shared-page dl {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: .75rem 1.25rem;
+    margin: 1.5rem 0;
+}
+.shared-page dt { font-weight: 600; }
+.shared-page dd { margin: 0; overflow-wrap: anywhere; }
+.shared-actions { display: flex; flex-wrap: wrap; gap: .75rem; }
+.shared-actions button {
+    border: 1px solid #16645e;
+    border-radius: .5rem;
+    background: #16645e;
+    color: white;
+    padding: .6rem 1rem;
+    font: inherit;
+    cursor: pointer;
+}
+.shared-actions button:disabled { opacity: .6; cursor: wait; }
+.shared-page [hidden] { display: none; }
+#sharedFilePreview {
+    width: 100%;
+    height: 65vh;
+    margin-top: 1rem;
+    border: 1px solid #d6e0e7;
+}
