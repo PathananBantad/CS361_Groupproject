@@ -102,8 +102,11 @@ async function createDownloadUrl(fileKey, options = {}) {
     const {
         disposition = "inline",
         fileName = null,
-        contentType = null
+        contentType = null,
+        expiresIn = 300
     } = options;
+    // จำกัดอายุ URL ให้สั้นเสมอ (1 วินาที – 5 นาที)
+    const ttl = Math.min(300, Math.max(1, Number(expiresIn) || 300));
 
     const resolvedContentType = contentType || getMimeTypeByExtension(fileName || fileKey);
     const configuredBucketName = getConfiguredBucketName();
@@ -142,7 +145,7 @@ async function createDownloadUrl(fileKey, options = {}) {
         });
 
         return await getSignedUrl(s3, command, {
-            expiresIn: 300
+            expiresIn: ttl
         });
     } catch (e) {
     console.error("Failed to create S3 presigned download URL:", e);

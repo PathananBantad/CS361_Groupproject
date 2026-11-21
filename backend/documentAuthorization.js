@@ -27,7 +27,9 @@ const ACTION_ROLES = Object.freeze({
     assign: ["document_officer", "admin", "faculty_staff", "responsible_person"],
     deadline: ["document_officer", "admin"],
     forward: ["document_officer", "admin", "faculty_staff", "responsible_person"],
-    delete: ["admin"]
+    delete: ["admin"],
+    // สร้าง/ดู/ยกเลิก Share Link (ADR #72) — executive อ่านอย่างเดียว จึงถูกตัดออกโดย canPerformAction
+    share: ["document_officer", "admin", "faculty_staff", "responsible_person"]
 });
 
 function mapCognitoGroupsToRoles(groups) {
@@ -138,6 +140,13 @@ function canAccessDocument({ roles, userId, document, action = "read", previousA
         if (normalized.includes("admin")) return true;
         if (document.status === "Completed") return false;
         if (normalized.includes("document_officer")) return true;
+        return currentAssignee;
+    }
+
+    if (action === "share") {
+        // admin/officer แชร์ได้ทุกเอกสาร; faculty/responsible แชร์ได้เฉพาะเมื่อเป็น Current Assignee
+        // Previous Assignee เป็นอ่านอย่างเดียว จึงแชร์ต่อไม่ได้
+        if (normalized.some(role => ["admin", "document_officer"].includes(role))) return true;
         return currentAssignee;
     }
 
