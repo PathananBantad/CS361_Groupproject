@@ -1,0 +1,69 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "Private, retained deployment artifact bucket for DocuFlow Lambda packages.",
+  "Parameters": {
+    "EnvironmentName": {
+      "Type": "String",
+      "AllowedValues": ["dev", "staging", "production"]
+    },
+    "ArtifactBucketName": {
+      "Type": "String",
+      "MinLength": 3,
+      "MaxLength": 63,
+      "AllowedPattern": "^[a-z0-9][a-z0-9.-]*[a-z0-9]$"
+    }
+  },
+  "Resources": {
+    "ArtifactBucket": {
+      "Type": "AWS::S3::Bucket",
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain",
+      "Properties": {
+        "BucketName": {
+          "Ref": "ArtifactBucketName"
+        },
+        "BucketEncryption": {
+          "ServerSideEncryptionConfiguration": [
+            {
+              "ServerSideEncryptionByDefault": {
+                "SSEAlgorithm": "AES256"
+              }
+            }
+          ]
+        },
+        "PublicAccessBlockConfiguration": {
+          "BlockPublicAcls": true,
+          "BlockPublicPolicy": true,
+          "IgnorePublicAcls": true,
+          "RestrictPublicBuckets": true
+        },
+        "VersioningConfiguration": {
+          "Status": "Enabled"
+        },
+        "Tags": [
+          {
+            "Key": "Application",
+            "Value": "DocuFlow"
+          },
+          {
+            "Key": "Environment",
+            "Value": {
+              "Ref": "EnvironmentName"
+            }
+          },
+          {
+            "Key": "Purpose",
+            "Value": "LambdaDeploymentArtifacts"
+          }
+        ]
+      }
+    }
+  },
+  "Outputs": {
+    "ArtifactBucketName": {
+      "Value": {
+        "Ref": "ArtifactBucket"
+      }
+    }
+  }
+}

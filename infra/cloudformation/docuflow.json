@@ -1,0 +1,460 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "DocuFlow V5 backend infrastructure. Existing document buckets and Cognito User Pools remain externally managed.",
+  "Parameters": {
+    "EnvironmentName": {
+      "Type": "String",
+      "AllowedValues": ["dev", "staging", "production"]
+    },
+    "LambdaFunctionName": {
+      "Type": "String",
+      "MinLength": 1,
+      "MaxLength": 64,
+      "AllowedPattern": "^[A-Za-z0-9_-]+$"
+    },
+    "ArtifactBucketName": {
+      "Type": "String",
+      "MinLength": 3,
+      "MaxLength": 63,
+      "AllowedPattern": "^[a-z0-9][a-z0-9.-]*[a-z0-9]$"
+    },
+    "LambdaPackageKey": {
+      "Type": "String",
+      "MinLength": 1,
+      "MaxLength": 1024
+    },
+    "VpcSubnetIds": {
+      "Type": "CommaDelimitedList",
+      "Default": "subnet-01fc484b0fe3e3911,subnet-074752d005c6e61bc"
+    },
+    "VpcSecurityGroupIds": {
+      "Type": "CommaDelimitedList",
+      "Default": "sg-0450285f801a51cab"
+    },
+    "DocumentBucketMode": {
+      "Type": "String",
+      "AllowedValues": ["Existing", "Create"],
+      "Default": "Existing"
+    },
+    "DocumentBucketName": {
+      "Type": "String",
+      "MinLength": 3,
+      "MaxLength": 63,
+      "AllowedPattern": "^[a-z0-9][a-z0-9.-]*[a-z0-9]$"
+    },
+    "DocumentBucketRegion": {
+      "Type": "String",
+      "MinLength": 1
+    },
+    "CognitoRegion": {
+      "Type": "String",
+      "MinLength": 1
+    },
+    "CognitoUserPoolId": {
+      "Type": "String",
+      "MinLength": 1
+    },
+    "CognitoAppClientId": {
+      "Type": "String",
+      "MinLength": 1
+    },
+    "CognitoClientSecret": {
+      "Type": "String",
+      "NoEcho": true,
+      "Default": ""
+    },
+    "DatabaseHost": {
+      "Type": "String",
+      "MinLength": 1
+    },
+    "DatabasePort": {
+      "Type": "Number",
+      "Default": 3306,
+      "MinValue": 1,
+      "MaxValue": 65535
+    },
+    "DatabaseUser": {
+      "Type": "String",
+      "MinLength": 1
+    },
+    "DatabasePassword": {
+      "Type": "String",
+      "NoEcho": true,
+      "MinLength": 1
+    },
+    "DatabaseName": {
+      "Type": "String",
+      "MinLength": 1
+    },
+    "SessionSecret": {
+      "Type": "String",
+      "NoEcho": true,
+      "MinLength": 1
+    },
+    "TuApiUrl": {
+      "Type": "String",
+      "Default": "https://restapi.tu.ac.th/api/v1/auth/Ad/verify"
+    },
+    "TuApiKey": {
+      "Type": "String",
+      "NoEcho": true,
+      "Default": ""
+    },
+    "AllowedOrigins": {
+      "Type": "CommaDelimitedList"
+    },
+    "LogRetentionDays": {
+      "Type": "Number",
+      "Default": 30,
+      "AllowedValues": [1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365]
+    }
+  },
+  "Conditions": {
+    "CreateDocumentBucket": {
+      "Fn::Equals": [
+        {
+          "Ref": "DocumentBucketMode"
+        },
+        "Create"
+      ]
+    }
+  },
+  "Resources": {
+    "LambdaExecutionRole": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "lambda.amazonaws.com"
+              },
+              "Action": "sts:AssumeRole"
+            }
+          ]
+        },
+        "Policies": [
+          {
+            "PolicyName": "DocuFlowRuntimeAccess",
+            "PolicyDocument": {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Sid": "WriteFunctionLogs",
+                  "Effect": "Allow",
+                  "Action": [
+                    "logs:CreateLogStream",
+                    "logs:PutLogEvents"
+                  ],
+                  "Resource": {
+                    "Fn::Sub": "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${LambdaFunctionName}:log-stream:*"
+                  }
+                },
+                {
+                  "Sid": "DocumentObjectAccess",
+                  "Effect": "Allow",
+                  "Action": [
+                    "s3:GetObject",
+                    "s3:PutObject",
+                    "s3:DeleteObject"
+                  ],
+                  "Resource": {
+                    "Fn::Sub": "arn:${AWS::Partition}:s3:::${DocumentBucketName}/*"
+                  }
+                },
+                {
+                  "Sid": "LambdaVpcNetworkInterfaceAccess",
+                  "Effect": "Allow",
+                  "Action": [
+                    "ec2:CreateNetworkInterface",
+                    "ec2:DescribeNetworkInterfaces",
+                    "ec2:DeleteNetworkInterface",
+                    "ec2:AssignPrivateIpAddresses",
+                    "ec2:UnassignPrivateIpAddresses"
+                  ],
+                  "Resource": "*"
+                },
+                {
+                  "Sid": "CognitoUserManagement",
+                  "Effect": "Allow",
+                  "Action": [
+                    "cognito-idp:AdminGetUser",
+                    "cognito-idp:AdminCreateUser",
+                    "cognito-idp:AdminAddUserToGroup",
+                    "cognito-idp:AdminSetUserPassword",
+                    "cognito-idp:AdminListGroupsForUser"
+                  ],
+                  "Resource": {
+                    "Fn::Sub": "arn:${AWS::Partition}:cognito-idp:${CognitoRegion}:${AWS::AccountId}:userpool/${CognitoUserPoolId}"
+                  }
+                }
+              ]
+            }
+          }
+        ],
+        "Tags": [
+          {
+            "Key": "Application",
+            "Value": "DocuFlow"
+          },
+          {
+            "Key": "Environment",
+            "Value": {
+              "Ref": "EnvironmentName"
+            }
+          }
+        ]
+      }
+    },
+    "ApiLogGroup": {
+      "Type": "AWS::Logs::LogGroup",
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain",
+      "Properties": {
+        "LogGroupName": {
+          "Fn::Sub": "/aws/lambda/${LambdaFunctionName}"
+        },
+        "RetentionInDays": {
+          "Ref": "LogRetentionDays"
+        }
+      }
+    },
+    "DocumentBucket": {
+      "Type": "AWS::S3::Bucket",
+      "Condition": "CreateDocumentBucket",
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain",
+      "Properties": {
+        "BucketName": {
+          "Ref": "DocumentBucketName"
+        },
+        "BucketEncryption": {
+          "ServerSideEncryptionConfiguration": [
+            {
+              "ServerSideEncryptionByDefault": {
+                "SSEAlgorithm": "AES256"
+              }
+            }
+          ]
+        },
+        "PublicAccessBlockConfiguration": {
+          "BlockPublicAcls": true,
+          "BlockPublicPolicy": true,
+          "IgnorePublicAcls": true,
+          "RestrictPublicBuckets": true
+        },
+        "OwnershipControls": {
+          "Rules": [
+            {
+              "ObjectOwnership": "BucketOwnerEnforced"
+            }
+          ]
+        },
+        "VersioningConfiguration": {
+          "Status": "Enabled"
+        },
+        "CorsConfiguration": {
+          "CorsRules": [
+            {
+              "AllowedOrigins": {
+                "Ref": "AllowedOrigins"
+              },
+              "AllowedMethods": ["GET", "PUT", "HEAD"],
+              "AllowedHeaders": ["Content-Type", "x-amz-*"],
+              "ExposeHeaders": ["ETag"],
+              "MaxAge": 600
+            }
+          ]
+        },
+        "Tags": [
+          {
+            "Key": "Application",
+            "Value": "DocuFlow"
+          },
+          {
+            "Key": "Environment",
+            "Value": {
+              "Ref": "EnvironmentName"
+            }
+          },
+          {
+            "Key": "Purpose",
+            "Value": "DocumentStorage"
+          }
+        ]
+      }
+    },
+    "ApiFunction": {
+      "Type": "AWS::Lambda::Function",
+      "DependsOn": "ApiLogGroup",
+      "Properties": {
+        "FunctionName": {
+          "Ref": "LambdaFunctionName"
+        },
+        "Runtime": "nodejs22.x",
+        "Handler": "index.handler",
+        "Role": {
+          "Fn::GetAtt": ["LambdaExecutionRole", "Arn"]
+        },
+        "Timeout": 30,
+        "MemorySize": 512,
+        "VpcConfig": {
+          "SubnetIds": {
+            "Ref": "VpcSubnetIds"
+          },
+          "SecurityGroupIds": {
+            "Ref": "VpcSecurityGroupIds"
+          }
+        },
+        "Code": {
+          "S3Bucket": {
+            "Ref": "ArtifactBucketName"
+          },
+          "S3Key": {
+            "Ref": "LambdaPackageKey"
+          }
+        },
+        "Environment": {
+          "Variables": {
+            "NODE_ENV": "production",
+            "S3_BUCKET": {
+              "Ref": "DocumentBucketName"
+            },
+            "AWS_S3_REGION": {
+              "Ref": "DocumentBucketRegion"
+            },
+            "COGNITO_REGION": {
+              "Ref": "CognitoRegion"
+            },
+            "COGNITO_USER_POOL_ID": {
+              "Ref": "CognitoUserPoolId"
+            },
+            "COGNITO_APP_CLIENT_ID": {
+              "Ref": "CognitoAppClientId"
+            },
+            "COGNITO_CLIENT_SECRET": {
+              "Ref": "CognitoClientSecret"
+            },
+            "DB_HOST": {
+              "Ref": "DatabaseHost"
+            },
+            "DB_PORT": {
+              "Fn::Sub": "${DatabasePort}"
+            },
+            "DB_USER": {
+              "Ref": "DatabaseUser"
+            },
+            "DB_PASSWORD": {
+              "Ref": "DatabasePassword"
+            },
+            "DB_NAME": {
+              "Ref": "DatabaseName"
+            },
+            "SESSION_SECRET": {
+              "Ref": "SessionSecret"
+            },
+            "TU_API_URL": {
+              "Ref": "TuApiUrl"
+            },
+            "TU_API_KEY": {
+              "Ref": "TuApiKey"
+            }
+          }
+        },
+        "Tags": [
+          {
+            "Key": "Application",
+            "Value": "DocuFlow"
+          },
+          {
+            "Key": "Environment",
+            "Value": {
+              "Ref": "EnvironmentName"
+            }
+          }
+        ]
+      }
+    },
+    "ApiFunctionUrl": {
+      "Type": "AWS::Lambda::Url",
+      "Properties": {
+        "TargetFunctionArn": {
+          "Fn::GetAtt": ["ApiFunction", "Arn"]
+        },
+        "AuthType": "NONE",
+        "Cors": {
+          "AllowOrigins": {
+            "Ref": "AllowedOrigins"
+          },
+          "AllowMethods": ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+          "AllowHeaders": ["Authorization", "Content-Type", "X-Requested-With"],
+          "ExposeHeaders": ["Content-Type"],
+          "MaxAge": 600
+        }
+      }
+    },
+    "PublicFunctionUrlPermission": {
+      "Type": "AWS::Lambda::Permission",
+      "Properties": {
+        "FunctionName": {
+          "Fn::GetAtt": ["ApiFunction", "Arn"]
+        },
+        "Action": "lambda:InvokeFunctionUrl",
+        "Principal": "*",
+        "FunctionUrlAuthType": "NONE"
+      }
+    },
+    "PublicFunctionUrlInvokePermission": {
+      "Type": "AWS::Lambda::Permission",
+      "Properties": {
+        "FunctionName": {
+          "Fn::GetAtt": ["ApiFunction", "Arn"]
+        },
+        "Action": "lambda:InvokeFunction",
+        "Principal": "*",
+        "InvokedViaFunctionUrl": true
+      }
+    },
+    "CognitoPostAuthenticationPermission": {
+      "Type": "AWS::Lambda::Permission",
+      "Properties": {
+        "FunctionName": {
+          "Fn::GetAtt": ["ApiFunction", "Arn"]
+        },
+        "Action": "lambda:InvokeFunction",
+        "Principal": "cognito-idp.amazonaws.com",
+        "SourceAccount": {
+          "Ref": "AWS::AccountId"
+        },
+        "SourceArn": {
+          "Fn::Sub": "arn:${AWS::Partition}:cognito-idp:${CognitoRegion}:${AWS::AccountId}:userpool/${CognitoUserPoolId}"
+        }
+      }
+    }
+  },
+  "Outputs": {
+    "LambdaArn": {
+      "Value": {
+        "Fn::GetAtt": ["ApiFunction", "Arn"]
+      }
+    },
+    "FunctionUrl": {
+      "Value": {
+        "Fn::GetAtt": ["ApiFunctionUrl", "FunctionUrl"]
+      }
+    },
+    "DocumentBucketName": {
+      "Value": {
+        "Ref": "DocumentBucketName"
+      }
+    },
+    "CognitoPostAuthenticationLambdaArn": {
+      "Description": "Set this as the existing User Pool's Post authentication trigger after reviewing the current LambdaConfig.",
+      "Value": {
+        "Fn::GetAtt": ["ApiFunction", "Arn"]
+      }
+    }
+  }
+}

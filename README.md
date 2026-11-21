@@ -108,18 +108,15 @@ V5 มุ่งเน้นการทำให้ Infrastructure และ Dep
 - ผู้ดูแล Infrastructure: ดูแล Configuration สิทธิ์ และการกู้คืนเมื่อเกิดปัญหา
   
 ### External System
-- GitHub: จัดเก็บ Source Code และประวัติการเปลี่ยนแปลง รวมถึง Infrastructure Code และ Deployment Configuration ที่จะจัดทำใน V5
-- AWS: ให้บริการ AWS Amplify สำหรับ Web Application, Amazon Cognito สำหรับ Authentication, Amazon API Gateway สำหรับรับคำขอ API, AWS Lambda สำหรับประมวลผล และ Amazon S3 สำหรับจัดเก็บไฟล์เอกสาร
-- Amazon RDS (MySQL): จัดเก็บข้อมูลเอกสาร ผู้ใช้ Workflow สถานะ และประวัติการดำเนินงาน
-- Automation / CI/CD Platform: รองรับขั้นตอนตรวจสอบ Build และ Deploy อัตโนมัติ โดยเครื่องมือที่ใช้ใน V5 อยู่ระหว่างยืนยันกับทีม
-- Secret / Configuration Store: จัดเก็บข้อมูลลับและค่าการเชื่อมต่อที่จำเป็น โดยวิธีและบริการที่ใช้ใน V5 อยู่ระหว่างยืนยันกับทีม
+- GitHub: จัดเก็บ Source Code, Infrastructure Code และ Deployment Configuration ของ V5 รวมถึง GitHub Actions workflows สำหรับ CI และการ Deploy แบบ manual
+- AWS: ให้บริการ AWS Amplify สำหรับ Web Application, Amazon Cognito สำหรับ Authentication, AWS Lambda Function URL สำหรับรับคำขอ API โดยตรง และ Amazon S3 สำหรับจัดเก็บไฟล์เอกสาร
+- Amazon RDS for MySQL: ฐานข้อมูลภายนอกที่มีอยู่แล้วสำหรับข้อมูลเอกสาร ผู้ใช้ Workflow สถานะ และประวัติการดำเนินงาน ใช้พอร์ต 3306; V5 ไม่สร้าง RDS instance ใหม่
+- GitHub Actions: รัน CI สำหรับ push/pull request และ workflow แบบ manual สำหรับ Deploy ไปยัง GitHub Environment ที่เลือก
+- GitHub Environment variables/secrets: จัดเก็บค่าการตั้งค่าและ credentials ที่ workflow ใช้ โดยไม่ใส่ secret ลงใน workflow หรือ source code
   
 ## Open questions / To validate
-- ขั้นตอนใดสามารถทำ Automation ได้ และขั้นตอนใดยังต้องทำด้วยมือ?
-- ต้องรองรับ Environment ใดบ้าง และแยก Configuration อย่างไร?
 - การปรับใช้ซ้ำมีผลต่อข้อมูลเอกสาร ไฟล์ และประวัติ Workflow หรือไม่?
 - จะจัดการ Resource ที่สร้างด้วยมือไว้แล้วอย่างไร?
-- ขั้นตอนใดสามารถทำ Automation ได้ และขั้นตอนใดยังต้องทำด้วยมือ?
 
 ## Deploy link
 (https://main.d29fui7wfvh5a0.amplifyapp.com/)
@@ -127,3 +124,130 @@ V5 มุ่งเน้นการทำให้ Infrastructure และ Dep
 ## Architecture V5
 <img width="1755" height="896" alt="Architecture V5 " src="https://github.com/user-attachments/assets/290723a9-9ac3-4b68-b990-158593ee234f" />
 
+## V5 Infrastructure as Code and Deployment
+
+### Architecture and resource ownership
+
+V5 keeps the existing architecture: AWS Amplify serves the static frontend; the frontend calls an AWS Lambda Function URL directly; Lambda validates Cognito access-token JWTs and applies document/role authorization; an existing Amazon RDS for MySQL instance stores metadata and workflow data; and S3 stores document files. The V5 templates do not create an RDS instance or API Gateway. The RDS database is external and is accessed on port `3306`. The TU authentication endpoint remains part of the backend login flow.
+
+The CloudFormation templates are in `infra/cloudformation/`:
+
+| Template/resource | Ownership and behavior |
+|---|---|
+| `artifact-bucket.json` | Creates the private, versioned deployment-artifact bucket in a separate CloudFormation stack. Public access is blocked and deletion/replacement retains the bucket. |
+| `docuflow.json` Lambda, execution role, log group, Function URL and invoke permissions | Managed by the application stack. Names, environment, origins, Cognito pool, and runtime configuration are parameters. The public Function URL is `NONE` auth so the browser can call it; application endpoints continue to enforce Cognito JWT and authorization middleware. |
+| Lambda VPC configuration | The application stack passes `VpcSubnetIds` and `VpcSecurityGroupIds` to the Lambda. Defaults are `subnet-01fc484b0fe3e3911`, `subnet-074752d005c6e61bc`, and `sg-0450285f801a51cab`; the existing execution role receives the ENI permissions required by Lambda VPC networking. |
+| Document S3 bucket | `DOCUMENT_BUCKET_MODE=Existing` references the supplied bucket without importing, changing, or deleting it. `Create` provisions a new private/versioned bucket with `DeletionPolicy: Retain` and `UpdateReplacePolicy: Retain`. |
+| Existing Cognito User Pool and Amplify app | Remain externally managed. CloudFormation grants the configured pool permission to invoke Lambda but does not replace the pool's `LambdaConfig` or change the Amplify app. |
+| Amazon RDS for MySQL | Remains external; only connection settings are passed to Lambda. No RDS instance is provisioned and no database migration is run by this deployment. |
+
+The existing Cognito User Pool's PostAuthentication trigger association is intentionally a reviewed manual step: inspect the pool's current triggers first, then associate the output `CognitoPostAuthenticationLambdaArn` without overwriting other configured triggers. If the pool already has a PostAuthentication trigger, do not replace it without reviewing its behavior. Existing Lambda functions cannot be silently adopted by a new stack; the deployment script aborts if the selected function exists outside its stack. Import existing resources only through a separately reviewed CloudFormation resource-import/migration procedure.
+
+An AWS read-only inspection was attempted before designing this deployment, but the current AWS CLI identity could not be verified, so it could not confirm the real account's stack ownership, bucket configuration, Lambda configuration, or Cognito triggers. No AWS resources were created, updated, or deleted. Do not target an existing production function or pool until those checks can be completed with valid read-only credentials. The untracked `scripts/inspect-aws-readonly.ps1` is retained unchanged.
+
+### Prerequisites
+
+- Node.js 22+ and npm.
+- Run `npm --prefix backend ci` before local tests or packaging.
+- AWS CLI v2.
+- AWS permissions for CloudFormation stack operations, Lambda, S3 artifact upload, IAM role creation, and `sts:GetCallerIdentity`. The Lambda execution role created by the template is scoped to the configured document bucket and Cognito pool.
+- An existing Cognito User Pool and App Client.
+- An existing Amazon RDS for MySQL database, reachable by the Lambda VPC configuration, and its connection settings (MySQL port `3306`). This deployment does not create the database.
+- An existing document bucket (recommended for the current deployment) or a globally unique name for a new bucket.
+- An Amplify frontend origin for CORS. For a new document bucket, direct browser uploads/downloads also use the S3 CORS rule in the template. Existing bucket CORS is not changed by this deployment and must be reviewed/configured separately if needed.
+
+### Environment variables
+
+The deployment script accepts terminal environment variables and optionally reads `backend/.env` as a local fallback. Terminal variables take precedence. It does not require credentials to be stored in `.env`, does not pass AWS credentials to Lambda, and never modifies `.env`.
+
+| Variable | Required | Purpose |
+|---|---:|---|
+| `AWS_REGION` (or `AWS_DEFAULT_REGION`) | Yes | Region for the CloudFormation stacks, Lambda, and artifact bucket. |
+| `AWS_EXPECTED_ACCOUNT_ID` | Yes | Expected 12-digit AWS account ID. The script verifies the STS caller identity against it before reading or changing deployment stacks. |
+| `DEPLOY_ENVIRONMENT` | No | `dev` by default; supported values are `dev`, `staging`, and `production`. |
+| `CLOUDFORMATION_STACK_NAME` | No | Defaults to `docuflow-<environment>`. The artifact stack appends `-artifacts`. |
+| `LAMBDA_FUNCTION_NAME` | No | Defaults to `docuflow-<environment>-api`. |
+| `ARTIFACT_BUCKET_NAME` | Yes | Globally unique private bucket name for versioned Lambda packages. |
+| `DOCUMENT_BUCKET_NAME` (or existing backend alias `S3_BUCKET`) | Yes | Existing document bucket name, or new bucket name when mode is `Create`. |
+| `DOCUMENT_BUCKET_MODE` | No | `Existing` by default; use `Create` only for a new unique bucket. |
+| `AWS_S3_REGION` | No | Document bucket region; defaults to `AWS_REGION`. |
+| `FRONTEND_ALLOWED_ORIGINS` | Yes | Comma-separated HTTPS frontend origins. HTTP is allowed only for `localhost`/`127.0.0.1`. |
+| `COGNITO_REGION` | No | Defaults to the region prefix of `COGNITO_USER_POOL_ID`. |
+| `COGNITO_USER_POOL_ID`, `COGNITO_APP_CLIENT_ID` | Yes | Existing Cognito pool and client identifiers. These identifiers are not secrets. |
+| `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME` | Yes | Existing Amazon RDS for MySQL connection; set `DB_PORT=3306`. `DB_USERNAME` and `DB_DATABASE` are accepted aliases. |
+| `SESSION_SECRET` | Yes | Session signing secret. |
+| `COGNITO_CLIENT_SECRET` | No | Only if the existing Cognito App Client has a client secret. |
+| `TU_API_URL` | No | Defaults to the existing TU API endpoint. |
+| `TU_API_KEY` (or `TU_APP_KEY`) | Depends | Needed for the existing TU authentication flow. |
+
+`DB_PASSWORD`, `SESSION_SECRET`, `TU_API_KEY`, and `COGNITO_CLIENT_SECRET` are CloudFormation `NoEcho` parameters, which masks their values in CloudFormation stack parameter displays. `NoEcho` is not Secrets Manager and does not prevent a secret from being exposed wherever the template passes it. In particular, `DB_PASSWORD` is passed to the Lambda function as an environment variable; principals authorized to inspect the Lambda configuration may be able to access it. This is a current security limitation that should be improved in a future change by retrieving the database credential from a managed secret store. The deployment script creates a short-lived parameter file outside the repository and removes it in a `finally` block. AWS Academy credentials must never be copied into application Lambda variables.
+
+### Preparing AWS Academy temporary credentials
+
+In the terminal used for local deployment, export the temporary key, secret, and session token supplied by AWS Academy (PowerShell example):
+
+```powershell
+$env:AWS_ACCESS_KEY_ID = "<temporary access key>"
+$env:AWS_SECRET_ACCESS_KEY = "<temporary secret key>"
+$env:AWS_SESSION_TOKEN = "<temporary session token>"
+$env:AWS_REGION = "us-east-1"
+$env:AWS_EXPECTED_ACCOUNT_ID = "<12-digit expected AWS account ID>"
+aws sts get-caller-identity
+```
+
+Temporary credentials expire; obtain a fresh set before deploying. Do not paste them into workflow YAML, source files, command history, or a committed file. The deployment script uses the AWS CLI credential provider chain and supports environment credentials, including `AWS_SESSION_TOKEN`, as well as an AWS CLI profile.
+
+### Create or update CloudFormation and deploy Lambda
+
+Set the required runtime and resource configuration in the terminal or `backend/.env` (ignored by Git). Example names below are placeholders; choose unique bucket names and use the actual project environment settings:
+
+```powershell
+$env:DEPLOY_ENVIRONMENT = "dev"
+$env:ARTIFACT_BUCKET_NAME = "<unique-private-artifact-bucket>"
+$env:DOCUMENT_BUCKET_NAME = "<existing-document-bucket>"
+$env:DOCUMENT_BUCKET_MODE = "Existing"
+$env:FRONTEND_ALLOWED_ORIGINS = "https://<your-amplify-domain>"
+$env:COGNITO_USER_POOL_ID = "<existing-pool-id>"
+$env:COGNITO_APP_CLIENT_ID = "<existing-app-client-id>"
+$env:AWS_EXPECTED_ACCOUNT_ID = "<12-digit expected AWS account ID>"
+$env:DB_HOST = "<existing-rds-mysql-endpoint>"
+$env:DB_PORT = "3306"
+$env:DB_USER = "<rds-mysql-user>"
+$env:DB_PASSWORD = "<rds-mysql-password>"
+$env:DB_NAME = "<rds-mysql-database>"
+$env:SESSION_SECRET = "<session-secret>"
+node scripts\deploy-aws.js
+```
+
+The deployment script validates configuration before making AWS calls, verifies both the configured region and caller account, and checks existing stack/resource ownership. It packages the backend, creates or updates the private artifact-bucket CloudFormation stack, uploads the package under a content-based SHA-256 key (skipping an identical existing artifact), then creates or updates the application stack with the Lambda and VPC parameters. It waits for Lambda and requires `/api/health` to report a connected database. It refuses to target `cs361-v2-documentflow-api`, does not adopt a Lambda that exists outside its stack, does not mutate the existing document bucket, and does not update Cognito triggers. CloudFormation failures are surfaced and are not treated as successful deployments.
+
+After deployment, manually review the existing Cognito User Pool's trigger configuration and set its PostAuthentication trigger to the stack output only if that does not overwrite another trigger. For existing document buckets, review their public-access block, encryption, and CORS without changing document data. In particular, do not enable public S3 access.
+
+The frontend's primary endpoint is configured as `AWS_LAMBDA_FUNCTION_URL` in `frontend/js/cognito-config.js`; its current value is a Lambda Function URL, not an API Gateway URL. The deployment script intentionally does not rewrite frontend source configuration. For a different environment, update the frontend's public Cognito identifiers and Function URL through the frontend's reviewed environment-specific configuration/build process, then verify the Amplify origin is included in `FRONTEND_ALLOWED_ORIGINS`.
+
+### CI and GitHub Actions
+
+`.github/workflows/ci.yml` runs on pushes, pull requests, or manual dispatch. It installs backend dependencies with `npm ci`, checks JavaScript syntax, and runs all backend tests. `.github/workflows/deploy.yml` is manual (`workflow_dispatch`) with `dev`, `staging`, and `production` choices. It installs dependencies, runs tests and deployment-configuration validation, blocks production deployments from branches other than `main`, configures AWS credentials, verifies the caller identity, and invokes `node scripts/deploy-aws.js`. Configure required reviewers on the GitHub `production` Environment.
+
+Create GitHub Environments named `dev`, `staging`, and/or `production`. Configure these environment variables as appropriate: `AWS_REGION`, `AWS_S3_REGION`, `AWS_EXPECTED_ACCOUNT_ID`, `CLOUDFORMATION_STACK_NAME`, `LAMBDA_FUNCTION_NAME`, `ARTIFACT_BUCKET_NAME`, `DOCUMENT_BUCKET_NAME`, `DOCUMENT_BUCKET_MODE`, `FRONTEND_ALLOWED_ORIGINS`, `COGNITO_REGION`, `COGNITO_USER_POOL_ID`, `COGNITO_APP_CLIENT_ID`, `DB_PORT`, `DB_NAME`, and `TU_API_URL`.
+
+Configure these environment secrets: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`, `DB_HOST`, `DB_USER`, `DB_PASSWORD`, `SESSION_SECRET`, `COGNITO_CLIENT_SECRET` (if applicable), and `TU_API_KEY` (if TU login is enabled). AWS Academy environments commonly issue temporary credentials and may not permit configuring an OIDC provider/role. This workflow therefore uses GitHub Environment secrets for the temporary three-part credentials; refresh them after expiry. OIDC is not assumed to be available. If the AWS account later supports OIDC, prefer a narrowly scoped role and GitHub repository/branch trust over long-lived credentials.
+
+### Tests and deployment verification
+
+Run the backend unit and automated tests locally:
+
+```powershell
+npm --prefix backend ci
+npm --prefix backend test
+```
+
+The deployment tests cover environment validation, AWS Academy session-token propagation, caller identity validation, CloudFormation parameter mapping and resource safeguards, template security/outputs, and health-check failure handling. They do not contact AWS.
+
+The deployment script's health check requires both HTTP success and `{ "ok": true, "database": "connected" }`. After a successful deploy, verify the CloudFormation outputs (`LambdaArn`, `FunctionUrl`, and `DocumentBucketName`), test the health URL, then run authenticated smoke tests for login, document listing/authorization, upload/download, assignments, status changes, and audit history. Protected APIs should reject requests without a valid Cognito access token.
+
+To roll back application code, identify a previously uploaded package key in the retained/versioned artifact bucket and update the application stack's `LambdaPackageKey` to that key using a reviewed CloudFormation change. Database migrations and existing document files are not rolled back by this procedure. Buckets and logs have retention policies; deletion/replacement does not purge their data automatically.
+
+### Creating a new environment
+
+Choose a supported `DEPLOY_ENVIRONMENT`, distinct `CLOUDFORMATION_STACK_NAME` and `LAMBDA_FUNCTION_NAME`, globally unique artifact bucket, and environment-specific document bucket/configuration. Use `DOCUMENT_BUCKET_MODE=Create` only for a new empty bucket; the template blocks all public access, enables encryption/versioning, and retains it on stack deletion/replacement. Set the existing RDS MySQL connection details (port `3306`), Cognito, TU API, CORS, account guard, and secret values for that environment before running the deployment. Existing resources must be explicitly identified and reviewed; never point a new stack at an existing Lambda name and assume CloudFormation will adopt it.

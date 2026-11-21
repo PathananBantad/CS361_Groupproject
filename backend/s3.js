@@ -14,11 +14,12 @@ const path = require("path");
 
 require("dotenv").config();
 
-const bucketName = process.env.S3_BUCKET || process.env.AWS_S3_BUCKET || "cs361-v2-docuflow-927017131721";
+const bucketName = process.env.S3_BUCKET || process.env.AWS_S3_BUCKET || "";
 
-// Region ของ S3 Bucket:
-// cs361-v2-documents-documentflow อยู่ที่ us-east-1
-const s3Region = process.env.AWS_S3_REGION || process.env.AWS_REGION || "us-east-1";
+const s3Region =
+    process.env.AWS_S3_REGION ||
+    process.env.AWS_REGION ||
+    process.env.AWS_DEFAULT_REGION;
 
 const envAccessKey = process.env.AWS_ACCESS_KEY_ID || process.env.aws_access_key_id;
 const envSecretKey = process.env.AWS_SECRET_ACCESS_KEY || process.env.aws_secret_access_key;
@@ -31,8 +32,16 @@ const s3 = new S3Client({
             sessionToken: envSessionToken
         }
     } : {}),
-    region: s3Region
+    ...(s3Region ? { region: s3Region } : {})
 });
+
+function getConfiguredBucketName(config = process.env) {
+    const configuredBucketName = config.S3_BUCKET || config.AWS_S3_BUCKET;
+    if (!configuredBucketName) {
+        throw new Error("S3 bucket configuration is missing.");
+    }
+    return configuredBucketName;
+}
 
 // Helper function to resolve MIME type by extension
 function getMimeTypeByExtension(fileNameOrKey) {
@@ -56,9 +65,10 @@ function getMimeTypeByExtension(fileNameOrKey) {
 // Create upload URL (PUT)
 async function createUploadUrl(fileKey, contentType) {
     const finalContentType = contentType || getMimeTypeByExtension(fileKey);
+    const configuredBucketName = getConfiguredBucketName();
 
     const command = new PutObjectCommand({
-        Bucket: bucketName,
+        Bucket: configuredBucketName,
         Key: fileKey,
         ContentType: finalContentType
     });
@@ -75,7 +85,7 @@ async function getS3Object(fileKey) {
     }
 
     const command = new GetObjectCommand({
-        Bucket: bucketName,
+        Bucket: getConfiguredBucketName(),
         Key: fileKey
     });
 
@@ -84,7 +94,7 @@ async function getS3Object(fileKey) {
 
 async function getObjectMetadata(fileKey) {
     if (!fileKey) throw new Error("File key is required.");
-    return s3.send(new HeadObjectCommand({ Bucket: bucketName, Key: fileKey }));
+    return s3.send(new HeadObjectCommand({ Bucket: getConfiguredBucketName(), Key: fileKey }));
 }
 
 // Create download or preview URL with proper ContentType and Disposition
@@ -96,6 +106,7 @@ async function createDownloadUrl(fileKey, options = {}) {
     } = options;
 
     const resolvedContentType = contentType || getMimeTypeByExtension(fileName || fileKey);
+    const configuredBucketName = getConfiguredBucketName();
 
     let originalName = fileName;
     if (!originalName) {
@@ -111,7 +122,7 @@ async function createDownloadUrl(fileKey, options = {}) {
     // สำหรับ Bucket my-project-v1-2026:
     // เนื่องจาก AWS IAM Key โดน Quarantine บล็อก GetObject ผ่าน signed URL
     // แต่ตัว Bucket เป็น Public Read สามารถเข้าถึงผ่าน Public URL ได้ 100%
-    if (bucketName === "my-project-v1-2026") {
+    if (configuredBucketName === "my-project-v1-2026") {
     throw new Error(
         "Public S3 download is disabled. Configure secure presigned URLs."
     );
@@ -124,7 +135,7 @@ async function createDownloadUrl(fileKey, options = {}) {
             : `inline; filename="${safeAsciiName}"; filename*=UTF-8''${encodedName}`;
 
         const command = new GetObjectCommand({
-            Bucket: bucketName,
+            Bucket: configuredBucketName,
             Key: fileKey,
             ResponseContentType: resolvedContentType,
             ResponseContentDisposition: contentDisposition
@@ -142,9 +153,10 @@ async function createDownloadUrl(fileKey, options = {}) {
 // Delete an object from S3
 async function deleteS3Object(fileKey) {
     if (!fileKey) return;
+    const configuredBucketName = getConfiguredBucketName();
     try {
         const command = new DeleteObjectCommand({
-            Bucket: bucketName,
+            Bucket: configuredBucketName,
             Key: fileKey
         });
         return await s3.send(command);
@@ -163,14 +175,16 @@ module.exports = {
     uploadObjectBuffer,
     deleteS3Object,
     bucketName,
-    s3Region
+    s3Region,
+    getConfiguredBucketName
 };
 
 
 // ดึง Buffer ของไฟล์จาก S3
 async function getObjectBuffer(fileKey) {
+    const configuredBucketName = getConfiguredBucketName();
     const command = new GetObjectCommand({
-        Bucket: bucketName,
+        Bucket: configuredBucketName,
         Key: fileKey
     });
 
@@ -187,8 +201,9 @@ async function getObjectBuffer(fileKey) {
 
 // อัปโหลด Buffer ไปยัง S3
 async function uploadObjectBuffer(fileKey, buffer, contentType) {
+    const configuredBucketName = getConfiguredBucketName();
     const command = new PutObjectCommand({
-        Bucket: bucketName,
+        Bucket: configuredBucketName,
         Key: fileKey,
         Body: buffer,
         ContentType: contentType || getMimeTypeByExtension(fileKey)

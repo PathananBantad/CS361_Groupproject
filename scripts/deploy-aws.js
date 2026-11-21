@@ -1,322 +1,673 @@
-const { execSync } = require('child_process');
-const fs = require('fs');
-const path = require('path');
-const dotenv = require('../backend/node_modules/dotenv');
+const { spawnSync } = require("node:child_process");
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
+const dotenv = require("../backend/node_modules/dotenv");
+const { createPackage } = require("../backend/package-zip");
 
-const envPath = path.resolve(__dirname, '../backend/.env');
-const envConfig = dotenv.config({ path: envPath }).parsed || {};
-
-const env = {
-  ...process.env,
-  AWS_ACCESS_KEY_ID: envConfig.AWS_ACCESS_KEY_ID,
-  AWS_SECRET_ACCESS_KEY: envConfig.AWS_SECRET_ACCESS_KEY,
-  AWS_SESSION_TOKEN: envConfig.AWS_SESSION_TOKEN,
-  AWS_REGION: envConfig.AWS_REGION || 'us-east-1'
-};
-
-// Origin ที่อนุญาตให้เรียก API/S3 (ตรงกับ backend/config.js) — ตั้งได้ด้วย CORS_ALLOWED_ORIGINS (คั่นด้วย ,)
-const DEFAULT_CORS_ALLOWED_ORIGINS = [
-  'https://main.d29fui7wfvh5a0.amplifyapp.com',
-  'http://localhost:3000',
-  'http://127.0.0.1:3000',
-  'http://localhost:5500',
-  'http://127.0.0.1:5500'
+const REPOSITORY_ROOT = path.resolve(__dirname, "..");
+const BACKEND_ROOT = path.join(REPOSITORY_ROOT, "backend");
+const CLOUDFORMATION_ROOT = path.join(REPOSITORY_ROOT, "infra", "cloudformation");
+const ENVIRONMENTS = new Set(["dev", "staging", "production"]);
+const PROTECTED_V2_LAMBDA_NAME = "cs361-v2-documentflow-api";
+const DEFAULT_VPC_SUBNET_IDS = [
+  "subnet-01fc484b0fe3e3911",
+  "subnet-074752d005c6e61bc"
 ];
-const corsAllowedOrigins = (envConfig.CORS_ALLOWED_ORIGINS || process.env.CORS_ALLOWED_ORIGINS || '')
-  .split(',').map(o => o.trim().replace(/\/+$/, '')).filter(Boolean);
-const allowedOrigins = corsAllowedOrigins.length ? corsAllowedOrigins : DEFAULT_CORS_ALLOWED_ORIGINS;
+const DEFAULT_VPC_SECURITY_GROUP_IDS = ["sg-0450285f801a51cab"];
+const READY_STACK_STATUSES = new Set([
+  "CREATE_COMPLETE",
+  "UPDATE_COMPLETE",
+  "UPDATE_ROLLBACK_COMPLETE",
+  "IMPORT_COMPLETE"
+]);
 
-function writeTempJson(name, data) {
-  const filePath = path.resolve(__dirname, name);
-  fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
-  return filePath;
+function loadDeploymentConfig(environment = process.env) {
+  const envPath = path.join(BACKEND_ROOT, ".env");
+  const envFile = fs.existsSync(envPath)
+    ? dotenv.parse(fs.readFileSync(envPath))
+    : {};
+
+  return { ...envFile, ...environment };
 }
 
-function runAws(cmd, options = {}) {
-  try {
-    const res = execSync(cmd, { env, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], ...options });
-    try {
-      return JSON.parse(res);
-    } catch {
-      return res;
-    }
-  } catch (err) {
-    const stderr = err.stderr ? err.stderr.toString() : '';
-    const stdout = err.stdout ? err.stdout.toString() : '';
-    throw new Error(`Command failed: ${cmd}\n${stderr || stdout || err.message}`);
+function getFirstConfiguredValue(...values) {
+  return values.find(value => typeof value === "string" && value.trim());
+}
+
+function parseVpcResourceIds(value, variableName, prefix, minimumCount) {
+  const resourceIds = value.split(",").map(resourceId => resourceId.trim()).filter(Boolean);
+  if (resourceIds.length < minimumCount ||
+      new Set(resourceIds).size !== resourceIds.length ||
+      resourceIds.some(resourceId =>
+        !new RegExp(`^${prefix}-(?:[0-9a-f]{8}|[0-9a-f]{17})$`).test(resourceId)
+      )) {
+    throw new Error(
+      `${variableName} must contain at least ${minimumCount} valid ${prefix} resource ID(s).`
+    );
   }
+  return resourceIds;
+}
+
+function getRequiredDatabaseConfig(config) {
+  const databaseConfig = {
+    DB_HOST: getFirstConfiguredValue(config.DB_HOST),
+    DB_PORT: getFirstConfiguredValue(config.DB_PORT),
+    DB_USER: getFirstConfiguredValue(config.DB_USER, config.DB_USERNAME),
+    DB_PASSWORD: getFirstConfiguredValue(config.DB_PASSWORD),
+    DB_NAME: getFirstConfiguredValue(config.DB_NAME, config.DB_DATABASE)
+  };
+  const missingVariables = Object.entries(databaseConfig)
+    .filter(([, value]) => value === undefined)
+    .map(([name]) => name);
+
+  if (missingVariables.length > 0) {
+    throw new Error(`Database deployment configuration is incomplete: ${missingVariables.join(", ")}.`);
+  }
+
+  const port = Number(databaseConfig.DB_PORT);
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    throw new Error("DB_PORT must be an integer between 1 and 65535.");
+  }
+
+  return {
+    ...databaseConfig,
+    DB_PORT: String(port),
+    DB_USERNAME: databaseConfig.DB_USER,
+    DB_DATABASE: databaseConfig.DB_NAME
+  };
+}
+
+function getRequiredSessionSecret(config) {
+  const sessionSecret = config.SESSION_SECRET;
+  if (typeof sessionSecret !== "string" || !sessionSecret.trim()) {
+    throw new Error("SESSION_SECRET must be configured before deployment.");
+  }
+  return sessionSecret;
+}
+
+function parseAllowedOrigins(value) {
+  if (typeof value !== "string" || !value.trim()) {
+    throw new Error("FRONTEND_ALLOWED_ORIGINS must contain at least one frontend origin.");
+  }
+
+  const origins = [...new Set(value.split(",").map(origin => origin.trim()).filter(Boolean))];
+  if (origins.length === 0 || origins.some(origin => {
+    try {
+      const parsed = new URL(origin);
+      return !["https:", "http:"].includes(parsed.protocol) ||
+        parsed.origin !== origin ||
+        (parsed.protocol === "http:" && !["localhost", "127.0.0.1"].includes(parsed.hostname));
+    } catch {
+      return true;
+    }
+  })) {
+    throw new Error("FRONTEND_ALLOWED_ORIGINS must contain valid HTTPS origins (HTTP is limited to localhost).");
+  }
+
+  return origins;
+}
+
+function getRequiredDeploymentConfig(config) {
+  const environmentName = getFirstConfiguredValue(config.DEPLOY_ENVIRONMENT) || "dev";
+  if (!ENVIRONMENTS.has(environmentName)) {
+    throw new Error(`DEPLOY_ENVIRONMENT must be one of: ${[...ENVIRONMENTS].join(", ")}.`);
+  }
+
+  const region = getFirstConfiguredValue(config.AWS_REGION, config.AWS_DEFAULT_REGION);
+  if (!region || !/^[a-z]{2}(?:-[a-z0-9]+)+-\d$/.test(region)) {
+    throw new Error("AWS_REGION must be configured as a valid AWS region.");
+  }
+
+  const expectedAccountId = getFirstConfiguredValue(config.AWS_EXPECTED_ACCOUNT_ID);
+  if (!expectedAccountId || !/^\d{12}$/.test(expectedAccountId)) {
+    throw new Error("AWS_EXPECTED_ACCOUNT_ID must be configured as a 12-digit AWS account ID.");
+  }
+
+  const userPoolId = getFirstConfiguredValue(config.COGNITO_USER_POOL_ID);
+  const appClientId = getFirstConfiguredValue(config.COGNITO_APP_CLIENT_ID);
+  if (!userPoolId || !appClientId) {
+    throw new Error("COGNITO_USER_POOL_ID and COGNITO_APP_CLIENT_ID must be configured.");
+  }
+
+  const cognitoRegion = getFirstConfiguredValue(config.COGNITO_REGION) || userPoolId.split("_")[0];
+  if (!/^[a-z]{2}(?:-gov)?-[a-z]+-\d$/.test(cognitoRegion)) {
+    throw new Error("COGNITO_REGION must be a valid AWS region.");
+  }
+
+  const stackName = getFirstConfiguredValue(config.CLOUDFORMATION_STACK_NAME) ||
+    `docuflow-${environmentName}`;
+  if (!/^[A-Za-z][A-Za-z0-9-]{0,116}$/.test(stackName)) {
+    throw new Error("CLOUDFORMATION_STACK_NAME must be valid and leave room for the -artifacts stack suffix.");
+  }
+
+  const artifactBucketName = getFirstConfiguredValue(config.ARTIFACT_BUCKET_NAME);
+  const documentBucketName = getFirstConfiguredValue(config.DOCUMENT_BUCKET_NAME, config.S3_BUCKET);
+  const lambdaFunctionName = getFirstConfiguredValue(config.LAMBDA_FUNCTION_NAME) ||
+    `docuflow-${environmentName}-api`;
+  const documentBucketMode = getFirstConfiguredValue(config.DOCUMENT_BUCKET_MODE) || "Existing";
+  if (!artifactBucketName) {
+    throw new Error("ARTIFACT_BUCKET_NAME must be configured.");
+  }
+  if (!documentBucketName) {
+    throw new Error("DOCUMENT_BUCKET_NAME (or S3_BUCKET) must be configured.");
+  }
+  if (!/^[A-Za-z0-9_-]{1,64}$/.test(lambdaFunctionName)) {
+    throw new Error("LAMBDA_FUNCTION_NAME must contain only letters, numbers, hyphens, or underscores.");
+  }
+  if (lambdaFunctionName === PROTECTED_V2_LAMBDA_NAME) {
+    throw new Error(`LAMBDA_FUNCTION_NAME cannot target the protected V2 Lambda ${PROTECTED_V2_LAMBDA_NAME}.`);
+  }
+  if (!["Existing", "Create"].includes(documentBucketMode)) {
+    throw new Error("DOCUMENT_BUCKET_MODE must be Existing or Create.");
+  }
+
+  const databaseConfig = getRequiredDatabaseConfig(config);
+  const sessionSecret = getRequiredSessionSecret(config);
+
+  return {
+    environmentName,
+    region,
+    stackName,
+    artifactStackName: `${stackName}-artifacts`,
+    artifactBucketName,
+    lambdaFunctionName,
+    documentBucketName,
+    documentBucketMode,
+    documentBucketRegion: getFirstConfiguredValue(config.AWS_S3_REGION) || region,
+    cognitoRegion,
+    userPoolId,
+    appClientId,
+    cognitoClientSecret: config.COGNITO_CLIENT_SECRET || "",
+    databaseConfig,
+    sessionSecret,
+    tuApiUrl: getFirstConfiguredValue(config.TU_API_URL) ||
+      "https://restapi.tu.ac.th/api/v1/auth/Ad/verify",
+    tuApiKey: config.TU_API_KEY || config.TU_APP_KEY || "",
+    allowedOrigins: parseAllowedOrigins(config.FRONTEND_ALLOWED_ORIGINS),
+    expectedAccountId,
+    vpcSubnetIds: parseVpcResourceIds(
+      getFirstConfiguredValue(config.VPC_SUBNET_IDS) || DEFAULT_VPC_SUBNET_IDS.join(","),
+      "VPC_SUBNET_IDS",
+      "subnet",
+      2
+    ),
+    vpcSecurityGroupIds: parseVpcResourceIds(
+      getFirstConfiguredValue(config.VPC_SECURITY_GROUP_IDS) ||
+        DEFAULT_VPC_SECURITY_GROUP_IDS.join(","),
+      "VPC_SECURITY_GROUP_IDS",
+      "sg",
+      1
+    )
+  };
+}
+
+function createAwsEnvironment(config, baseEnvironment = process.env) {
+  const awsEnvironment = { ...baseEnvironment };
+  const region = getFirstConfiguredValue(config.AWS_REGION, config.AWS_DEFAULT_REGION);
+  if (region) {
+    awsEnvironment.AWS_REGION = region;
+    awsEnvironment.AWS_DEFAULT_REGION = region;
+  }
+  return awsEnvironment;
+}
+
+function runAws(args, options = {}) {
+  const result = spawnSync("aws", args, {
+    cwd: REPOSITORY_ROOT,
+    env: options.env || createAwsEnvironment(options.config || {}),
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"]
+  });
+
+  if (result.error) {
+    throw new Error(`AWS CLI ${args.slice(0, 2).join(" ")} failed: ${result.error.message}`);
+  }
+  if (result.status !== 0) {
+    const message = (result.stderr || result.stdout || `exit code ${result.status}`).trim();
+    throw new Error(`AWS CLI ${args.slice(0, 2).join(" ")} failed: ${message}`);
+  }
+  return (result.stdout || "").trim();
+}
+
+function verifyAwsIdentity(executeAws, awsEnvironment, expectedAccountId) {
+  const region = getFirstConfiguredValue(awsEnvironment.AWS_REGION, awsEnvironment.AWS_DEFAULT_REGION);
+  if (!region || !/^[a-z]{2}(?:-[a-z0-9]+)+-\d$/.test(region) ||
+      (awsEnvironment.AWS_REGION && awsEnvironment.AWS_DEFAULT_REGION &&
+       awsEnvironment.AWS_REGION !== awsEnvironment.AWS_DEFAULT_REGION)) {
+    throw new Error("AWS deployment region is missing, invalid, or inconsistent.");
+  }
+  if (!expectedAccountId || !/^\d{12}$/.test(expectedAccountId)) {
+    throw new Error("AWS_EXPECTED_ACCOUNT_ID must be configured as a 12-digit AWS account ID.");
+  }
+
+  const output = executeAws(
+    ["sts", "get-caller-identity", "--region", region, "--output", "json"],
+    { env: awsEnvironment }
+  );
+  let identity;
+  try {
+    identity = JSON.parse(output);
+  } catch {
+    throw new Error("AWS caller identity response was not valid JSON.");
+  }
+
+  if (!identity.Account || !identity.Arn) {
+    throw new Error("AWS caller identity response is missing Account or Arn.");
+  }
+  if (identity.Account !== expectedAccountId) {
+    throw new Error("AWS caller identity does not match AWS_EXPECTED_ACCOUNT_ID.");
+  }
+  return identity;
+}
+
+function parseAwsJson(output, description) {
+  try {
+    return JSON.parse(output);
+  } catch {
+    throw new Error(`${description} returned invalid JSON.`);
+  }
+}
+
+function getStack(executeAws, stackName, awsEnvironment) {
+  try {
+    const response = parseAwsJson(
+      executeAws(
+        ["cloudformation", "describe-stacks", "--stack-name", stackName, "--output", "json"],
+        { env: awsEnvironment }
+      ),
+      `CloudFormation stack ${stackName}`
+    );
+    return response.Stacks?.[0] || null;
+  } catch (error) {
+    if (/ValidationError.*does not exist|stack with id .* does not exist/i.test(error.message)) {
+      return null;
+    }
+    throw error;
+  }
+}
+
+function assertStackReady(stack) {
+  if (!stack || !READY_STACK_STATUSES.has(stack.StackStatus)) {
+    const status = stack?.StackStatus || "not found";
+    throw new Error(`CloudFormation stack is not ready for deployment (status: ${status}).`);
+  }
+}
+
+function getStackResources(executeAws, stackName, awsEnvironment) {
+  const response = parseAwsJson(
+    executeAws(
+      ["cloudformation", "list-stack-resources", "--stack-name", stackName, "--output", "json"],
+      { env: awsEnvironment }
+    ),
+    `CloudFormation resources for ${stackName}`
+  );
+  return response.StackResourceSummaries || [];
+}
+
+function assertManagedResource(resources, logicalResourceId, physicalResourceId, description) {
+  const resource = resources.find(item => item.LogicalResourceId === logicalResourceId);
+  if (!resource || resource.PhysicalResourceId !== physicalResourceId) {
+    throw new Error(
+      `${description} is not owned by the expected CloudFormation stack. ` +
+      "Import it through a reviewed resource-import procedure or choose a new resource name."
+    );
+  }
+}
+
+function assertStackParameter(stack, parameterKey, expectedValue, stackName) {
+  const parameter = stack?.Parameters?.find(item => item.ParameterKey === parameterKey);
+  if (!parameter || parameter.ParameterValue !== String(expectedValue)) {
+    throw new Error(
+      `CloudFormation stack ${stackName} has a different or missing ${parameterKey}. ` +
+      "Use a separate stack or perform a reviewed migration instead of repointing existing resources."
+    );
+  }
+}
+
+function buildCloudFormationParameters(config, packageKey) {
+  return [
+    ["EnvironmentName", config.environmentName],
+    ["LambdaFunctionName", config.lambdaFunctionName],
+    ["ArtifactBucketName", config.artifactBucketName],
+    ["LambdaPackageKey", packageKey],
+    ["VpcSubnetIds", config.vpcSubnetIds.join(",")],
+    ["VpcSecurityGroupIds", config.vpcSecurityGroupIds.join(",")],
+    ["DocumentBucketMode", config.documentBucketMode],
+    ["DocumentBucketName", config.documentBucketName],
+    ["DocumentBucketRegion", config.documentBucketRegion],
+    ["CognitoRegion", config.cognitoRegion],
+    ["CognitoUserPoolId", config.userPoolId],
+    ["CognitoAppClientId", config.appClientId],
+    ["CognitoClientSecret", config.cognitoClientSecret],
+    ["DatabaseHost", config.databaseConfig.DB_HOST],
+    ["DatabasePort", config.databaseConfig.DB_PORT],
+    ["DatabaseUser", config.databaseConfig.DB_USER],
+    ["DatabasePassword", config.databaseConfig.DB_PASSWORD],
+    ["DatabaseName", config.databaseConfig.DB_NAME],
+    ["SessionSecret", config.sessionSecret],
+    ["TuApiUrl", config.tuApiUrl],
+    ["TuApiKey", config.tuApiKey],
+    ["AllowedOrigins", config.allowedOrigins.join(",")]
+  ].map(([ParameterKey, ParameterValue]) => ({
+    ParameterKey,
+    ParameterValue: String(ParameterValue)
+  }));
+}
+
+function awsFileUri(filePath) {
+  return `file://${path.resolve(filePath)}`;
+}
+
+function withParametersFile(parameters, callback) {
+  const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "docuflow-cfn-"));
+  const parametersPath = path.join(temporaryDirectory, "parameters.json");
+  try {
+    fs.writeFileSync(parametersPath, JSON.stringify(parameters), { mode: 0o600 });
+    return callback(awsFileUri(parametersPath));
+  } finally {
+    fs.rmSync(temporaryDirectory, { recursive: true, force: true });
+  }
+}
+
+function applyStack({
+  executeAws,
+  stackName,
+  templatePath,
+  parameters,
+  awsEnvironment,
+  existingStack
+}) {
+  const action = existingStack ? "update-stack" : "create-stack";
+  const args = [
+    "cloudformation",
+    action,
+    "--stack-name",
+    stackName,
+    "--template-body",
+    awsFileUri(templatePath),
+    "--parameters",
+    null,
+    "--capabilities",
+    "CAPABILITY_NAMED_IAM",
+    "--tags",
+    "Key=Application,Value=DocuFlow",
+    `Key=Environment,Value=${parameters.find(parameter => parameter.ParameterKey === "EnvironmentName")?.ParameterValue || "shared"}`
+  ];
+  if (!existingStack) {
+    args.push("--on-failure", "DO_NOTHING");
+  }
+
+  return withParametersFile(parameters, parameterFileUri => {
+    args[args.indexOf(null)] = parameterFileUri;
+    try {
+      executeAws(args, { env: awsEnvironment });
+    } catch (error) {
+      if (existingStack && /No updates are to be performed/i.test(error.message)) {
+        return;
+      }
+      throw error;
+    }
+
+    const waiter = existingStack ? "stack-update-complete" : "stack-create-complete";
+    executeAws(
+      ["cloudformation", "wait", waiter, "--stack-name", stackName],
+      { env: awsEnvironment }
+    );
+  });
+}
+
+function packageBackend() {
+  const { zipPath: packagePath, digest } = createPackage();
+  if (!fs.existsSync(packagePath) || fs.statSync(packagePath).size === 0) {
+    throw new Error("Backend packaging did not produce backend/backend-full.zip.");
+  }
+  return { packagePath, digest };
+}
+
+function getPackageKey(digest, environmentName) {
+  return `lambda/${environmentName}/${digest}.zip`;
+}
+
+function uploadPackage(executeAws, packagePath, bucketName, packageKey, digest, awsEnvironment) {
+  try {
+    const storedDigest = executeAws(
+      [
+        "s3api",
+        "head-object",
+        "--bucket",
+        bucketName,
+        "--key",
+        packageKey,
+        "--query",
+        "Metadata.sha256",
+        "--output",
+        "text"
+      ],
+      { env: awsEnvironment }
+    );
+    if (storedDigest.trim() === digest) {
+      return false;
+    }
+  } catch (error) {
+    if (!/404|NoSuchKey|NotFound/i.test(error.message)) {
+      throw error;
+    }
+  }
+
+  executeAws(
+    [
+      "s3",
+      "cp",
+      packagePath,
+      `s3://${bucketName}/${packageKey}`,
+      "--region",
+      awsEnvironment.AWS_REGION,
+      "--sse",
+      "AES256",
+      "--metadata",
+      `sha256=${digest}`
+    ],
+    { env: awsEnvironment }
+  );
+  return true;
+}
+
+function assertHealthResponse(response, healthData) {
+  if (!response.ok || healthData?.ok !== true || healthData?.database !== "connected") {
+    throw new Error(`Deployment health check failed (HTTP ${response.status}).`);
+  }
+}
+
+function getStackOutputs(stack) {
+  return Object.fromEntries((stack?.Outputs || []).map(output => [output.OutputKey, output.OutputValue]));
 }
 
 async function main() {
-  console.log('=====================================================');
-  console.log('DocuFlow AWS Services Setup & Deployment');
-  console.log('=====================================================\n');
+  const config = getRequiredDeploymentConfig(loadDeploymentConfig());
+  const awsEnvironment = createAwsEnvironment({ AWS_REGION: config.region });
 
-  if (!envConfig.LAMBDA_DB_HOST || !envConfig.LAMBDA_DB_SECRET_ARN || !envConfig.SESSION_SECRET) {
-    throw new Error('Set LAMBDA_DB_HOST, LAMBDA_DB_SECRET_ARN, and SESSION_SECRET in backend/.env before deploying the Lambda.');
-  }
-  if (!envConfig.LAMBDA_SUBNET_IDS || !envConfig.LAMBDA_SECURITY_GROUP_IDS) {
-    throw new Error('Set LAMBDA_SUBNET_IDS and LAMBDA_SECURITY_GROUP_IDS in backend/.env so the Lambda can reach RDS inside the VPC.');
-  }
+  console.log("DocuFlow V5 CloudFormation deployment");
+  console.log(`[1/7] Verifying AWS account and region (${config.region})...`);
+  const identity = verifyAwsIdentity(runAws, awsEnvironment, config.expectedAccountId);
+  console.log(` -> Account: ${identity.Account}`);
+  console.log(` -> IAM Arn: ${identity.Arn}`);
 
-  // 1. Verify AWS Identity
-  console.log('[1/8] Verifying AWS credentials and identity...');
-  const identity = runAws('aws sts get-caller-identity');
-  const accountId = identity.Account;
-  console.log(` -> Connected as Account: ${accountId}`);
-  console.log(` -> IAM Arn: ${identity.Arn}\n`);
-
-  const s3BucketName = `cs361-v2-docuflow-${accountId}`;
-  const lambdaFunctionName = 'cs361-v2-documentflow-api';
-  const labRoleArn = `arn:aws:iam::${accountId}:role/LabRole`;
-  const cognitoPoolId = envConfig.COGNITO_USER_POOL_ID || 'us-east-1_ySsGHRKUQ';
-  const cognitoClientId = envConfig.COGNITO_APP_CLIENT_ID || '7onljgop56a811chbidtuppffq';
-
-  // 2. Create S3 Bucket if it doesn't exist
-  console.log(`[2/8] Setting up S3 Bucket: ${s3BucketName}...`);
-  try {
-    runAws(`aws s3api head-bucket --bucket ${s3BucketName}`);
-    console.log(` -> Bucket ${s3BucketName} already exists.`);
-  } catch (e) {
-    console.log(` -> Bucket does not exist. Creating ${s3BucketName}...`);
-    runAws(`aws s3api create-bucket --bucket ${s3BucketName} --region us-east-1`);
-    console.log(` -> Bucket created successfully.`);
-  }
-
-  // 3. Configure S3 Bucket CORS
-  console.log('[3/8] Configuring S3 Bucket CORS...');
-  const corsRules = {
-    CORSRules: [
-      {
-        AllowedHeaders: ['Content-Type', 'Authorization', 'x-amz-*'],
-        AllowedMethods: ['GET', 'PUT', 'POST', 'DELETE', 'HEAD'],
-        AllowedOrigins: allowedOrigins,
-        ExposeHeaders: ['ETag', 'Content-Length', 'Content-Type', 'Access-Control-Allow-Origin']
-      }
-    ]
-  };
-  const corsPath = path.resolve(__dirname, 's3-cors.json');
-  fs.writeFileSync(corsPath, JSON.stringify(corsRules, null, 2));
-  runAws(`aws s3api put-bucket-cors --bucket ${s3BucketName} --cors-configuration file://${corsPath}`);
-  fs.unlinkSync(corsPath);
-  console.log(` -> S3 CORS configured successfully.\n`);
-
-  // 4. Package backend zip
-  console.log('[4/8] Packaging backend for Lambda deployment...');
-  const zipPath = path.resolve(__dirname, '../backend/backend-full.zip');
-  // Always rebuild so the deployed code matches the working tree.
-  if (fs.existsSync(zipPath)) fs.unlinkSync(zipPath);
-  const packageZipScript = path.resolve(__dirname, '../backend/package-zip.js');
-  execSync(`node "${packageZipScript}"`, { cwd: path.resolve(__dirname, '../backend'), stdio: 'inherit' });
-  console.log(` -> Zip package ready: ${zipPath}\n`);
-
-  // 5. Create or Update Lambda Function
-  console.log(`[5/8] Deploying Lambda Function: ${lambdaFunctionName}...`);
-  const lambdaEnvVars = {
-    Variables: {
-      AWS_S3_REGION: 'us-east-1',
-      S3_BUCKET: s3BucketName,
-      DB_HOST: envConfig.LAMBDA_DB_HOST,
-      DB_PORT: envConfig.LAMBDA_DB_PORT || '3306',
-      DB_SECRET_ARN: envConfig.LAMBDA_DB_SECRET_ARN,
-      DB_SSL: 'true',
-      DB_TLS_SERVERNAME: envConfig.LAMBDA_DB_HOST,
-      DB_NAME: envConfig.LAMBDA_DB_NAME || 'ems',
-      NODE_ENV: 'production',
-      SESSION_SECRET: envConfig.SESSION_SECRET,
-      ...(envConfig.AUTH_JWT_SECRET ? { AUTH_JWT_SECRET: envConfig.AUTH_JWT_SECRET } : {}),
-      CORS_ALLOWED_ORIGINS: allowedOrigins.join(','),
-      COGNITO_REGION: 'us-east-1',
-      COGNITO_USER_POOL_ID: cognitoPoolId,
-      COGNITO_APP_CLIENT_ID: cognitoClientId,
-      TU_API_URL: envConfig.TU_API_URL || 'https://restapi.tu.ac.th/api/v1/auth/Ad/verify',
-      TU_API_KEY: envConfig.TU_API_KEY || ''
-    }
-  };
-  const envJsonPath = path.resolve(__dirname, 'lambda-env.json');
-  fs.writeFileSync(envJsonPath, JSON.stringify(lambdaEnvVars, null, 2));
-
-  // RDS is reachable only inside the VPC; Lambda reaches the internet through the NAT Gateway.
-  const vpcConfigArg = `--vpc-config SubnetIds=${envConfig.LAMBDA_SUBNET_IDS},SecurityGroupIds=${envConfig.LAMBDA_SECURITY_GROUP_IDS} `;
-
-  let functionExists = false;
-  try {
-    runAws(`aws lambda get-function --function-name ${lambdaFunctionName}`);
-    functionExists = true;
-  } catch {}
-
-  let lambdaArn = '';
-  if (!functionExists) {
-    console.log(` -> Creating new Lambda function ${lambdaFunctionName}...`);
-    const createRes = runAws(
-      `aws lambda create-function ` +
-      `--function-name ${lambdaFunctionName} ` +
-      `--runtime nodejs20.x ` +
-      `--role ${labRoleArn} ` +
-      `--handler index.handler ` +
-      `--timeout 30 ` +
-      `--memory-size 512 ` +
-      `--zip-file fileb://${zipPath} ` +
-      vpcConfigArg +
-      `--environment file://${envJsonPath}`
+  console.log("[2/7] Checking CloudFormation stacks...");
+  const artifactStack = getStack(runAws, config.artifactStackName, awsEnvironment);
+  if (artifactStack) {
+    assertStackReady(artifactStack);
+    assertStackParameter(artifactStack, "EnvironmentName", config.environmentName, config.artifactStackName);
+    assertStackParameter(
+      artifactStack,
+      "ArtifactBucketName",
+      config.artifactBucketName,
+      config.artifactStackName
     );
-    lambdaArn = createRes.FunctionArn;
-    console.log(` -> Lambda created. ARN: ${lambdaArn}`);
+    assertManagedResource(
+      getStackResources(runAws, config.artifactStackName, awsEnvironment),
+      "ArtifactBucket",
+      config.artifactBucketName,
+      "Deployment artifact bucket"
+    );
+  }
+
+  const appStack = getStack(runAws, config.stackName, awsEnvironment);
+  if (appStack) {
+    assertStackReady(appStack);
+    for (const [parameterKey, expectedValue] of [
+      ["EnvironmentName", config.environmentName],
+      ["LambdaFunctionName", config.lambdaFunctionName],
+      ["DocumentBucketName", config.documentBucketName],
+      ["DocumentBucketMode", config.documentBucketMode],
+      ["CognitoRegion", config.cognitoRegion],
+      ["CognitoUserPoolId", config.userPoolId],
+      ["CognitoAppClientId", config.appClientId]
+    ]) {
+      assertStackParameter(appStack, parameterKey, expectedValue, config.stackName);
+    }
+    assertManagedResource(
+      getStackResources(runAws, config.stackName, awsEnvironment),
+      "ApiFunction",
+      config.lambdaFunctionName,
+      "Lambda function"
+    );
   } else {
-    console.log(` -> Updating Lambda function code...`);
-    runAws(`aws lambda update-function-code --function-name ${lambdaFunctionName} --zip-file fileb://${zipPath}`);
-    runAws(`aws lambda wait function-updated --function-name ${lambdaFunctionName}`);
-    console.log(` -> Updating Lambda function configuration...`);
-    const updateRes = runAws(
-      `aws lambda update-function-configuration ` +
-      `--function-name ${lambdaFunctionName} ` +
-      `--runtime nodejs20.x ` +
-      `--handler index.handler ` +
-      `--timeout 30 ` +
-      `--memory-size 512 ` +
-      vpcConfigArg +
-      `--environment file://${envJsonPath}`
-    );
-    lambdaArn = updateRes.FunctionArn;
-    console.log(` -> Lambda updated. ARN: ${lambdaArn}`);
+    try {
+      runAws(
+        ["lambda", "get-function-configuration", "--function-name", config.lambdaFunctionName],
+        { env: awsEnvironment }
+      );
+      throw new Error(
+        `Lambda function ${config.lambdaFunctionName} already exists outside stack ${config.stackName}. ` +
+        "Import it through a reviewed resource-import procedure or choose a new function name."
+      );
+    } catch (error) {
+      if (!/ResourceNotFoundException|Function not found|does not exist/i.test(error.message)) {
+        throw error;
+      }
+    }
   }
-  fs.unlinkSync(envJsonPath);
 
-  // Wait for function to be active
-  console.log(' -> Waiting for Lambda update to finish...');
-  runAws(`aws lambda wait function-updated --function-name ${lambdaFunctionName}`);
-  console.log(' -> Lambda is ready and active.\n');
+  console.log("[3/7] Packaging backend...");
+  const { packagePath, digest } = packageBackend();
+  const packageKey = getPackageKey(digest, config.environmentName);
 
-  // 6. Create / Configure Lambda Function URL
-  console.log('[6/8] Configuring Lambda Function URL (Public HTTP Endpoint)...');
-  // CORS ของ Function URL ตอบ OPTIONS preflight แทน Express (index.js ลบ CORS headers ของ Express ออก)
-  const functionUrlCorsPath = writeTempJson('function-url-cors.json', {
-    AllowOrigins: allowedOrigins,
-    AllowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
-    AllowHeaders: ['content-type', 'authorization'],
-    AllowCredentials: true,
-    MaxAge: 600
+  console.log("[4/7] Provisioning the private deployment-artifact bucket stack...");
+  const artifactParameters = [
+    { ParameterKey: "EnvironmentName", ParameterValue: config.environmentName },
+    { ParameterKey: "ArtifactBucketName", ParameterValue: config.artifactBucketName }
+  ];
+  applyStack({
+    executeAws: runAws,
+    stackName: config.artifactStackName,
+    templatePath: path.join(CLOUDFORMATION_ROOT, "artifact-bucket.json"),
+    parameters: artifactParameters,
+    awsEnvironment,
+    existingStack: artifactStack
   });
-  let functionUrl = '';
-  try {
-    const urlConfig = runAws(`aws lambda get-function-url-config --function-name ${lambdaFunctionName}`);
-    functionUrl = urlConfig.FunctionUrl;
-    console.log(` -> Function URL already exists: ${functionUrl}`);
-  } catch (e) {
-    console.log(` -> Creating Function URL with CORS...`);
-    const urlConfig = runAws(
-      `aws lambda create-function-url-config ` +
-      `--function-name ${lambdaFunctionName} ` +
-      `--auth-type NONE ` +
-      `--cors file://${functionUrlCorsPath}`
-    );
-    functionUrl = urlConfig.FunctionUrl;
-    console.log(` -> Function URL created: ${functionUrl}`);
-  }
 
-  // Update CORS on Function URL to be sure
-  runAws(
-    `aws lambda update-function-url-config ` +
-    `--function-name ${lambdaFunctionName} ` +
-    `--auth-type NONE ` +
-    `--cors file://${functionUrlCorsPath}`
+  console.log("[5/7] Uploading the versioned Lambda package...");
+  const uploaded = uploadPackage(
+    runAws,
+    packagePath,
+    config.artifactBucketName,
+    packageKey,
+    digest,
+    awsEnvironment
   );
-  fs.unlinkSync(functionUrlCorsPath);
+  console.log(uploaded ? " -> Package uploaded." : " -> Identical package already exists; upload skipped.");
 
-  // Add permission for public Function URL invocation
-  try {
+  console.log("[6/7] Creating or updating the backend CloudFormation stack...");
+  applyStack({
+    executeAws: runAws,
+    stackName: config.stackName,
+    templatePath: path.join(CLOUDFORMATION_ROOT, "docuflow.json"),
+    parameters: buildCloudFormationParameters(config, packageKey),
+    awsEnvironment,
+    existingStack: appStack
+  });
+
+  console.log("[7/7] Waiting for Lambda and checking the health endpoint...");
+  runAws(
+    ["lambda", "wait", "function-active-v2", "--function-name", config.lambdaFunctionName],
+    { env: awsEnvironment }
+  );
+  const functionConfiguration = parseAwsJson(
     runAws(
-      `aws lambda add-permission ` +
-      `--function-name ${lambdaFunctionName} ` +
-      `--statement-id FunctionURLAllowPublicAccess ` +
-      `--action lambda:InvokeFunctionUrl ` +
-      `--principal "*" ` +
-      `--function-url-auth-type NONE`
+      [
+        "lambda",
+        "get-function-configuration",
+        "--function-name",
+        config.lambdaFunctionName,
+        "--query",
+        "{State:State,LastUpdateStatus:LastUpdateStatus}",
+        "--output",
+        "json"
+      ],
+      { env: awsEnvironment }
+    ),
+    "Lambda function configuration"
+  );
+  if (functionConfiguration.State !== "Active" ||
+      functionConfiguration.LastUpdateStatus !== "Successful") {
+    throw new Error(
+      `Lambda is not ready (state: ${functionConfiguration.State}, ` +
+      `last update: ${functionConfiguration.LastUpdateStatus}).`
     );
-    console.log(' -> Added public invocation permission for Function URL.');
-  } catch (e) {
-    if (e.message.includes('ResourceConflictException')) {
-      console.log(' -> Public invocation permission already present.');
-    } else {
-      console.warn(' -> Note on permission:', e.message);
-    }
   }
 
-  // Ensure trailing slash is removed for standard base URL format
-  const cleanFunctionUrl = functionUrl.replace(/\/+$/, '');
-  console.log(` -> Clean Function URL: ${cleanFunctionUrl}\n`);
+  const deployedStack = getStack(runAws, config.stackName, awsEnvironment);
+  const outputs = getStackOutputs(deployedStack);
+  const functionUrl = outputs.FunctionUrl?.replace(/\/+$/, "");
+  if (!functionUrl || !outputs.LambdaArn || !outputs.DocumentBucketName) {
+    throw new Error("CloudFormation deployment is missing one or more required outputs.");
+  }
 
-  // 7. Configure Cognito PostAuthentication Trigger
-  console.log(`[7/8] Configuring Cognito PostAuthentication Trigger on Pool ${cognitoPoolId}...`);
-  // Add permission for Cognito to invoke Lambda
+  const healthResponse = await fetch(`${functionUrl}/api/health`, {
+    signal: AbortSignal.timeout(15000)
+  });
+  let healthData;
   try {
-    runAws(
-      `aws lambda add-permission ` +
-      `--function-name ${lambdaFunctionName} ` +
-      `--statement-id CognitoPostAuthInvokePermission ` +
-      `--action lambda:InvokeFunction ` +
-      `--principal cognito-idp.amazonaws.com ` +
-      `--source-arn arn:aws:cognito-idp:us-east-1:${accountId}:userpool/${cognitoPoolId}`
-    );
-    console.log(' -> Added Cognito invoke permission to Lambda.');
-  } catch (e) {
-    if (e.message.includes('ResourceConflictException')) {
-      console.log(' -> Cognito invoke permission already present.');
-    } else {
-      console.warn(' -> Note on Cognito permission:', e.message);
-    }
+    healthData = await healthResponse.json();
+  } catch {
+    throw new Error(`Deployment health endpoint returned invalid JSON (HTTP ${healthResponse.status}).`);
   }
+  assertHealthResponse(healthResponse, healthData);
 
-  // Link trigger in Cognito User Pool
-  try {
-    runAws(
-      `aws cognito-idp update-user-pool ` +
-      `--user-pool-id ${cognitoPoolId} ` +
-      `--lambda-config "PostAuthentication=${lambdaArn}"`
-    );
-    console.log(` -> Cognito PostAuthentication trigger linked to ${lambdaFunctionName} successfully.`);
-  } catch (e) {
-    console.warn(` -> Warning updating Cognito trigger:`, e.message);
-  }
-
-  // 8. Update Frontend Configuration & Local Files
-  console.log('\n[8/8] Updating frontend configuration and testing endpoints...');
-  const frontendConfigPath = path.resolve(__dirname, '../frontend/js/cognito-config.js');
-  let configContent = fs.readFileSync(frontendConfigPath, 'utf8');
-
-  // Replace userPoolId, clientId, and AWS_API_GATEWAY_URL
-  configContent = configContent.replace(/userPoolId:\s*"[^"]*"/, `userPoolId: "${cognitoPoolId}"`);
-  configContent = configContent.replace(/clientId:\s*"[^"]*"/, `clientId: "${cognitoClientId}"`);
-  configContent = configContent.replace(/window\.AWS_API_GATEWAY_URL\s*=\s*"[^"]*"/, `window.AWS_API_GATEWAY_URL = "${cleanFunctionUrl}"`);
-
-  fs.writeFileSync(frontendConfigPath, configContent, 'utf8');
-  console.log(` -> Updated ${frontendConfigPath}`);
-
-  // Test Lambda Function URL health check
-  console.log(`\nTesting Health Endpoint: ${cleanFunctionUrl}/api/health ...`);
-  try {
-    const healthRes = await fetch(`${cleanFunctionUrl}/api/health`);
-    const healthJson = await healthRes.json();
-    console.log(` -> Status: ${healthRes.status}`);
-    console.log(` -> Response:`, JSON.stringify(healthJson, null, 2));
-  } catch (err) {
-    console.error(` -> Health check failed:`, err.message);
-  }
-
-  console.log('\n=====================================================');
-  console.log('SUCCESS: All AWS services deployed and connected!');
-  console.log('=====================================================');
-  console.log(`Account ID:         ${accountId}`);
-  console.log(`S3 Bucket:          ${s3BucketName}`);
-  console.log(`Lambda Function:    ${lambdaFunctionName}`);
-  console.log(`Lambda Function URL: ${cleanFunctionUrl}`);
-  console.log(`Cognito User Pool:  ${cognitoPoolId}`);
-  console.log(`Cognito Client ID:  ${cognitoClientId}`);
-  console.log(`Amplify App URL:    https://main.d29fui7wfvh5a0.amplifyapp.com/html/dashboard.html`);
-  console.log('=====================================================\n');
+  console.log("\nDeployment summary");
+  console.log(` Environment:       ${config.environmentName}`);
+  console.log(` CloudFormation:    ${config.stackName}`);
+  console.log(` Lambda ARN:        ${outputs.LambdaArn}`);
+  console.log(` Lambda Function URL: ${functionUrl}`);
+  console.log(` Document bucket:   ${outputs.DocumentBucketName}`);
+  console.log(` Package SHA-256:   ${digest}`);
+  console.log(` Health:            HTTP ${healthResponse.status} (database connected)`);
+  console.log(" Cognito trigger:   permission provisioned; existing User Pool association requires reviewed setup");
 }
 
-main().catch(err => {
-  console.error('\nDeployment Error:', err);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch(error => {
+    console.error("\nDeployment failed:", error.message);
+    process.exitCode = 1;
+  });
+}
+
+module.exports = {
+  assertHealthResponse,
+  applyStack,
+  assertManagedResource,
+  assertStackParameter,
+  assertStackReady,
+  buildCloudFormationParameters,
+  createAwsEnvironment,
+  getRequiredDatabaseConfig,
+  getRequiredDeploymentConfig,
+  getRequiredSessionSecret,
+  getStack,
+  getStackOutputs,
+  loadDeploymentConfig,
+  parseAllowedOrigins,
+  uploadPackage,
+  verifyAwsIdentity
+};

@@ -4,6 +4,8 @@
 // - CORS allow/deny และ OPTIONS preflight
 // ไม่เรียก TU API / AWS / ฐานข้อมูลจริง: stub fetch, Cognito client และ pool
 process.env.SESSION_SECRET ||= "test-only-session-secret";
+process.env.COGNITO_USER_POOL_ID ||= "us-east-1_testPool";
+process.env.COGNITO_APP_CLIENT_ID ||= "test-app-client";
 
 const { test, describe, before, after, beforeEach } = require("node:test");
 const assert = require("node:assert/strict");
@@ -39,9 +41,10 @@ global.fetch = async (url, options) => {
     return tuFetchHandler(url, options);
 };
 
+const { installCognitoTestVerifier } = require("./cognitoTestFixtures");
+installCognitoTestVerifier();
 const app = require("../server");
-const { signHs256Jwt, verifyHs256Jwt } = require("../cognito-auth");
-const { FALLBACK_TOKEN_ISSUER } = require("../config");
+
 
 const ENV_KEYS = ["TU_API_KEY", "TU_APP_KEY", "TU_AUTH_DEV_BYPASS", "NODE_ENV", "CORS_ALLOWED_ORIGINS", "AUTH_JWT_SECRET"];
 const savedEnv = Object.fromEntries(ENV_KEYS.map(k => [k, process.env[k]]));
@@ -174,33 +177,12 @@ describe("Authentication & CORS API", () => {
         assert.equal(res.status, 503);
     });
 
-    test("TU SSO: TU API ปฏิเสธรหัสผ่าน -> 401", async () => {
-        tuFetchHandler = async () => ({ ok: false, json: async () => ({ status: false, message: "invalid" }) });
-        const res = await tuLogin({ username: "6501234567@dome.tu.ac.th", password: "wrong" });
-        assert.equal(res.status, 401);
+    test("TU API success cannot issue an identity without Cognito tokens", async () => {
+        tuFetchHandler = async () => ({ ok: true, json: async () => ({ status: true, email: "officer@dome.tu.ac.th" }) });
+        const res = await tuLogin({ username: "officer@dome.tu.ac.th", password: "correct" });
+        assert.equal(res.status, 503);
         assert.equal(res.body.access_token, undefined);
-    });
-
-    test("TU SSO: TU API ยืนยันสำเร็จ -> ออก fallback token ที่ backend ยอมรับ พร้อม Role จาก DB", async () => {
-        dbRoleForUser = "document_officer";
-        tuFetchHandler = async (url, options) => {
-            assert.equal(options.headers["Application-Key"], "test-tu-key");
-            return { ok: true, json: async () => ({ status: true, email: "officer@dome.tu.ac.th", displayname_en: "Officer" }) };
-        };
-        // Cognito Admin ใช้งานไม่ได้ -> ใช้ HS256 fallback token
-        cognitoHandler = async (command) => {
-            if (command.constructor.name === "InitiateAuthCommand") throw Object.assign(new Error("x"), { name: "NotAuthorizedException" });
-            throw Object.assign(new Error("lab down"), { name: "ResourceNotFoundException" });
-        };
-        const res = await tuLogin({ username: "officer@dome.tu.ac.th", password: "correct-password" });
-        assert.equal(res.status, 200, JSON.stringify(res.body));
-        assert.equal(res.body.role, "document_officer");
-        assert.deepEqual(res.body.groups, ["DocumentReceiver"]);
-
-        const payload = verifyHs256Jwt(res.body.access_token);
-        assert.ok(payload, "token ต้องผ่านการตรวจ");
-        assert.equal(payload.iss, FALLBACK_TOKEN_ISSUER);
-        assert.ok(payload.exp - now() <= 8 * 3600 + 5, "อายุ token ค่าเริ่มต้นไม่เกิน 8 ชั่วโมง");
+        assert.equal(res.body.code, "COGNITO_TOKEN_UNAVAILABLE");
     });
 
     // ---------- Direct Cognito ----------
@@ -241,37 +223,10 @@ describe("Authentication & CORS API", () => {
     const protectedPath = "/api/documents/1/audit-trail";
     const auth = token => ({ Authorization: `Bearer ${token}` });
 
-    test("Token หมดอายุ -> 401", async () => {
-        const token = signHs256Jwt({ sub: "s", username: "u@tu.ac.th", exp: now() - 10 });
-        const res = await request(server, { path: protectedPath, headers: auth(token) });
-        assert.equal(res.status, 401);
-    });
-
-    test("Token ลายเซ็นผิด / secret ผิด -> 401", async () => {
-        const token = signHs256Jwt({ sub: "s", username: "u@tu.ac.th" }, "another-secret-value-123");
-        const res = await request(server, { path: protectedPath, headers: auth(token) });
-        assert.equal(res.status, 401);
-    });
-
-    test("Token ถูกแก้ payload (ยกระดับเป็น Admin) -> 401", async () => {
-        const [h, , s] = signHs256Jwt({ sub: "s", username: "u@tu.ac.th", "cognito:groups": ["Staff/Instructor"] }).split(".");
-        const forged = `${h}.${b64url({ sub: "s", username: "u@tu.ac.th", "cognito:groups": ["Admin"], iss: FALLBACK_TOKEN_ISSUER, token_use: "access", exp: now() + 3600 })}.${s}`;
-        const res = await request(server, { path: protectedPath, headers: auth(forged) });
-        assert.equal(res.status, 401);
-    });
-
-    test("Token alg=none -> 401", async () => {
-        const token = `${b64url({ alg: "none", typ: "JWT" })}.${b64url({ sub: "s", username: "u", iss: FALLBACK_TOKEN_ISSUER, token_use: "access", exp: now() + 3600 })}.`;
-        const res = await request(server, { path: protectedPath, headers: auth(token) });
-        assert.equal(res.status, 401);
-    });
-
-    test("HS256 token แบบเก่าที่ไม่มี iss -> ถูกปฏิเสธ", () => {
-        const secret = process.env.AUTH_JWT_SECRET || process.env.SESSION_SECRET;
-        const h = b64url({ alg: "HS256", typ: "JWT" });
-        const p = b64url({ sub: "s", username: "u", exp: now() + 3600 });
-        const sig = crypto.createHmac("sha256", secret).update(`${h}.${p}`).digest("base64url");
-        assert.equal(verifyHs256Jwt(`${h}.${p}.${sig}`), null);
+    test("invalid access token variants are rejected", async () => {
+        for (const token of ["expired-cognito-access-token", "forged-or-altered-token", "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJzIn0.invalid"]) {
+            assert.equal((await request(server, { path: protectedPath, headers: auth(token) })).status, 401);
+        }
     });
 
     test("RS256 token ที่เซ็นด้วย key ปลอม -> 401", async () => {
@@ -292,7 +247,7 @@ describe("Authentication & CORS API", () => {
     });
 
     test("Token ผ่าน query string ใช้ไม่ได้กับคำขอที่ไม่ใช่ GET", async () => {
-        const token = signHs256Jwt({ sub: "s", username: "u@tu.ac.th" });
+        const token = "invalid-cognito-access-token";
         const res = await request(server, { method: "DELETE", path: `/api/documents/1?token=${token}` });
         assert.equal(res.status, 401);
     });

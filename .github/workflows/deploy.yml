@@ -1,0 +1,77 @@
+name: Deploy DocuFlow backend
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Target deployment environment
+        required: true
+        type: choice
+        options:
+          - dev
+          - staging
+          - production
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    env:
+      DEPLOY_ENVIRONMENT: ${{ inputs.environment }}
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      AWS_S3_REGION: ${{ vars.AWS_S3_REGION }}
+      AWS_EXPECTED_ACCOUNT_ID: ${{ vars.AWS_EXPECTED_ACCOUNT_ID }}
+      CLOUDFORMATION_STACK_NAME: ${{ vars.CLOUDFORMATION_STACK_NAME }}
+      LAMBDA_FUNCTION_NAME: ${{ vars.LAMBDA_FUNCTION_NAME }}
+      ARTIFACT_BUCKET_NAME: ${{ vars.ARTIFACT_BUCKET_NAME }}
+      DOCUMENT_BUCKET_NAME: ${{ vars.DOCUMENT_BUCKET_NAME }}
+      DOCUMENT_BUCKET_MODE: ${{ vars.DOCUMENT_BUCKET_MODE }}
+      FRONTEND_ALLOWED_ORIGINS: ${{ vars.FRONTEND_ALLOWED_ORIGINS }}
+      COGNITO_REGION: ${{ vars.COGNITO_REGION }}
+      COGNITO_USER_POOL_ID: ${{ vars.COGNITO_USER_POOL_ID }}
+      COGNITO_APP_CLIENT_ID: ${{ vars.COGNITO_APP_CLIENT_ID }}
+      DB_HOST: ${{ secrets.DB_HOST }}
+      DB_PORT: ${{ vars.DB_PORT }}
+      DB_USER: ${{ secrets.DB_USER }}
+      DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+      DB_NAME: ${{ vars.DB_NAME }}
+      SESSION_SECRET: ${{ secrets.SESSION_SECRET }}
+      COGNITO_CLIENT_SECRET: ${{ secrets.COGNITO_CLIENT_SECRET }}
+      TU_API_URL: ${{ vars.TU_API_URL }}
+      TU_API_KEY: ${{ secrets.TU_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - run: npm ci
+        working-directory: backend
+      - name: Run tests before deployment
+        run: npm test
+        working-directory: backend
+      - name: Validate deployment configuration
+        run: |
+          node -e "const { getRequiredDeploymentConfig, loadDeploymentConfig } = require('./scripts/deploy-aws'); const c = getRequiredDeploymentConfig(loadDeploymentConfig()); console.log('Configuration valid for ' + c.environmentName + ' (' + c.region + ').');"
+      - name: Prevent production deploys from non-main branches
+        if: inputs.environment == 'production'
+        run: |
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "Production deployments must be dispatched from main."
+            exit 1
+          fi
+      - name: Configure AWS Academy temporary credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - name: Verify AWS caller identity
+        run: aws sts get-caller-identity --output json
+      - name: Deploy CloudFormation and Lambda
+        run: node scripts/deploy-aws.js

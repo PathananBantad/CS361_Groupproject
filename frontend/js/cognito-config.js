@@ -24,9 +24,9 @@ try {
 // รองรับทั้ง localhost, 127.0.0.1 และ Live Server (เช่น port 5500) ที่ไม่ได้ใช้ port 3000
 window.IS_LOCAL = ["localhost", "127.0.0.1", "0.0.0.0", "::1"].includes(window.location.hostname);
 
-// URL ของ Backend: AWS Lambda Function URL (Learner Lab)
-window.AWS_API_GATEWAY_URL = "https://htvtloifbzeywxdh4gawlqoxdq0tftsv.lambda-url.us-east-1.on.aws";
-window.API_GATEWAY_URL = window.AWS_API_GATEWAY_URL;
+// Backend requests use the Lambda Function URL; the server enforces Cognito auth.
+window.AWS_LAMBDA_FUNCTION_URL = "https://htvtloifbzeywxdh4gawlqoxdq0tftsv.lambda-url.us-east-1.on.aws";
+window.LAMBDA_FUNCTION_URL = window.AWS_LAMBDA_FUNCTION_URL;
 
 // ล้างค่า endpoint สำรองเก่าที่อาจค้างอยู่ใน sessionStorage
 try {
@@ -34,7 +34,7 @@ try {
 } catch (_) {}
 
 // Origin ของ API (Local ใช้ origin ของหน้าเว็บเอง)
-window.API_BASE_URL = window.IS_LOCAL ? window.location.origin : window.AWS_API_GATEWAY_URL;
+window.API_BASE_URL = window.IS_LOCAL ? window.location.origin : window.AWS_LAMBDA_FUNCTION_URL;
 
 // ฟังก์ชันกลางสำหรับหา Base URL ที่มี /api ต่อท้าย ใช้ร่วมกันทุกไฟล์
 // (ป้องกันการเขียนตรรกะซ้ำที่ยึดติดกับ port 3000 ในหลายไฟล์)

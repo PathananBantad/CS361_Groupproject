@@ -3,7 +3,7 @@ const session = require("express-session");
 
 const sessionSecret = process.env.SESSION_SECRET;
 
-if (!sessionSecret) {
+if (typeof sessionSecret !== "string" || !sessionSecret.trim()) {
     throw new Error("Session configuration is missing");
 }
 

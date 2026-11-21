@@ -20,29 +20,13 @@ const {
     cognitoGroupForRole,
     DEFAULT_ROLE
 } = require("./documentAuthorization");
-const { signHs256Jwt } = require("./cognito-auth");
-const {
-    getPublicCognitoConfig,
-    getAuthJwtSecret,
-    getTuApiConfig,
-    isTuDevBypassEnabled
-} = require("./config");
+const { getPublicCognitoConfig } = require("./config");
 
 const router = express.Router();
 
-const cognitoConfig = {
+const cognito = new CognitoIdentityProviderClient({
     region: getPublicCognitoConfig().region
-};
-const envAccessKey = process.env.aws_access_key_id || process.env.AWS_ACCESS_KEY_ID;
-const envSecretKey = process.env.aws_secret_access_key || process.env.AWS_SECRET_ACCESS_KEY;
-if (envAccessKey && envSecretKey) {
-    cognitoConfig.credentials = {
-        accessKeyId: envAccessKey,
-        secretAccessKey: envSecretKey,
-        sessionToken: process.env.aws_session_token || process.env.AWS_SESSION_TOKEN
-    };
-}
-const cognito = new CognitoIdentityProviderClient(cognitoConfig);
+});
 
 // ตรวจว่า error เกิดจาก AWS credentials ของเซิร์ฟเวอร์หมดอายุ/ไม่ถูกต้อง (ไม่ใช่ความผิดของผู้ใช้)
 function isAwsCredentialError(error) {
@@ -86,52 +70,68 @@ function tuUnavailable(message) {
 
 // ฟังก์ชันตรวจสอบสิทธิ์กับ TU REST API (Thammasat University Active Directory)
 async function verifyWithTuApi(username, password) {
-    // Application-Key ต้องมาจาก Environment (TU_API_KEY) เท่านั้น ห้าม hardcode ในซอร์สโค้ด
-    const { url: tuApiUrl, apiKey: tuApiKey } = getTuApiConfig();
+    const tuApiUrl = process.env.TU_API_URL || "https://restapi.tu.ac.th/api/v1/auth/Ad/verify";
+    const tuApiKey = (process.env.TU_API_KEY || process.env.TU_APP_KEY || "").trim();
+    if (!tuApiKey || tuApiKey === "TU_API_KEY_HERE") {
+        return { success: false, unavailable: true };
+    }
 
-    if (tuApiKey) {
-        async function attemptCall(u) {
-            const resp = await fetch(tuApiUrl, {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    "Application-Key": tuApiKey
-                },
-                body: JSON.stringify({
-                    UserName: u,
-                    PassWord: password
-                }),
-                signal: AbortSignal.timeout(6000)
-            });
-            const data = await resp.json().catch(() => ({}));
-            return { ok: resp.ok, data };
+    async function attemptCall(user) {
+        const response = await fetch(tuApiUrl, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Application-Key": tuApiKey
+            },
+            body: JSON.stringify({
+                UserName: user,
+                PassWord: password
+            }),
+            signal: AbortSignal.timeout(6000)
+        });
+
+        if (!response.ok) {
+            return { unavailable: true };
         }
 
+        let data;
         try {
-            // 1. ลองตรวจสอบด้วยชื่อผู้ใช้ตามที่กรอกมา
-            let res = await attemptCall(username);
-            let data = res.data;
+            data = await response.json();
+        } catch {
+            return { unavailable: true };
+        }
 
-            // 2. หากไม่สำเร็จและเป็นอีเมล ให้ลองด้วย Username สั้น (ตัดส่วนโดเมนออก เช่น 650965xxxx หรือ pakhwan.jul)
-            if ((!data || data.status !== true) && username.includes("@")) {
-                const shortUser = username.split("@")[0];
-                const retryRes = await attemptCall(shortUser);
-                if (retryRes.data && retryRes.data.status === true) {
-                    data = retryRes.data;
-                }
+        if (!data || typeof data !== "object" || Array.isArray(data)) {
+            return { unavailable: true };
+        }
+
+        if (data.status === true || data.status === "true" || data.status === 1) {
+            return { data };
+        }
+        if (data.status === false || data.status === "false" || data.status === 0) {
+            return { rejected: true };
+        }
+
+        return { unavailable: true };
+    }
+
+    const candidateUsernames = [username];
+    if (username.includes("@")) {
+        candidateUsernames.push(username.split("@")[0]);
+    } else {
+        candidateUsernames.push(`${username}@dome.tu.ac.th`);
+    }
+
+    try {
+        for (const candidate of candidateUsernames) {
+            const result = await attemptCall(candidate);
+            if (result.unavailable) {
+                return { success: false, unavailable: true };
             }
-
-            // 3. หากไม่สำเร็จและไม่มี @ ให้ลองเติม @dome.tu.ac.th
-            if ((!data || data.status !== true) && !username.includes("@")) {
-                const retryDome = await attemptCall(`${username}@dome.tu.ac.th`);
-                if (retryDome.data && retryDome.data.status === true) {
-                    data = retryDome.data;
-                }
-            }
-
-            if (data && (data.status === true || data.status === "true" || data.status === 1)) {
+            if (result.data) {
+                const data = result.data;
                 let resolvedEmail = data.email;
-                if (!resolvedEmail || !resolvedEmail.includes("@")) {
+                if (typeof resolvedEmail !== "string" || !resolvedEmail.includes("@")) {
                     resolvedEmail = username.includes("@") ? username : `${username}@dome.tu.ac.th`;
                 }
 
@@ -145,53 +145,12 @@ async function verifyWithTuApi(username, password) {
                     tuData: data
                 };
             }
-
-            const errorMsg = data?.Description || data?.message || "ชื่อผู้ใช้หรือรหัสผ่านของระบบมหาวิทยาลัยธรรมศาสตร์ไม่ถูกต้อง";
-            return {
-                success: false,
-                message: errorMsg
-            };
-        } catch (fetchErr) {
-            console.warn("TU API fetch error:", fetchErr.message);
-            if (!isTuDevBypassEnabled()) {
-                return tuUnavailable("ระบบยืนยันตัวตน TU API ขัดข้องชั่วคราว กรุณาลองใหม่อีกครั้ง");
-            }
         }
+    } catch {
+        return { success: false, unavailable: true };
     }
 
-    // ไม่มี Application-Key หรือ TU API ล่ม: ห้ามยอมรับรหัสผ่านโดยไม่ตรวจสอบ
-    // (เดิมยอมรับทุกอีเมล @dome.tu.ac.th ที่รหัสผ่าน >= 4 ตัว ทำให้สวมรอยบัญชีใดก็ได้)
-    // อนุญาตเฉพาะ Local dev ที่ตั้ง TU_AUTH_DEV_BYPASS=true และ NODE_ENV ไม่ใช่ production
-    if (!isTuDevBypassEnabled()) {
-        return tuUnavailable(tuApiKey
-            ? "ระบบยืนยันตัวตน TU API ขัดข้องชั่วคราว กรุณาลองใหม่อีกครั้ง"
-            : "ระบบยืนยันตัวตน TU SSO ยังไม่ได้ตั้งค่า กรุณาติดต่อผู้ดูแลระบบ");
-    }
-    console.warn("TU_AUTH_DEV_BYPASS is enabled: TU passwords are NOT verified (development only)");
-
-    const cleanUser = String(username).trim().toLowerCase();
-    const resolvedEmail = cleanUser.includes("@") ? cleanUser : `${cleanUser}@dome.tu.ac.th`;
-    const isTuDomain = resolvedEmail.endsWith("@dome.tu.ac.th") || resolvedEmail.endsWith("@tu.ac.th");
-    if (!isTuDomain) {
-        return {
-            success: false,
-            message: "กรุณาเข้าสู่ระบบด้วยอีเมลมหาวิทยาลัยธรรมศาสตร์ (@dome.tu.ac.th หรือ @tu.ac.th)"
-        };
-    }
-    if (!password || password.length < 4) {
-        return {
-            success: false,
-            message: "กรุณากรอกรหัสผ่านของบัญชี TU"
-        };
-    }
-
-    return {
-        success: true,
-        devBypass: true,
-        displayName: resolvedEmail.split("@")[0],
-        type: "employee",
-        email: resolvedEmail
-    };
+    return { success: false, unavailable: false };
 }
 
 // ฟังก์ชันยืนยันตัวตนกับ AWS Cognito User Pool โดยตรง (สำหรับบัญชีที่มีใน Cognito เช่น v3test.*, Officer, Executive, Admin)
@@ -234,9 +193,9 @@ async function authenticateWithCognito(username, password) {
 router.post("/tu-login", async (req, res) => {
     try {
         const { username, password } = req.body || {};
-        const cleanUser = String(username || "").trim();
+        const cleanUser = typeof username === "string" ? username.trim() : "";
 
-        if (!cleanUser || !password) {
+        if (!cleanUser || typeof password !== "string" || !password) {
             return res.status(400).json({
                 ok: false,
                 message: "กรุณากรอกชื่อผู้ใช้/อีเมล และรหัสผ่าน"
@@ -278,7 +237,7 @@ router.post("/tu-login", async (req, res) => {
                     }
                 }
             } catch (dbErr) {
-                console.warn("DB user sync warning:", dbErr.message);
+                console.warn("Database user synchronization failed after Cognito login.");
             }
 
             return res.json({
@@ -297,10 +256,12 @@ router.post("/tu-login", async (req, res) => {
         // 2. หากไม่พบบัญชีใน Cognito หรือใช้รหัสผ่าน TU ตรวจสอบการยืนยันตัวตนกับ TU API
         const tuResult = await verifyWithTuApi(cleanUser, password);
         if (!tuResult.success) {
-            return res.status(tuResult.status || 401).json({
+            return res.status(tuResult.unavailable ? 503 : 401).json({
                 ok: false,
-                ...(tuResult.code ? { code: tuResult.code } : {}),
-                message: tuResult.message || "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง"
+                code: tuResult.unavailable ? "TU_AUTH_UNAVAILABLE" : "INVALID_CREDENTIALS",
+                message: tuResult.unavailable
+                    ? "TU authentication is temporarily unavailable. Please try again later."
+                    : "Invalid username or password."
             });
         }
 
@@ -309,7 +270,7 @@ router.post("/tu-login", async (req, res) => {
 
         const { userPoolId, appClientId: clientId } = getPublicCognitoConfig();
 
-        // 2. ตรวจสอบและซิงค์ผู้ใช้กับ AWS Cognito (พร้อม Fallback เมื่อ Lab ดับ)
+        // 2. ตรวจสอบและซิงค์ผู้ใช้กับ AWS Cognito
         let userSub = null;
         let cognitoUsername = null;
         let tokens = null;
@@ -344,17 +305,14 @@ router.post("/tu-login", async (req, res) => {
                         GroupName: cognitoGroupForRole(DEFAULT_ROLE)
                     }));
                 } catch (createErr) {
-                    console.warn("Cognito Admin create user notice:", createErr.message);
+                    console.warn("Cognito Admin create user failed during TU login.");
                     isCognitoAdminWorking = false;
                 }
             } else {
-                console.warn("Cognito Admin get user notice:", getErr.message);
+                console.warn("Cognito Admin get user failed during TU login.");
                 isCognitoAdminWorking = false;
             }
         }
-
-        // Dev bypass ไม่ได้ตรวจรหัสผ่านจริง จึงห้ามไปเปลี่ยนรหัสผ่านใน Cognito
-        if (tuResult.devBypass) isCognitoAdminWorking = false;
 
         if (isCognitoAdminWorking && cognitoUsername) {
             try {
@@ -417,49 +375,20 @@ router.post("/tu-login", async (req, res) => {
                     });
                 });
             } catch (cogSyncErr) {
-                console.warn("Cognito user sync fallback to server token:", cogSyncErr.message);
+                console.warn("Cognito user synchronization failed during TU login.");
                 tokens = null;
             }
         }
 
-        // หาก Cognito Admin ไม่พร้อมใช้งาน (เช่น Lab ดับ) ให้ออก Token ที่ระบบยอมรับโดยตรง
+        // Fail closed when Cognito cannot issue a token.
         if (!tokens) {
-            userSub = userSub || crypto.createHash("sha256").update(targetEmail).digest("hex").slice(0, 32);
-            const secret = getAuthJwtSecret();
-            if (!secret) {
-                return res.status(503).json({ ok: false, message: "ระบบยืนยันตัวตนสำรองยังไม่ได้ตั้งค่า" });
-            }
-
-            // ตรวจสอบบทบาทเดิมจากฐานข้อมูล (ถ้ามี) เพื่อรักษาสิทธิ์ Admin / Executive / DocumentReceiver
-            let fallbackRole = DEFAULT_ROLE;
-            try {
-                const [existingUserRows] = await pool.query(
-                    "SELECT role FROM users WHERE username = ?",
-                    [targetEmail]
-                );
-                const dbRole = String(existingUserRows?.[0]?.role || "").trim().toLowerCase();
-                if (ROLES.includes(dbRole)) fallbackRole = dbRole;
-            } catch (roleErr) {
-                console.warn("DB role fallback lookup notice:", roleErr.message);
-            }
-            const fallbackGroups = [cognitoGroupForRole(fallbackRole)];
-            // อายุ token ตาม AUTH_FALLBACK_TOKEN_TTL_HOURS (ค่าเริ่มต้น 8 ชั่วโมง สูงสุด 24 ชั่วโมง)
-            const hsToken = signHs256Jwt({
-                sub: userSub,
-                username: targetEmail,
-                email: targetEmail,
-                "cognito:groups": fallbackGroups,
-                role: fallbackRole
-            }, secret);
-
-            tokens = {
-                accessToken: hsToken,
-                idToken: hsToken,
-                groups: fallbackGroups
-            };
+            return res.status(503).json({
+                ok: false,
+                code: "COGNITO_TOKEN_UNAVAILABLE",
+                message: "Unable to complete sign-in through Cognito. Please try again later."
+            });
         }
 
-        // 6. ซิงค์ข้อมูลผู้ใช้และ Role จาก Cognito Group ลงใน MySQL Database
         const mappedRoles = mapCognitoGroupsToRoles(tokens.groups);
         const resolvedRole = resolvePrimaryRole(mappedRoles);
 
@@ -488,7 +417,7 @@ router.post("/tu-login", async (req, res) => {
                 }
             }
         } catch (dbErr) {
-            console.warn("DB user sync warning:", dbErr.message);
+            console.warn("Database user synchronization failed after TU login.");
         }
 
         return res.json({
@@ -504,21 +433,21 @@ router.post("/tu-login", async (req, res) => {
         });
 
     } catch (error) {
-        console.error("TU Login error:", error);
+        console.error("TU login failed.");
 
         // AWS credentials ของเซิร์ฟเวอร์หมดอายุ -> ไม่ใช่ความผิดของผู้ใช้ แจ้งให้ผู้ดูแลระบบอัปเดต credential
         if (isAwsCredentialError(error)) {
             return res.status(503).json({
                 ok: false,
                 code: "AWS_CREDENTIALS_EXPIRED",
-                message: "ระบบยืนยันตัวตน (AWS) ไม่พร้อมใช้งานชั่วคราว เนื่องจากข้อมูลรับรองของเซิร์ฟเวอร์หมดอายุ กรุณาแจ้งผู้ดูแลระบบให้อัปเดต AWS credentials (บัญชีและรหัสผ่านของคุณถูกต้องแล้ว)"
+                message: "Authentication is temporarily unavailable. Please try again later."
             });
         }
 
         // ไม่ส่งรายละเอียด error ภายในกลับไปให้ผู้ใช้
         return res.status(500).json({
             ok: false,
-            message: "เกิดข้อผิดพลาดในการเข้าสู่ระบบ กรุณาลองใหม่อีกครั้ง"
+            message: "Unable to complete sign-in. Please try again later."
         });
     }
 });
