@@ -126,7 +126,9 @@ Response `200`:
 
 ---
 
-## #77 Inbox 🔜
+## #77 Inbox ✅ (ยกเว้น `head_review` ซึ่งรอ #79)
+
+ทำแล้วใน `backend/server.js` + `backend/inboxPriority.js` (`parseInboxQuery`, `inboxFields`) test: `backend/test/inboxApi.test.js`
 
 ขยาย `GET /api/documents` และ `GET /api/documents/:id` ที่มีอยู่แล้ว ไม่สร้าง endpoint list ใหม่ Frontend (`dashboard.js`, `inbox.js`) อ่าน field เหล่านี้อยู่แล้ว
 
@@ -137,10 +139,10 @@ Query ใหม่ (ใช้ร่วมกับ filter เดิมได้�
 | Query | ค่า | ความหมาย |
 |---|---|---|
 | `sort` | `priority` (ค่าเริ่มต้น) \| `due` | `priority` = สูตร Inbox ใน [ERD-V7.md](ERD-V7.md#สูตร-priority-ของ-inbox-อาจารย์) (`buildInboxOrderBy`) ส่วน `due` = `deadline` ใกล้ก่อน และไม่มี deadline อยู่ท้าย |
-| `group` | `action` \| `info` | เอาเฉพาะ "ต้องดำเนินการ" หรือ "เพื่อทราบ" |
-| `pinned` | `1` | เอาเฉพาะที่ผู้ดูปักดาวไว้ |
+| `group` | `action` \| `info` | เอาเฉพาะ "ต้องดำเนินการ" หรือ "เพื่อทราบ" (ไม่สนตัวพิมพ์ และรับ `fyi` เป็นชื่อเรียกอีกแบบของ `info`) |
+| `pinned` | `1` \| `0` | `1` = เอาเฉพาะที่ผู้ดูปักดาวไว้ (`0` หรือไม่ส่ง = ไม่กรอง) |
 
-ค่าที่ไม่รู้จักได้ `400 INVALID_QUERY`
+ค่าที่ไม่รู้จัก หรือส่ง key เดิมซ้ำ (array) ได้ `400 INVALID_QUERY`
 
 Envelope เดิม: `{ "data": [...], "total": <จำนวน> }` แต่ละแถวเพิ่ม field:
 
@@ -153,7 +155,7 @@ Envelope เดิม: `{ "data": [...], "total": <จำนวน> }` แต่
 | `is_overdue` | boolean | `isOverdue(deadline)` เป็นป้ายเท่านั้น ไม่มีผลต่อลำดับ |
 | `is_official` | boolean | จาก #79 (ส่งมาด้วยเพื่อใช้แสดงป้าย) |
 | `review_state` | `null` \| `"PENDING"` \| `"DIRECTED"` \| `"RETURNED"` \| `"DONE"` | จาก #79 |
-| `head_review` | object \| `null` | คำสั่งการล่าสุดของหัวหน้าสาขา (ดู #79) frontend อ่าน `head_review.note` อยู่แล้ว |
+| `head_review` 🔜 | object \| `null` | คำสั่งการล่าสุดของหัวหน้าสาขา (ดู #79) frontend อ่าน `head_review.note` อยู่แล้ว **ยังไม่ส่ง** จะเพิ่มพร้อม #79 |
 
 ตัวอย่างแถว (เฉพาะ field ใหม่ที่ต่อจาก field เดิม):
 ```json
@@ -328,5 +330,6 @@ Request: `{ "note": "แนบเอกสารเพิ่มแล้ว" }` 
 
 | วันที่ | แก้อะไร | Issue/PR |
 |---|---|---|
+| 2026-11-23 | #77 ทำแล้ว: `group` รับ `fyi`/ไม่สนตัวพิมพ์, `pinned=0`, query ซ้ำได้ 400 (เพิ่มอย่างเดียว ไม่เปลี่ยนชื่อ field) `head_review` ยังรอ #79 | #77 |
 | 2026-11-22 | `head_review` เพิ่ม `id`, `assignee_id`, `assignee_name` ให้รูปแบบเดียวกันทุก endpoint และบังคับให้แจกจ่ายให้ผู้รับที่หัวหน้าสั่งการ (CodeRabbit) | #76 |
 | 2026-11-22 | ฉบับแรก: #75 ตามที่ทำแล้วใน PR #98, #77/#79 กำหนดตามชื่อ field ที่ frontend ใช้อยู่ใน `dashboard.js` / `inbox.js`, #91 ตามโค้ดเดิม | #76 |

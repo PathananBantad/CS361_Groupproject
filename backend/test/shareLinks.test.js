@@ -107,6 +107,9 @@ function handle(sql, params = [], state) {
         db.audits.push({ document_id, actor_user_id, actor_username, actor_role, event_type, before_state, after_state, details, ip_address });
         return [{ insertId: db.audits.length }];
     }
+    // #77 สถานะ Inbox ของผู้ดูใน GET /api/documents/:id (ไม่เกี่ยวกับ share link: ไม่มีดาว/ไม่มีแถวมอบหมาย)
+    if (/^ ?SELECT 1 AS pinned FROM document_pins WHERE user_id = \?/.test(s)) return [[]];
+    if (/SELECT id, seen_at FROM document_assignments/.test(s)) return [[]];
     throw new Error(`Unexpected SQL in share link test: ${s}`);
 }
 

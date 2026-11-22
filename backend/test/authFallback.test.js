@@ -222,6 +222,36 @@ test("invalid TU credentials are rejected without Cognito account changes", asyn
     assert.deepEqual(calls.database, []);
 });
 
+// TU API จริงตอบ HTTP 400 + { status: false, message: "Users or Password Invalid!" } เมื่อรหัสผิด
+test("TU HTTP 400 credential rejection tries the short username and returns 401, not 503", async t => {
+    const { result, calls } = await runTuLoginWithFailure(t, async () => ({
+        ok: false,
+        status: 400,
+        json: async () => ({ status: false, message: "Users or Password Invalid!" })
+    }));
+
+    assert.equal(result.status, 401);
+    assert.equal(result.body.code, "INVALID_CREDENTIALS");
+    assert.deepEqual(
+        calls.tuApi.map(call => JSON.parse(call.init.body).UserName),
+        ["staff@dome.tu.ac.th", "staff"],
+        "ต้องลอง username แบบสั้นต่อ ไม่หยุดที่ 400 ครั้งแรก"
+    );
+    assert.deepEqual(calls.cognito, ["InitiateAuthCommand"]);
+    assert.deepEqual(calls.database, []);
+});
+
+test("TU HTTP 400 without a credential-rejection body still fails closed", async t => {
+    const { result } = await runTuLoginWithFailure(t, async () => ({
+        ok: false,
+        status: 400,
+        json: async () => ({ error: "bad request" })
+    }));
+
+    assert.equal(result.status, 503);
+    assert.equal(result.body.code, "TU_AUTH_UNAVAILABLE");
+});
+
 for (const [failureName, failure] of [
     ["timeout", () => { throw Object.assign(new Error("mock timeout detail"), { name: "TimeoutError" }); }],
     ["network failure", () => { throw new Error("mock network detail"); }],

@@ -163,7 +163,9 @@ test("faculty_staff list SQL remains scoped to owned or assigned documents", asy
     assert.equal(status, 200);
     assert.match(observedQueries[0].sql, /d\.assignee_id = \? OR EXISTS/);
     assert.match(observedQueries[0].sql, /previous_assignee_id = \?/);
-    assert.deepEqual(observedQueries[0].params.slice(0, 2), [17, "17"]);
+    // 3 ค่าแรกเป็นของ JOIN ดาว/แถวมอบหมาย (#77) ตามด้วยเงื่อนไขสิทธิ์ current/previous assignee
+    assert.deepEqual(observedQueries[0].params.slice(0, 3), [17, 17, "17"]);
+    assert.deepEqual(observedQueries[0].params.slice(3, 5), [17, "17"]);
     assert.equal(body.data[0].id, 17);
     assert.equal(body.data[0].file_name, "staff.pdf");
 });

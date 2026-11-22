@@ -76,12 +76,69 @@ function buildInboxOrderBy({ docAlias = "d", pinnedExpr, seenExpr }) {
     };
 }
 
+// ---------- API (#77, docs/api-v7.md) ----------
+// ค่าที่ส่งออกทาง API ตามสัญญา: action_group = "action" | "info", priority_level = 0 | 1 | 2
+const ACTION_GROUP = Object.freeze({ [CATEGORY.ACTION]: "action", [CATEGORY.INFO]: "info" });
+const PRIORITY_LEVEL = Object.freeze({ PINNED: 0, ACTION: 1, INFO: 2 });
+
+const INBOX_SORTS = Object.freeze(["priority", "due"]);
+// รับ "fyi" เป็นชื่อเรียกอีกแบบของ "info" (ชื่อใน Issue #77) ไม่สนตัวพิมพ์เล็ก/ใหญ่
+const INBOX_GROUP_ALIASES = Object.freeze({ action: "action", info: "info", fyi: "info" });
+
+// คืน { sort, group, pinned } หรือ { error } ถ้าค่าไม่ถูกต้อง (route ตอบ 400 INVALID_QUERY)
+function parseInboxQuery(query = {}) {
+    const { sort, group, pinned } = query;
+    for (const [name, value] of Object.entries({ sort, group, pinned })) {
+        if (value !== undefined && typeof value !== "string") return { error: `Invalid ${name}` };
+    }
+
+    const cleanSort = sort === undefined || sort === "" ? "priority" : sort.trim().toLowerCase();
+    if (!INBOX_SORTS.includes(cleanSort)) return { error: "Invalid sort" };
+
+    let cleanGroup = null;
+    if (group !== undefined && group !== "") {
+        cleanGroup = INBOX_GROUP_ALIASES[group.trim().toLowerCase()] || null;
+        if (!cleanGroup) return { error: "Invalid group" };
+    }
+
+    let cleanPinned = false;
+    if (pinned !== undefined && pinned !== "") {
+        if (!["1", "0"].includes(pinned.trim())) return { error: "Invalid pinned" };
+        cleanPinned = pinned.trim() === "1";
+    }
+
+    return { sort: cleanSort, group: cleanGroup, pinned: cleanPinned };
+}
+
+// field ใหม่ของแต่ละแถวใน GET /api/documents และ GET /api/documents/:id
+// isPinned / isNew คำนวณจาก DB ของผู้ดูคนนั้น (ดาวเป็นของแต่ละคน)
+function inboxFields(doc, { isPinned, isNew }, now = new Date()) {
+    const category = inboxCategory(doc.document_type);
+    const pinned = Boolean(isPinned);
+    return {
+        is_pinned: pinned,
+        is_new: Boolean(isNew),
+        action_group: ACTION_GROUP[category],
+        priority_level: pinned
+            ? PRIORITY_LEVEL.PINNED
+            : (category === CATEGORY.ACTION ? PRIORITY_LEVEL.ACTION : PRIORITY_LEVEL.INFO),
+        is_overdue: isOverdue(doc.deadline, now),
+        is_official: Boolean(Number(doc.is_official || 0)),
+        review_state: doc.review_state || null
+    };
+}
+
 module.exports = {
     ACTION_REQUIRED_TYPES,
     FOR_INFO_TYPES,
     CATEGORY,
+    ACTION_GROUP,
+    PRIORITY_LEVEL,
+    INBOX_SORTS,
     inboxCategory,
     isOverdue,
     compareInboxPriority,
-    buildInboxOrderBy
+    buildInboxOrderBy,
+    parseInboxQuery,
+    inboxFields
 };
