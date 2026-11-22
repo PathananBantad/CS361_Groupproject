@@ -32,6 +32,12 @@ const {
     queryAuditTrails
 } = require("./auditTrail");
 const { createShareLinkRouter } = require("./shareLinks");
+const {
+    FOR_INFO_TYPES,
+    buildInboxOrderBy,
+    parseInboxQuery,
+    inboxFields
+} = require("./inboxPriority");
 
 
 async function loadUserRole(req, res, next) {
@@ -431,6 +437,41 @@ async function didOfficerForward(req, document, db = pool) {
     return rows.length > 0;
 }
 
+// #77 สถานะ Inbox ของผู้ดูคนนี้: ดาวของตัวเอง + แถวมอบหมายล่าสุดที่ส่งถึงตัวเอง
+// is_new จริงได้เฉพาะเมื่อผู้ดูเป็นผู้รับปัจจุบัน (ผู้รับเดิม/admin/officer เป็น false เสมอ)
+async function loadViewerInboxState(document, userId, db = pool) {
+    const [pinRows] = await db.query(
+        "SELECT 1 AS pinned FROM document_pins WHERE user_id = ? AND document_id = ? LIMIT 1",
+        [userId, document.id]
+    );
+    const state = { isPinned: pinRows.length > 0, isNew: false, assignmentId: null };
+
+    if (userId == null || document.assignee_id == null || String(document.assignee_id) !== String(userId)) {
+        return state;
+    }
+    const [assignmentRows] = await db.query(
+        `SELECT id, seen_at FROM document_assignments
+         WHERE document_id = ? AND new_assignee_id = ?
+         ORDER BY id DESC LIMIT 1`,
+        [document.id, String(userId)]
+    );
+    const latest = assignmentRows[0];
+    if (latest && latest.id != null) {
+        state.assignmentId = latest.id;
+        state.isNew = latest.seen_at == null;
+    }
+    return state;
+}
+
+// ตั้ง seen_at ครั้งเดียว: เงื่อนไข seen_at IS NULL กันการเขียนทับเมื่อเปิดซ้ำหรือเปิดพร้อมกัน
+async function markAssignmentSeen(assignmentId, db = pool) {
+    if (assignmentId == null) return;
+    await db.query(
+        "UPDATE document_assignments SET seen_at = CURRENT_TIMESTAMP WHERE id = ? AND seen_at IS NULL",
+        [assignmentId]
+    );
+}
+
 // Redirect root to html/index.html before static middleware catches it
 app.get('/', (req, res) => {
     res.redirect('/html/index.html');
@@ -489,8 +530,16 @@ app.get(
                 month
             } = req.query;
 
+            const inboxQuery = parseInboxQuery(req.query);
+            if (inboxQuery.error) {
+                return res.status(400).json({ error: inboxQuery.error, code: "INVALID_QUERY" });
+            }
+
+            // #77: ดาว (p) เป็นของผู้ดูคนนี้เท่านั้น ส่วน a คือแถวมอบหมายล่าสุดที่ส่งถึงผู้ดู
+            // และ JOIN เฉพาะตอนที่ผู้ดูเป็นผู้รับปัจจุบัน (is_new ของคนอื่นเป็น false เสมอ)
+            // ไฟล์และแถวมอบหมาย JOIN เฉพาะแถวล่าสุด เพื่อไม่ให้ได้เอกสารซ้ำ (ERD-V7 #90)
             let sql = `
-            SELECT 
+            SELECT
                 d.*,
                 assignee.username AS assignee_username,
                 assignee.full_name AS assignee_full_name,
@@ -499,15 +548,24 @@ app.get(
                 f.file_name,
                 f.file_size,
                 f.mime_type,
-                f.uploaded_at AS file_uploaded_at
+                f.uploaded_at AS file_uploaded_at,
+                (p.user_id IS NOT NULL) AS inbox_is_pinned,
+                (a.id IS NOT NULL AND a.seen_at IS NULL) AS inbox_is_new
             FROM documents d
-            LEFT JOIN document_files f ON d.id = f.document_id
+            LEFT JOIN document_files f ON f.id = (
+                SELECT MAX(f2.id) FROM document_files f2 WHERE f2.document_id = d.id
+            )
             LEFT JOIN users assignee ON assignee.id = d.assignee_id
             LEFT JOIN users owner ON owner.id = d.owner_id
+            LEFT JOIN document_pins p ON p.document_id = d.id AND p.user_id = ?
+            LEFT JOIN document_assignments a ON d.assignee_id = ? AND a.id = (
+                SELECT MAX(a2.id) FROM document_assignments a2
+                WHERE a2.document_id = d.id AND a2.new_assignee_id = ?
+            )
             WHERE 1 = 1
         `;
 
-            const params = [];
+            const params = [userId, userId, String(userId)];
 
             // Admin, Executive, and Document Officer roles can view all documents and their files across the system.
             // Faculty/Responsible users are scoped to assignees.
@@ -596,18 +654,46 @@ app.get(
                 params.push(month);
             }
 
-            sql += " ORDER BY d.created_at DESC";
+            // #77 group: ใช้เงื่อนไขเดียวกับ buildInboxOrderBy (ประเภทที่ไม่รู้จัก/ว่าง = ต้องดำเนินการ)
+            if (inboxQuery.group) {
+                const infoPlaceholders = FOR_INFO_TYPES.map(() => "?").join(", ");
+                sql += inboxQuery.group === "info"
+                    ? ` AND d.document_type IN (${infoPlaceholders})`
+                    : ` AND (d.document_type IS NULL OR d.document_type NOT IN (${infoPlaceholders}))`;
+                params.push(...FOR_INFO_TYPES);
+            }
+
+            if (inboxQuery.pinned) {
+                sql += " AND p.user_id IS NOT NULL";
+            }
+
+            if (inboxQuery.sort === "due") {
+                sql += " ORDER BY d.deadline IS NULL ASC, d.deadline ASC, d.created_at DESC, d.id DESC";
+            } else {
+                // seenExpr เป็น NULL เฉพาะตอน is_new = true เพื่อให้ลำดับตรงกับ field is_new ที่ส่งออก
+                const orderBy = buildInboxOrderBy({
+                    pinnedExpr: "p.user_id IS NOT NULL",
+                    seenExpr: "IF(a.id IS NOT NULL AND a.seen_at IS NULL, NULL, 1)"
+                });
+                sql += ` ${orderBy.sql}`;
+                params.push(...orderBy.params);
+            }
 
             const [rows] = await pool.query(sql, params);
 
             // Enrich attachment metadata for authenticated readers.
-            const enrichedRows = rows.map(doc => {
+            const now = new Date();
+            const enrichedRows = rows.map(({ inbox_is_pinned, inbox_is_new, ...doc }) => {
                 const finalFileName = doc.file_name || extractFileNameFromKey(doc.file_key);
                 const ext = finalFileName ? path.extname(finalFileName).toLowerCase() : "";
                 const canPreview = isPreviewable(finalFileName || doc.file_key);
 
                 return {
                     ...doc,
+                    ...inboxFields(doc, {
+                        isPinned: Number(inbox_is_pinned) === 1,
+                        isNew: Number(inbox_is_new) === 1
+                    }, now),
                     display_file_name: finalFileName,
                     file_extension: ext,
                     can_preview: canPreview,
@@ -673,6 +759,12 @@ app.get(
                 return res.status(403).json({ error: "Permission Denied" });
             }
 
+            // #77: ส่ง is_new เป็นค่าก่อนเปิด แล้วตั้ง seen_at ครั้งแรกครั้งเดียว
+            const inboxState = await loadViewerInboxState(doc, req.userId);
+            if (inboxState.isNew) {
+                await markAssignmentSeen(inboxState.assignmentId);
+            }
+
             const finalFileName = doc.file_name || extractFileNameFromKey(doc.file_key);
             const ext = finalFileName ? path.extname(finalFileName).toLowerCase() : "";
             const canPreview = isPreviewable(finalFileName || doc.file_key);
@@ -701,6 +793,7 @@ app.get(
 
             res.json({
                 ...doc,
+                ...inboxFields(doc, inboxState),
                 viewer_role: req.userRole,
                 previous_assignee: previousAssignee,
                 permissions: {
@@ -708,7 +801,8 @@ app.get(
                     forward: can("forward"),
                     status: can("status"),
                     deadline: can("deadline"),
-                    share: can("share")
+                    share: can("share"),
+                    pin: true
                 },
                 display_file_name: finalFileName,
                 file_extension: ext,
@@ -779,6 +873,50 @@ app.get(
                 }
             }
         );
+
+// #77 ปักดาว / เลิกปักดาว: ทุก role ที่อ่านเอกสารได้ ดาวเป็นของแต่ละคน (document_pins.user_id)
+async function handleDocumentPin(req, res, pinned) {
+    try {
+        const id = Number(req.params.id);
+        if (!Number.isInteger(id) || id <= 0) {
+            return res.status(400).json({ error: "รหัสเอกสารไม่ถูกต้อง", code: "INVALID_DOCUMENT_ID" });
+        }
+
+        const [documents] = await pool.query(
+            "SELECT id, assignee_id, status FROM documents WHERE id = ?",
+            [id]
+        );
+        if (documents.length === 0) {
+            return res.status(404).json({ error: "ไม่พบเอกสาร", code: "DOCUMENT_NOT_FOUND" });
+        }
+        if (!(await checkDocumentAccess(req, documents[0], "read")).allowed) {
+            return res.status(403).json({ error: "คุณไม่มีสิทธิ์เข้าถึงเอกสารนี้", code: "FORBIDDEN" });
+        }
+
+        if (pinned) {
+            // ปักซ้ำได้ ไม่ error (PRIMARY KEY (user_id, document_id))
+            await pool.query(
+                "INSERT IGNORE INTO document_pins (user_id, document_id) VALUES (?, ?)",
+                [req.userId, id]
+            );
+        } else {
+            await pool.query(
+                "DELETE FROM document_pins WHERE user_id = ? AND document_id = ?",
+                [req.userId, id]
+            );
+        }
+
+        return res.json({ document_id: id, is_pinned: pinned });
+    } catch (error) {
+        console.error("Document pin error:", error);
+        return res.status(500).json({ error: "บันทึกการปักดาวไม่สำเร็จ", code: "PIN_FAILED" });
+    }
+}
+
+app.put("/api/documents/:id/pin", requireCognitoAuth, loadUserRole,
+    (req, res) => handleDocumentPin(req, res, true));
+app.delete("/api/documents/:id/pin", requireCognitoAuth, loadUserRole,
+    (req, res) => handleDocumentPin(req, res, false));
 
 // Create document
 app.post("/api/documents", requireCognitoAuth, loadUserRole, requireAction("register"), async (req, res) => {

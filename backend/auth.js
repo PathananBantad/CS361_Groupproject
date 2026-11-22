@@ -90,7 +90,11 @@ async function verifyWithTuApi(username, password) {
             signal: AbortSignal.timeout(6000)
         });
 
-        if (!response.ok) {
+        // TU API ตอบ HTTP 400 + { status: false } เมื่อ Username/Password ไม่ถูกต้อง
+        // จึงต้องอ่าน body ของ 400/401 ด้วย (ถือเป็น "รหัสผิด" แล้วลอง username รูปแบบถัดไป)
+        // ส่วน HTTP error อื่น (5xx ฯลฯ) ยังถือว่า TU ใช้งานไม่ได้ (fail closed)
+        const credentialRejection = response.status === 400 || response.status === 401;
+        if (!response.ok && !credentialRejection) {
             return { unavailable: true };
         }
 
@@ -103,6 +107,12 @@ async function verifyWithTuApi(username, password) {
 
         if (!data || typeof data !== "object" || Array.isArray(data)) {
             return { unavailable: true };
+        }
+
+        if (!response.ok) {
+            return data.status === false || data.status === "false" || data.status === 0
+                ? { rejected: true }
+                : { unavailable: true };
         }
 
         if (data.status === true || data.status === "true" || data.status === 1) {
