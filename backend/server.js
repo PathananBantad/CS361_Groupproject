@@ -930,7 +930,17 @@ app.post("/api/documents", requireCognitoAuth, loadUserRole, requireAction("regi
         // เพื่อให้เอกสารไปปรากฏบนหน้า Dashboard ของผู้รับมอบหมายทันที
         if (!resolvedAssigneeId && ["admin", "document_officer"].includes(req.userRole)) {
             try {
-                const [facRows] = await pool.query("SELECT id FROM users WHERE role = 'faculty_staff' AND is_active = 1 ORDER BY id ASC LIMIT 1");
+                const [facRows] = await pool.query(
+                    `SELECT u.id
+                    FROM users u
+                    JOIN users_roles ur ON ur.user_id = u.id
+                    JOIN roles r ON r.id = ur.role_id
+                    WHERE r.name = ?
+                    AND u.is_active = 1
+                    ORDER BY u.id ASC
+                    LIMIT 1`,
+                    ["faculty_staff"]
+                );
                 if (facRows.length > 0) {
                     resolvedAssigneeId = facRows[0].id;
                 }
