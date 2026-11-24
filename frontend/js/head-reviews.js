@@ -28,9 +28,12 @@
         const response = await window.apiFetch(`${window.resolveApiBaseUrl()}${path}`, options);
         if (response.status === 401) throw new Error("เซสชันหมดอายุ กรุณาเข้าสู่ระบบอีกครั้ง");
         if (response.status === 403) throw new Error("บัญชีนี้ไม่มีสิทธิ์ดำเนินการ");
-        if (response.status === 409) {
-            const error = new Error("สถานะเอกสารเปลี่ยนแล้ว กรุณาปิดรายละเอียดแล้วตรวจรายการอีกครั้ง");
-            error.status = 409;
+        if (response.status === 400) throw new Error("ข้อมูลพิจารณาไม่ถูกต้อง กรุณาตรวจผู้รับหรือเหตุผลแล้วลองอีกครั้ง");
+        if (response.status === 404 || response.status === 409) {
+            const error = new Error(response.status === 404
+                ? "ไม่พบเอกสารนี้แล้ว กรุณากลับไปตรวจรายการ"
+                : "สถานะเอกสารเปลี่ยนแล้ว กรุณากลับไปตรวจรายการ");
+            error.status = response.status;
             throw error;
         }
         if (!response.ok) throw new Error("ทำรายการไม่สำเร็จ กรุณาลองอีกครั้ง");
@@ -43,9 +46,17 @@
         byId("headReviewDetails").textContent = [doc.reference_no, doc.document_type, doc.sender_name, doc.description,
             doc.receive_date && `วันที่รับ ${doc.receive_date}`, doc.deadline && `ครบกำหนด ${doc.deadline}`].filter(Boolean).join("\n");
         const review = doc.head_review;
-        byId("headReviewDecision").textContent = review?.decision === "RETURNED"
-            ? `ส่งกลับเพื่อขอข้อมูลเพิ่ม\n${review.reason || ""}`
-            : review?.decision === "DIRECTED" ? `ส่งให้สารบรรณแจกจ่ายแล้ว\n${review.note || ""}` : "";
+        let decisionDetails = [];
+        if (review?.decision === "RETURNED") {
+            decisionDetails = ["ส่งกลับเพื่อขอข้อมูลเพิ่ม", review.reason];
+        } else if (review?.decision === "DIRECTED") {
+            decisionDetails = [
+                doc.review_state === "DONE" ? "สารบรรณแจกจ่ายแล้ว" : "ส่งให้สารบรรณแจกจ่ายแล้ว",
+                review.assignee_name && `ผู้รับ ${review.assignee_name}`,
+                review.note
+            ];
+        }
+        byId("headReviewDecision").textContent = decisionDetails.filter(Boolean).join("\n");
         byId("headActionStatus").textContent = "";
         directForm.reset();
         returnForm.reset();
@@ -113,7 +124,8 @@
             byId("headReason").focus();
             return;
         }
-        if (decision === "DIRECTED" && (!Number.isSafeInteger(assigneeId) || assigneeId <= 0)) {
+        if (decision === "DIRECTED" && (!Number.isSafeInteger(assigneeId) || assigneeId <= 0 ||
+            !Array.from(recipient.options).some(option => option.value === recipient.value))) {
             status.textContent = "กรุณาเลือกผู้รับหนึ่งคน";
             recipient.focus();
             return;
@@ -129,7 +141,10 @@
         status.textContent = "กำลังส่ง…";
         try {
             if (demo) {
-                activeDocument.head_review = payload;
+                activeDocument.head_review = {
+                    ...payload,
+                    assignee_name: decision === "DIRECTED" ? recipient.selectedOptions[0].text : null
+                };
                 activeDocument.review_state = decision;
             } else await request(`/documents/${encodeURIComponent(activeDocument.id)}/head-review`, {
                 method: "POST",
@@ -138,12 +153,12 @@
             });
             dialog.close();
             await load();
-            if (!byId("headListStatus").textContent) {
-                byId("headListStatus").textContent = decision === "DIRECTED" ? "ส่งให้สารบรรณแจกจ่ายแล้ว" : "ส่งกลับเพื่อขอข้อมูลเพิ่มแล้ว";
-            }
+            byId("headReviewResult").textContent = decision === "DIRECTED"
+                ? "ส่งให้สารบรรณแจกจ่ายแล้ว"
+                : "ส่งกลับเพื่อขอข้อมูลเพิ่มแล้ว";
         } catch (error) {
             status.textContent = error.message;
-            if (error.status === 409) {
+            if ([404, 409].includes(error.status)) {
                 activeDocument = null;
                 directForm.hidden = true;
                 returnForm.hidden = true;
@@ -164,6 +179,7 @@
     if (demo) byId("roleMenuBtn").disabled = true;
     page.hidden = false;
     filters.forEach(button => button.addEventListener("click", () => {
+        byId("headReviewResult").textContent = "";
         filter = button.dataset.reviewFilter;
         filters.forEach(option => option.setAttribute("aria-pressed", String(option === button)));
         void load();
