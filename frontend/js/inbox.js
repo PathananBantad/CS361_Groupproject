@@ -12,6 +12,7 @@
 
     function priority(doc) {
         if (doc.isPinned) return 0;
+        if ([0, 1, 2].includes(doc.priorityLevel)) return doc.priorityLevel;
         const group = String(doc.actionGroup || "").trim().toLowerCase();
         if (["inform", "informational", "info", "เพื่อทราบ"].includes(group)) return 2;
         if (group) return 1;

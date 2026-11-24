@@ -261,6 +261,7 @@ async function fetchDocuments() {
                 isNew: inbox.isFlagSet(row.is_new),
                 isPinned: inbox.isFlagSet(row.is_pinned),
                 actionGroup: row.action_group,
+                priorityLevel: row.priority_level,
                 headNote: inbox.headNote(row),
                 receivedDateKey: dateOnly(row.receive_date || row.received_at || row.created_at),
                 remarks: row.remarks || "-",
@@ -570,10 +571,12 @@ function renderMobile(list, today) {
                         <div class="mobile-number">${escapeHtml(doc.number)} ${inboxLabels(doc)}</div>
                         <div class="mobile-name"><strong>${escapeHtml(doc.type)}:</strong> ${escapeHtml(doc.description)}</div>
                     </div>
-                    <span class="status-badge status-${doc.statusKey}">
-                        ${escapeHtml(doc.statusLabel)}
-                    </span>
-                    ${deadlineLabel(doc, today)}
+                    <div class="mobile-status">
+                        <span class="status-badge status-${doc.statusKey}">
+                            ${escapeHtml(doc.statusLabel)}
+                        </span>
+                        ${deadlineLabel(doc, today)}
+                    </div>
                 </div>
                 ${headNoteLabel(doc)}
                 <div class="mobile-meta">

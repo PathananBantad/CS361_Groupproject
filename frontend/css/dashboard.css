@@ -755,3 +755,20 @@
     overflow-wrap: anywhere;
     white-space: pre-wrap;
 }
+
+.mobile-top .mobile-main {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.mobile-status {
+    flex: 0 1 auto;
+    max-width: 46%;
+    min-width: 0;
+    text-align: end;
+    overflow-wrap: anywhere;
+}
+
+.mobile-status .status-badge {
+    white-space: normal;
+}
