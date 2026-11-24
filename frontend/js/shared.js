@@ -12,8 +12,10 @@
     const previewButton = document.getElementById("sharedPreview");
     const downloadButton = document.getElementById("sharedDownload");
 
+    const unavailableStatuses = [400, 401, 403, 404, 410];
+
     function showError(error) {
-        status.textContent = [400, 401, 403, 404, 410].includes(error.status)
+        status.textContent = unavailableStatuses.includes(error.status)
             ? "ลิงก์นี้ใช้งานไม่ได้ กรุณาขอลิงก์ใหม่จากผู้ส่ง"
             : api.message(error);
     }
@@ -40,7 +42,7 @@
             }
             status.textContent = "";
         } catch (error) {
-            if ([400, 401, 403, 404, 410].includes(error.status)) {
+            if (unavailableStatuses.includes(error.status)) {
                 details.hidden = true;
                 preview.hidden = true;
                 preview.removeAttribute("src");
