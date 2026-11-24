@@ -7,7 +7,7 @@ window.COGNITO_CONFIG = {
 };
 
 // ชื่อ Role มาตรฐาน (ตรงกับ backend/documentAuthorization.js ROLE_PRIORITY)
-window.DOCUFLOW_ROLES = ["admin", "executive", "document_officer", "responsible_person", "faculty_staff"];
+window.DOCUFLOW_ROLES = ["admin", "executive", "document_officer", "branch_head", "responsible_person", "faculty_staff"];
 // แปลงชื่อ Role เก่า ("staff") ที่อาจค้างใน localStorage ให้เป็นชื่อมาตรฐาน
 try {
     const legacyRole = (localStorage.getItem("docuflow_role") || "").toLowerCase().trim();

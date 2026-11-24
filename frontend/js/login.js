@@ -12,6 +12,7 @@ function resolveLoginRole(responseRole, groups = []) {
         "staff/instructor": "faculty_staff",
         instructor: "faculty_staff",
         staff: "faculty_staff",
+        branchhead: "branch_head",
         responsibleperson: "responsible_person",
         responsible_person: "responsible_person"
     };
@@ -23,7 +24,7 @@ function resolveLoginRole(responseRole, groups = []) {
     const candidateRoles = [...groupRoles];
     if (responseRole) candidateRoles.push(normalize(responseRole));
 
-    return ["admin", "executive", "document_officer", "responsible_person", "faculty_staff"]
+    return ["admin", "executive", "document_officer", "branch_head", "responsible_person", "faculty_staff"]
         .find(role => candidateRoles.includes(role)) || (responseRole ? normalize(responseRole) : groupRoles[0]) || "faculty_staff";
 }
 
@@ -53,7 +54,8 @@ if (togglePassword && passwordInput) {
 
 // ฟังก์ชันนำทางไปยัง Dashboard อย่างปลอดภัย รองรับทั้ง URL ที่มี /html/ และไม่มี
 function navigateToDashboard() {
-    const target = window.location.pathname.startsWith("/html/") ? "dashboard.html" : "/html/dashboard.html";
+    const page = localStorage.getItem("docuflow_role") === "branch_head" ? "head-reviews.html" : "dashboard.html";
+    const target = window.location.pathname.startsWith("/html/") ? page : `/html/${page}`;
     window.location.href = target;
 }
 

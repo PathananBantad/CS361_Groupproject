@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>พิจารณาเอกสาร | DocuFlow</title>
+    <link rel="stylesheet" href="../css/common.css">
+    <link rel="stylesheet" href="../css/head-reviews.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/amazon-cognito-identity-js@6.3.18/dist/amazon-cognito-identity.min.js"></script>
+    <script defer src="../js/cognito-config.js"></script>
+    <script defer src="../js/navbar-profile.js"></script>
+    <script defer src="../js/head-reviews.js"></script>
+</head>
+<body>
+    <header class="review-navbar">
+        <strong>DocuFlow</strong>
+        <span id="headPendingCount" role="status"></span>
+        <div class="role-selector-wrap">
+            <button class="profile-button" id="roleMenuBtn" type="button" aria-expanded="false" aria-controls="roleDropdown">
+                <span id="userRoleDot" aria-hidden="true">●</span>
+                <span id="userRoleDisplay">หัวหน้าสาขา</span>
+            </button>
+            <div class="role-dropdown" id="roleDropdown" hidden>
+                <p id="userRoleDropdownTitle"></p>
+                <p id="userRoleDropdownEmail"></p>
+                <button type="button" id="logoutBtn">ออกจากระบบ</button>
+            </div>
+        </div>
+    </header>
+    <main class="review-page" id="headReviewPage" hidden>
+        <h1>พิจารณาเอกสาร</h1>
+        <p id="headDemo" hidden>ข้อมูลจำลองสำหรับทดสอบ</p>
+        <nav aria-label="สถานะการพิจารณา">
+            <button type="button" data-review-filter="pending" aria-pressed="true">รอพิจารณา</button>
+            <button type="button" data-review-filter="reviewed" aria-pressed="false">พิจารณาแล้ว</button>
+        </nav>
+        <p id="headListStatus" role="status"></p>
+        <ul id="headReviewList"></ul>
+    </main>
+    <dialog class="review-dialog" id="headReviewDialog" aria-labelledby="headReviewSubject">
+        <h2 id="headReviewSubject"></h2>
+        <p id="headReviewDetails"></p>
+        <p id="headReviewDecision"></p>
+        <form id="headDirectForm" hidden>
+            <label>เลือกผู้รับ
+                <select id="headRecipient" required></select>
+            </label>
+            <small id="headRecipientStatus"></small>
+            <label>หมายเหตุ<textarea id="headNote" rows="2"></textarea></label>
+            <button type="submit">ส่งให้สารบรรณแจกจ่าย</button>
+        </form>
+        <form id="headReturnForm" hidden>
+            <label>เหตุผลที่ส่งกลับ<textarea id="headReason" rows="2" required></textarea></label>
+            <button type="submit">ส่งกลับเพื่อขอข้อมูลเพิ่ม</button>
+        </form>
+        <p id="headActionStatus" role="status"></p>
+        <button id="headClose" type="button">ปิด</button>
+    </dialog>
+</body>
+</html>

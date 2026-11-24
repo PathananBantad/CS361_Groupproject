@@ -11,10 +11,12 @@
         document_officer: "เจ้าหน้าที่รับเอกสาร",
         faculty_staff: "อาจารย์ / บุคลากร",
         executive: "ผู้บริหาร",
+        branch_head: "หัวหน้าสาขา",
         responsible_person: "ผู้รับผิดชอบเรื่อง",
     };
 
     function initNavbarProfile() {
+        if (document.getElementById("headDemo")?.hidden === false) return;
         const userRoleDisplay = document.getElementById("userRoleDisplay");
         const userRoleDot = document.getElementById("userRoleDot");
         const roleMenuBtn = document.getElementById("roleMenuBtn");
@@ -28,9 +30,9 @@
         if (savedRole === "staff") savedRole = "faculty_staff"; // ชื่อ Role เก่า
         const savedUser = localStorage.getItem("docuflow_user") || "";
         const currentPath = window.location.pathname.toLowerCase();
-        const knownRoles = ["admin", "executive", "document_officer", "responsible_person", "faculty_staff"];
+        const knownRoles = ["admin", "executive", "document_officer", "branch_head", "responsible_person", "faculty_staff"];
         if (!window.getDocuFlowAuthToken?.() || !knownRoles.includes(savedRole)) {
-            if (currentPath.includes("register.html") || currentPath.includes("dashboard.html")) {
+            if (currentPath.includes("register.html") || currentPath.includes("dashboard.html") || currentPath.includes("head-reviews.html")) {
                 window.location.replace("login.html");
                 return;
             }

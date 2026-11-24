@@ -1,0 +1,50 @@
+.review-navbar {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: .75rem 1rem;
+    padding: 1rem max(1rem, calc((100vw - 64rem) / 2));
+    background: white;
+    color: #24313f;
+}
+
+.review-navbar strong { margin-inline-end: auto; }
+.review-page { width: min(64rem, calc(100% - 2rem)); margin: 2rem auto; }
+.review-page nav { display: flex; gap: .5rem; flex-wrap: wrap; }
+
+.review-page button, .review-dialog button, #logoutBtn {
+    padding: .5rem .85rem;
+    border: 1px solid #ccd5dc;
+    border-radius: .5rem;
+    background: white;
+    color: #24313f;
+    font: inherit;
+    cursor: pointer;
+}
+
+.review-page button[aria-pressed="true"], .review-dialog button[type="submit"] {
+    background: #195f56;
+    border-color: #195f56;
+    color: white;
+}
+
+.review-dialog button:disabled { opacity: .6; cursor: wait; }
+#headReviewList { list-style: none; padding: 0; display: grid; gap: .75rem; }
+#headReviewList li { background: white; padding: 1rem; border: 1px solid #dce3e8; border-radius: .75rem; overflow-wrap: anywhere; }
+
+.review-dialog {
+    width: min(36rem, calc(100% - 2rem));
+    max-height: calc(100% - 2rem);
+    padding: 1.25rem;
+    margin: auto;
+    border: 1px solid #dce3e8;
+    border-radius: .75rem;
+    overflow-wrap: anywhere;
+}
+
+.review-dialog::backdrop { background: #17273680; }
+.review-dialog form:not([hidden]) { display: grid; gap: .65rem; margin-block: 1rem; }
+.review-dialog label { display: grid; gap: .25rem; }
+.review-dialog select, .review-dialog textarea { width: 100%; padding: .45rem; font: inherit; }
+#headReviewDetails, #headReviewDecision { white-space: pre-wrap; }
+[hidden] { display: none !important; }
