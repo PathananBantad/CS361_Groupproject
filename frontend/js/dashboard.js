@@ -109,6 +109,7 @@ function updateRoleUI() {
         document_officer: "เจ้าหน้าที่รับเอกสาร",
         faculty_staff: "อาจารย์ / บุคลากร",
         executive: "ผู้บริหาร",
+        branch_head: "หัวหน้าสาขา",
         responsible_person: "ผู้รับผิดชอบเรื่อง",
     };
 
@@ -759,14 +760,11 @@ function initializeDashboard() {
     const savedRole = (localStorage.getItem("docuflow_role") || "").toLowerCase().trim();
     const knownRoles = window.DOCUFLOW_ROLES || ["admin", "executive", "document_officer", "branch_head", "responsible_person", "faculty_staff"];
 
+    if (document.getElementById("headDemo")?.hidden === false) return;
+
     // ต้องเข้าสู่ระบบและมี Role ที่ระบบรู้จักเท่านั้น
     if (!accessToken || !knownRoles.includes(savedRole)) {
         window.location.replace("login.html");
-        return;
-    }
-
-    if (savedRole === "branch_head") {
-        window.location.replace("head-reviews.html");
         return;
     }
 

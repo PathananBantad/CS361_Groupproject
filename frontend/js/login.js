@@ -54,7 +54,7 @@ if (togglePassword && passwordInput) {
 
 // ฟังก์ชันนำทางไปยัง Dashboard อย่างปลอดภัย รองรับทั้ง URL ที่มี /html/ และไม่มี
 function navigateToDashboard() {
-    const page = localStorage.getItem("docuflow_role") === "branch_head" ? "head-reviews.html" : "dashboard.html";
+    const page = "dashboard.html";
     const target = window.location.pathname.startsWith("/html/") ? page : `/html/${page}`;
     window.location.href = target;
 }

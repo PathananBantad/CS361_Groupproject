@@ -184,14 +184,13 @@
         }
     }
 
-    if (!demo && (!window.getDocuFlowAuthToken() || !["branch_head", "admin"].includes(role))) {
-        location.replace(window.getDocuFlowAuthToken() ? "dashboard.html" : "login.html");
-        return;
-    }
+    if (!demo && (!window.getDocuFlowAuthToken() || !["branch_head", "admin"].includes(role))) return;
 
     byId("headDemo").hidden = !demo;
     if (demo) byId("roleMenuBtn").disabled = true;
     page.hidden = false;
+    byId("headReviewNav").hidden = false;
+    if (demo) byId("userRoleDisplay").textContent = "หัวหน้าสาขา";
     filters.forEach(button => button.addEventListener("click", () => {
         byId("headReviewResult").textContent = "";
         filter = button.dataset.reviewFilter;

@@ -430,7 +430,8 @@
             "document_officer",
             "faculty_staff",
             "responsible_person",
-            "executive"
+            "executive",
+            "branch_head"
         ];
         const hasPermission = internalRoles.includes(role);
         return {
@@ -636,6 +637,7 @@
                 document_officer: "เจ้าหน้าที่รับเอกสาร",
                 faculty_staff: "อาจารย์ / บุคลากร (Staff)",
                 executive: "ผู้บริหาร",
+                branch_head: "หัวหน้าสาขา",
                 responsible_person: "ผู้รับผิดชอบเรื่อง"
             };
             const roleLabel = roleLabels[auth.role] || auth.role || "ไม่ระบุบทบาท";
@@ -893,6 +895,7 @@
                 document_officer: "เจ้าหน้าที่รับเอกสาร",
                 faculty_staff: "อาจารย์ / บุคลากร",
                 executive: "ผู้บริหาร",
+                branch_head: "หัวหน้าสาขา",
                 responsible_person: "ผู้รับผิดชอบเรื่อง"
             };
 
@@ -1059,6 +1062,9 @@
         }
         if (request !== openRequest) return;
 
+        if ([getCurrentAuth(null).role, getCurrentAuth(doc).role].includes("branch_head")) {
+            doc.permissions = {};
+        }
         currentActiveDoc = doc;
         const auth = getCurrentAuth(doc);
         const permissions = doc.permissions || {};
