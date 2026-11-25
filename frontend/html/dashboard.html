@@ -16,7 +16,6 @@
     <link rel="stylesheet" href="../css/common.css">
     <link rel="stylesheet" href="../css/dashboard.css">
     <link rel="stylesheet" href="../css/document-modal.css">
-    <link rel="stylesheet" href="../css/head-reviews.css">
 </head>
 
 <body>
@@ -36,7 +35,7 @@
         <nav class="nav-links">
             <a href="dashboard.html" class="active">หน้าหลัก</a>
             <a href="register.html" hidden>ลงทะเบียนเอกสาร</a>
-            <a href="#headReviewPage" id="headReviewNav" hidden>พิจารณาเอกสาร</a>
+            <a href="head-reviews.html" id="headReviewNav" hidden>พิจารณาเอกสาร</a>
             <a href="guide.html">คู่มือ</a>
         </nav>
 
@@ -147,53 +146,7 @@
                 <div class="mobile-list" id="mobileList"></div>
             </div>
         </section>
-        <section id="headReviewPage" class="review-page" aria-labelledby="headReviewHeading" hidden>
-            <div class="page-heading">
-                <div>
-                    <h2 id="headReviewHeading">พิจารณาเอกสาร</h2>
-                    <p id="headDemo" hidden>ข้อมูลจำลองสำหรับทดสอบ</p>
-                </div>
-            </div>
-            <div class="registry-filters">
-                <nav class="status-filters" aria-label="สถานะการพิจารณา">
-                    <button class="status-filter active" type="button" data-review-filter="pending" aria-pressed="true">รอพิจารณา</button>
-                    <button class="status-filter" type="button" data-review-filter="reviewed" aria-pressed="false">พิจารณาแล้ว</button>
-                </nav>
-            </div>
-            <section class="registry-card">
-                <div class="registry-title">
-                    <div class="registry-title-icon" aria-hidden="true">☷</div>
-                    <h2>รายการพิจารณาเอกสาร</h2>
-                </div>
-                <div class="review-list-content">
-                    <div id="headReviewResult" role="status"></div>
-                    <p id="headListStatus" role="status"></p>
-                    <button class="btn-preview" id="headRetry" type="button" hidden>ลองโหลดใหม่</button>
-                    <ul id="headReviewList"></ul>
-                </div>
-            </section>
-        </section>
     </main>
-
-    <dialog class="review-dialog" id="headReviewDialog" aria-labelledby="headReviewSubject">
-        <h2 id="headReviewSubject"></h2>
-        <p id="headReviewDetails"></p>
-        <p id="headReviewDecision"></p>
-        <form id="headDirectForm" hidden>
-            <label>เลือกผู้รับ
-                <select id="headRecipient" required></select>
-            </label>
-            <small id="headRecipientStatus"></small>
-            <label>หมายเหตุ<textarea id="headNote" rows="2"></textarea></label>
-            <button type="submit">ส่งให้สารบรรณแจกจ่าย</button>
-        </form>
-        <form id="headReturnForm" hidden>
-            <label>เหตุผลที่ส่งกลับ<textarea id="headReason" rows="2" required></textarea></label>
-            <button type="submit">ส่งกลับเพื่อขอข้อมูลเพิ่ม</button>
-        </form>
-        <p id="headActionStatus" role="status"></p>
-        <button id="headClose" type="button">ปิด</button>
-    </dialog>
 
 
     <!-- Document Details & Preview Modal Container (โหลดเทมเพลตแยกจาก document-modal.html) -->
@@ -206,7 +159,6 @@
     <script src="../js/share-links.js"></script>
     <script src="../js/inbox.js"></script>
     <script src="../js/document-modal.js"></script>
-    <script src="../js/head-reviews.js"></script>
     <script src="../js/dashboard.js"></script>
 
 

@@ -1,11 +1,130 @@
 <!DOCTYPE html>
 <html lang="th">
+
 <head>
     <meta charset="UTF-8">
-    <title>DocuFlow</title>
-    <script>
-        location.replace("dashboard.html" + location.search + "#headReviewPage");
-    </script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>พิจารณาเอกสาร | DocuFlow</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Bai+Jamjuree:wght@300;400;500;600;700&family=Playfair+Display:wght@400;500;600;700&display=swap"
+        rel="stylesheet">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Anuphan:wght@300;400;500;600;700;800&family=Playfair+Display:wght@400;500;600;700&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="../css/common.css">
+    <link rel="stylesheet" href="../css/dashboard.css">
+    <link rel="stylesheet" href="../css/head-reviews.css">
 </head>
-<body><a href="dashboard.html#headReviewPage">ไปที่ Dashboard</a></body>
+
+<body>
+    <div class="page-decoration decoration-top" aria-hidden="true"></div>
+    <div class="page-decoration decoration-bottom" aria-hidden="true"></div>
+
+    <!-- Top navigation -->
+    <header class="topbar">
+        <a class="brand" href="dashboard.html" aria-label="DocuFlow หน้าหลัก">
+            <span class="brand-mark" aria-hidden="true">
+                <span></span><span></span>
+            </span>
+            <span class="brand-name">DocuFlow</span>
+        </a>
+
+        <nav class="nav-links">
+            <a href="dashboard.html">หน้าหลัก</a>
+            <a href="register.html" hidden>ลงทะเบียนเอกสาร</a>
+            <a href="head-reviews.html" id="headReviewNav" class="active" aria-current="page" hidden>พิจารณาเอกสาร</a>
+            <a href="guide.html">คู่มือ</a>
+        </nav>
+
+        <div class="top-actions">
+            <label class="top-search">
+                <span aria-hidden="true">⌕</span>
+                <input id="globalSearch" type="search" placeholder="ค้นหาเอกสาร..." autocomplete="off">
+            </label>
+            <span class="top-divider"></span>
+
+            <!-- Role Selector & Profile Menu -->
+            <div class="role-selector-wrap">
+                <button class="profile-button" id="roleMenuBtn" type="button" aria-expanded="false"
+                    title="คลิกเพื่อดูข้อมูลผู้ใช้และออกจากระบบ">
+                    <span class="profile-icon role-staff" id="userRoleDot" aria-hidden="true">●</span>
+                    <span id="userRoleDisplay">เจ้าหน้าที่ (Staff)</span>
+                    <span class="inbox-new-badge" id="inboxNewCount" aria-live="polite" hidden></span>
+                    <span class="inbox-new-badge" id="headPendingCount" role="status" hidden></span>
+                    <span class="chevron" aria-hidden="true">⌄</span>
+                </button>
+                <div class="role-dropdown" id="roleDropdown" hidden>
+                    <div class="role-dropdown-header">
+                        <span id="userRoleDropdownTitle">ข้อมูลผู้ใช้งาน</span>
+                        <small id="userRoleDropdownEmail">ผู้ใช้งานระบบ DocuFlow</small>
+                    </div>
+                    <div style="border-top: 1px solid #f1e5e5; margin: 4px 0;"></div>
+                    <button type="button" class="role-option" id="logoutBtn" style="color: #991b1b;">
+                        <span class="role-badge" style="background: #fee2e2; color: #991b1b;">Exit</span>
+                        <div class="role-info">
+                            <strong style="color: #991b1b;">ออกจากระบบ (Logout)</strong>
+                            <small>กลับสู่หน้าเข้าสู่ระบบ</small>
+                        </div>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <main class="page">
+        <section id="headReviewPage" class="review-page" aria-labelledby="headReviewHeading" hidden>
+            <div class="page-heading">
+                <div>
+                    <h2 id="headReviewHeading">พิจารณาเอกสาร</h2>
+                    <p id="headDemo" hidden>ข้อมูลจำลองสำหรับทดสอบ</p>
+                </div>
+            </div>
+            <div class="registry-filters">
+                <nav class="status-filters" aria-label="สถานะการพิจารณา">
+                    <button class="status-filter active" type="button" data-review-filter="pending" aria-pressed="true">รอพิจารณา</button>
+                    <button class="status-filter" type="button" data-review-filter="reviewed" aria-pressed="false">พิจารณาแล้ว</button>
+                </nav>
+            </div>
+            <section class="registry-card">
+                <div class="registry-title">
+                    <div class="registry-title-icon" aria-hidden="true">☷</div>
+                    <h2>รายการพิจารณาเอกสาร</h2>
+                </div>
+                <div class="review-list-content">
+                    <div id="headReviewResult" role="status"></div>
+                    <p id="headListStatus" role="status"></p>
+                    <button class="btn-preview" id="headRetry" type="button" hidden>ลองโหลดใหม่</button>
+                    <ul id="headReviewList"></ul>
+                </div>
+            </section>
+        </section>
+    </main>
+
+    <dialog class="review-dialog" id="headReviewDialog" aria-labelledby="headReviewSubject">
+        <h2 id="headReviewSubject"></h2>
+        <p id="headReviewDetails"></p>
+        <p id="headReviewDecision"></p>
+        <form id="headDirectForm" hidden>
+            <label>เลือกผู้รับ
+                <select id="headRecipient" required></select>
+            </label>
+            <small id="headRecipientStatus"></small>
+            <label>หมายเหตุ<textarea id="headNote" rows="2"></textarea></label>
+            <button type="submit">ส่งให้สารบรรณแจกจ่าย</button>
+        </form>
+        <form id="headReturnForm" hidden>
+            <label>เหตุผลที่ส่งกลับ<textarea id="headReason" rows="2" required></textarea></label>
+            <button type="submit">ส่งกลับเพื่อขอข้อมูลเพิ่ม</button>
+        </form>
+        <p id="headActionStatus" role="status"></p>
+        <button id="headClose" type="button">ปิด</button>
+    </dialog>
+
+    <script src="https://cdn.jsdelivr.net/npm/amazon-cognito-identity-js@6.3.18/dist/amazon-cognito-identity.min.js"></script>
+    <script src="../js/cognito-config.js"></script>
+    <script src="../js/navbar-profile.js"></script>
+    <script src="../js/head-reviews.js"></script>
+</body>
 </html>

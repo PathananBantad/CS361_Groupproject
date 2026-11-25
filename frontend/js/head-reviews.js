@@ -184,7 +184,13 @@
         }
     }
 
-    if (!demo && (!window.getDocuFlowAuthToken() || !["branch_head", "admin"].includes(role))) return;
+    if (!demo) {
+        const signedIn = Boolean(window.getDocuFlowAuthToken());
+        if (!signedIn || !["branch_head", "admin"].includes(role)) {
+            location.replace(signedIn ? "dashboard.html" : "login.html");
+            return;
+        }
+    }
 
     byId("headDemo").hidden = !demo;
     if (demo) byId("roleMenuBtn").disabled = true;

@@ -754,13 +754,25 @@ function escapeHtml(value) {
 /* =====================================================
    INITIALIZE
 ===================================================== */
+async function loadHeadPendingCount() {
+    const badge = document.getElementById("headPendingCount");
+    try {
+        const response = await window.apiFetch(`${getApiBaseUrl()}/me/pending-counts`);
+        if (!response.ok) return;
+        const { head_pending: count } = await response.json();
+        if (!Number.isInteger(count) || count < 0) return;
+        badge.textContent = `รอพิจารณา ${count}`;
+        badge.hidden = false;
+    } catch {
+        badge.hidden = true;
+    }
+}
+
 function initializeDashboard() {
     const savedUser = localStorage.getItem("docuflow_user");
     const accessToken = localStorage.getItem("docuflow_access_token") || localStorage.getItem("access_token");
     const savedRole = (localStorage.getItem("docuflow_role") || "").toLowerCase().trim();
     const knownRoles = window.DOCUFLOW_ROLES || ["admin", "executive", "document_officer", "branch_head", "responsible_person", "faculty_staff"];
-
-    if (document.getElementById("headDemo")?.hidden === false) return;
 
     // ต้องเข้าสู่ระบบและมี Role ที่ระบบรู้จักเท่านั้น
     if (!accessToken || !knownRoles.includes(savedRole)) {
@@ -769,6 +781,10 @@ function initializeDashboard() {
     }
 
     currentRole = savedRole;
+    if (["branch_head", "admin"].includes(savedRole)) {
+        document.getElementById("headReviewNav").hidden = false;
+    }
+    if (savedRole === "branch_head") void loadHeadPendingCount();
     document.getElementById("inboxSortControl").hidden = !["faculty_staff", "responsible_person"].includes(savedRole);
     currentUsername = savedUser || "-";
 
