@@ -25,18 +25,23 @@
     let submitting = false;
 
     async function request(path, options) {
+        const isReviewSubmission = options?.method === "POST";
         const response = await window.apiFetch(`${window.resolveApiBaseUrl()}${path}`, options);
         if (response.status === 401) throw new Error("เซสชันหมดอายุ กรุณาเข้าสู่ระบบอีกครั้ง");
         if (response.status === 403) throw new Error("บัญชีนี้ไม่มีสิทธิ์ดำเนินการ");
         if (response.status === 400) throw new Error("ข้อมูลพิจารณาไม่ถูกต้อง กรุณาตรวจผู้รับหรือเหตุผลแล้วลองอีกครั้ง");
         if (response.status === 404 || response.status === 409) {
             const error = new Error(response.status === 404
-                ? "ไม่พบเอกสารนี้แล้ว กรุณากลับไปตรวจรายการ"
+                ? (isReviewSubmission
+                    ? "ไม่พบเอกสารหรือระบบยังไม่รองรับการส่งผลพิจารณา"
+                    : "ระบบยังไม่พร้อมแสดงคิวพิจารณา กรุณาลองใหม่ภายหลัง")
                 : "สถานะเอกสารเปลี่ยนแล้ว กรุณากลับไปตรวจรายการ");
             error.status = response.status;
             throw error;
         }
-        if (!response.ok) throw new Error("ทำรายการไม่สำเร็จ กรุณาลองอีกครั้ง");
+        if (!response.ok) throw new Error(isReviewSubmission
+            ? "ทำรายการไม่สำเร็จ กรุณาลองอีกครั้ง"
+            : "โหลดคิวพิจารณาไม่สำเร็จ กรุณาลองอีกครั้ง");
         return response.status === 204 ? null : response.json();
     }
 
@@ -75,6 +80,8 @@
     async function load() {
         const requestId = ++loadRequest;
         const status = byId("headListStatus");
+        const retry = byId("headRetry");
+        retry.hidden = true;
         status.textContent = "กำลังโหลดเอกสาร…";
         list.replaceChildren();
         try {
@@ -91,7 +98,9 @@
             if (requestId !== loadRequest) return;
             if (queues.some(queue => !Array.isArray(queue?.data))) throw new Error("ไม่สามารถอ่านรายการเอกสารได้");
             const count = counts?.head_pending;
-            byId("headPendingCount").textContent = Number.isInteger(count) && count >= 0 ? `รอพิจารณา ${count}` : "";
+            const pendingCount = byId("headPendingCount");
+            pendingCount.hidden = !Number.isInteger(count) || count < 0;
+            pendingCount.textContent = pendingCount.hidden ? "" : `รอพิจารณา ${count}`;
             // #79 does not yet specify a recipient directory for this role.
             const recipients = Array.isArray(queues[0].recipients) ? queues[0].recipients : [];
             const documents = Array.from(new Map(queues.flatMap(queue => queue.data).map(doc => [doc.id, doc])).values());
@@ -103,6 +112,7 @@
                 reference.textContent = doc.reference_no || "";
                 const open = document.createElement("button");
                 open.type = "button";
+                open.className = "btn-preview";
                 open.textContent = "ดูรายละเอียด";
                 open.addEventListener("click", () => openDocument(doc, recipients));
                 item.append(title, reference, open);
@@ -110,7 +120,11 @@
             }
             status.textContent = documents.length ? "" : "ไม่มีเอกสารในรายการนี้";
         } catch (error) {
-            if (requestId === loadRequest) status.textContent = error.message;
+            if (requestId !== loadRequest) return;
+            status.textContent = error instanceof TypeError
+                ? "เชื่อมต่อระบบไม่ได้ กรุณาลองโหลดคิวพิจารณาอีกครั้ง"
+                : error.message;
+            retry.hidden = false;
         }
     }
 
@@ -181,12 +195,17 @@
     filters.forEach(button => button.addEventListener("click", () => {
         byId("headReviewResult").textContent = "";
         filter = button.dataset.reviewFilter;
-        filters.forEach(option => option.setAttribute("aria-pressed", String(option === button)));
+        filters.forEach(option => {
+            const active = option === button;
+            option.classList.toggle("active", active);
+            option.setAttribute("aria-pressed", String(active));
+        });
         void load();
     }));
     directForm.addEventListener("submit", event => { event.preventDefault(); void submitReview("DIRECTED"); });
     returnForm.addEventListener("submit", event => { event.preventDefault(); void submitReview("RETURNED"); });
     byId("headClose").addEventListener("click", () => dialog.close());
     dialog.addEventListener("cancel", event => { if (submitting) event.preventDefault(); });
+    byId("headRetry").addEventListener("click", load);
     void load();
 })();

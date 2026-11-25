@@ -1,43 +1,38 @@
-.review-navbar {
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: .75rem 1rem;
-    padding: 1rem max(1rem, calc((100vw - 64rem) / 2));
-    background: white;
-    color: #24313f;
+.review-list-content {
+    padding: clamp(.875rem, 2vw, 1.5rem);
 }
 
-.review-navbar strong { margin-inline-end: auto; }
-.review-page { width: min(64rem, calc(100% - 2rem)); margin: 2rem auto; }
-.review-page nav { display: flex; gap: .5rem; flex-wrap: wrap; }
+.review-list-content [role="status"]:empty { display: none; }
+#headRetry { margin-block-start: .75rem; }
+#headReviewList { list-style: none; padding: 0; margin: 0; }
+#headReviewList li { padding: 1rem 0; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+#headReviewList li:first-child { padding-top: 0; }
+#headReviewList li:last-child { border-bottom: 0; }
+#headReviewList .btn-preview { margin-top: .5rem; }
 
-.review-page button, .review-dialog button, #logoutBtn {
+.review-dialog button {
     padding: .5rem .85rem;
-    border: 1px solid #ccd5dc;
+    border: 1px solid var(--line);
     border-radius: .5rem;
     background: white;
-    color: #24313f;
+    color: var(--wine-dark);
     font: inherit;
     cursor: pointer;
 }
 
-.review-page button[aria-pressed="true"], .review-dialog button[type="submit"] {
-    background: #195f56;
-    border-color: #195f56;
+.review-dialog button[type="submit"] {
+    background: var(--wine);
+    border-color: var(--wine);
     color: white;
 }
 
 .review-dialog button:disabled { opacity: .6; cursor: wait; }
-#headReviewList { list-style: none; padding: 0; display: grid; gap: .75rem; }
-#headReviewList li { background: white; padding: 1rem; border: 1px solid #dce3e8; border-radius: .75rem; overflow-wrap: anywhere; }
-
 .review-dialog {
     width: min(36rem, calc(100% - 2rem));
     max-height: calc(100% - 2rem);
     padding: 1.25rem;
     margin: auto;
-    border: 1px solid #dce3e8;
+    border: 1px solid var(--line);
     border-radius: .75rem;
     overflow-wrap: anywhere;
 }
