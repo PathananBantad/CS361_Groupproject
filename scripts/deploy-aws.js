@@ -160,6 +160,11 @@ function getRequiredDeploymentConfig(config) {
     throw new Error("DOCUMENT_BUCKET_MODE must be Existing or Create.");
   }
 
+  const lambdaRoleArn = getFirstConfiguredValue(config.LAMBDA_ROLE_ARN) || "";
+  if (lambdaRoleArn && !/^arn:aws[a-z-]*:iam::\d{12}:role\/[\w+=,.@\/-]+$/.test(lambdaRoleArn)) {
+    throw new Error("LAMBDA_ROLE_ARN must be an IAM role ARN.");
+  }
+
   const databaseConfig = getRequiredDatabaseConfig(config);
   const sessionSecret = getRequiredSessionSecret(config);
 
@@ -184,6 +189,7 @@ function getRequiredDeploymentConfig(config) {
     tuApiKey: config.TU_API_KEY || config.TU_APP_KEY || "",
     allowedOrigins: parseAllowedOrigins(config.FRONTEND_ALLOWED_ORIGINS),
     expectedAccountId,
+    lambdaRoleArn,
     vpcSubnetIds: parseVpcResourceIds(
       config.VPC_SUBNET_IDS,
       "VPC_SUBNET_IDS",
@@ -345,7 +351,8 @@ function buildCloudFormationParameters(config, packageKey) {
     ["SessionSecret", config.sessionSecret],
     ["TuApiUrl", config.tuApiUrl],
     ["TuApiKey", config.tuApiKey],
-    ["AllowedOrigins", config.allowedOrigins.join(",")]
+    ["AllowedOrigins", config.allowedOrigins.join(",")],
+    ["LambdaRoleArn", config.lambdaRoleArn || ""]
   ].map(([ParameterKey, ParameterValue]) => ({
     ParameterKey,
     ParameterValue: String(ParameterValue)

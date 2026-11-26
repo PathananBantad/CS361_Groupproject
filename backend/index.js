@@ -54,6 +54,16 @@ module.exports.handler = async (event, context) => {
     if (event && event.triggerSource && event.triggerSource.startsWith("PostAuthentication_")) {
         return await handleCognitoPostAuth(event);
     }
+    // งานดูแลระบบ: Migrate DB (เรียกได้เฉพาะผ่าน lambda:InvokeFunction ด้วย IAM — event จาก Function URL มี requestContext เสมอ)
+    if (event && event.docuflowTask === "migrate" && !event.requestContext) {
+        const { runMigration } = require("./migrate");
+        const logs = [];
+        await runMigration(require("./db"), message => {
+            logs.push(String(message));
+            console.log(message);
+        });
+        return { ok: true, logs };
+    }
     // หากถูกเรียกจาก API Gateway / Function URL
     const response = await serverlessHandler(event, context);
     if (response) {

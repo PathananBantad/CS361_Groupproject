@@ -17,6 +17,8 @@ const filesToCopy = [
   "shareLinks.js",
   "session.js",
   "config.js",
+  "inboxPriority.js",
+  "migrate.js",
   "package.json"
 ];
 
@@ -72,6 +74,9 @@ function createPackage({ stagingPath = staging, outputPath = zipTarget } = {}) {
     }
 
     fs.cpSync(path.join(__dirname, "certs"), path.join(stagingPath, "certs"), {
+      recursive: true
+    });
+    fs.cpSync(path.join(__dirname, "database", "migrations"), path.join(stagingPath, "database", "migrations"), {
       recursive: true
     });
 

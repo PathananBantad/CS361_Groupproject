@@ -253,7 +253,7 @@ describe("Authentication & CORS API", () => {
     });
 
     // ---------- CORS ----------
-    const allowedOrigin = "https://main.d29fui7wfvh5a0.amplifyapp.com";
+    const allowedOrigin = "https://main.d1lgsgtezmr2a0.amplifyapp.com";
     const evilOrigin = "https://evil.example.com";
 
     test("CORS: Origin ที่อนุญาต -> ได้ Access-Control-Allow-Origin ตรงกับ Origin", async () => {

@@ -109,6 +109,11 @@
       "Type": "Number",
       "Default": 30,
       "AllowedValues": [1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365]
+    },
+    "LambdaRoleArn": {
+      "Type": "String",
+      "Default": "",
+      "Description": "Existing Lambda execution role ARN (e.g. AWS Academy LabRole, where iam:CreateRole is denied). Leave empty to create a scoped role."
     }
   },
   "Conditions": {
@@ -119,11 +124,20 @@
         },
         "Create"
       ]
+    },
+    "CreateLambdaRole": {
+      "Fn::Equals": [
+        {
+          "Ref": "LambdaRoleArn"
+        },
+        ""
+      ]
     }
   },
   "Resources": {
     "LambdaExecutionRole": {
       "Type": "AWS::IAM::Role",
+      "Condition": "CreateLambdaRole",
       "Properties": {
         "AssumeRolePolicyDocument": {
           "Version": "2012-10-17",
@@ -265,7 +279,7 @@
               },
               "AllowedMethods": ["GET", "PUT", "HEAD"],
               "AllowedHeaders": ["Content-Type", "x-amz-*"],
-              "ExposeHeaders": ["ETag"],
+              "ExposedHeaders": ["ETag"],
               "MaxAge": 600
             }
           ]
@@ -298,7 +312,11 @@
         "Runtime": "nodejs22.x",
         "Handler": "index.handler",
         "Role": {
-          "Fn::GetAtt": ["LambdaExecutionRole", "Arn"]
+          "Fn::If": [
+            "CreateLambdaRole",
+            { "Fn::GetAtt": ["LambdaExecutionRole", "Arn"] },
+            { "Ref": "LambdaRoleArn" }
+          ]
         },
         "Timeout": 30,
         "MemorySize": 512,
@@ -321,6 +339,9 @@
         "Environment": {
           "Variables": {
             "NODE_ENV": "production",
+            "CORS_ALLOWED_ORIGINS": {
+              "Fn::Join": [",", { "Ref": "AllowedOrigins" }]
+            },
             "S3_BUCKET": {
               "Ref": "DocumentBucketName"
             },
@@ -391,7 +412,7 @@
           "AllowOrigins": {
             "Ref": "AllowedOrigins"
           },
-          "AllowMethods": ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+          "AllowMethods": ["GET", "POST", "PUT", "PATCH", "DELETE"],
           "AllowHeaders": ["Authorization", "Content-Type", "X-Requested-With"],
           "ExposeHeaders": ["Content-Type"],
           "MaxAge": 600
