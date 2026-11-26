@@ -179,6 +179,23 @@ async function runMigration(pool, log = console.log) {
       console.warn("  ! Note on assignee_id column:", colErr.message);
     }
 
+    // 8.1 document_files.file_hash (SHA-256 hex) ใช้ตรวจไฟล์ซ้ำใน server.js findDuplicateFileHash
+    const [hashCol] = await pool.query(`
+      SELECT COUNT(*) AS cnt
+      FROM INFORMATION_SCHEMA.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE()
+        AND TABLE_NAME = 'document_files'
+        AND COLUMN_NAME = 'file_hash'
+    `);
+    if (Number(hashCol[0].cnt) === 0) {
+      await pool.query(`
+        ALTER TABLE document_files
+        ADD COLUMN file_hash CHAR(64) NULL,
+        ADD INDEX idx_file_hash (file_hash)
+      `);
+      log("  + Added file_hash column to document_files table");
+    }
+
     // 9. ตาราง document_assignments (การมอบหมายและการส่งต่อเอกสาร)
     await pool.query(`
       CREATE TABLE IF NOT EXISTS document_assignments (

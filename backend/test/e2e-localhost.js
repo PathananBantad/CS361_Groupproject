@@ -193,7 +193,7 @@ async function run() {
     const badCognito = await call("POST", "/api/auth/tu-login", { body: { username: `${PREFIX}nobody@example.com`, password: "Wrong-Password-1!" } });
     check("#58", "Direct Cognito login with wrong credentials rejected (no token)", [401, 503], badCognito, !badCognito.body?.access_token || "token issued!");
 
-    const allowed = "https://main.d29fui7wfvh5a0.amplifyapp.com";
+    const allowed = "https://main.d1lgsgtezmr2a0.amplifyapp.com";
     const pre = await call("OPTIONS", "/api/documents", { headers: { Origin: allowed, "Access-Control-Request-Method": "POST", "Access-Control-Request-Headers": "authorization,content-type" } });
     check("#58", "CORS preflight OPTIONS from allowed origin", 204, pre,
         pre.headers.get("access-control-allow-origin") === allowed || "missing ACAO");

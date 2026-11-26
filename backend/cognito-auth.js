@@ -35,6 +35,23 @@ const EMBEDDED_JWKS = {
             kty: "RSA",
             n: "9V9FH1vrRBEAEJxHPcpV-dkpS0JPyHTcdc-m06_CIeaROQw4iejnIBnAXD3g0Xyp4bIl1ehF-N3ffD_HFy-9cQqcHznGfYd-xj9ISfH0LXv8eJXk4oqrR0IUD0Hn-Rsr4muJKriPzrgwO-V1Yn6jLAFBnCQ7j2p8CHwD0UcD49lNHIC6ZqT7B_Saj8V8kXJxb9LHzJXzcLTpt6g78MTFgCFgU4wGu4Wm7SrGf-x0Uk4T0aMgfVWdP5mlgUQmKj3fwIGYQsZ0u-82l3fDvini1I0J1OLinuN656dZtIbqi7YSknlNQZjXeDwUQEfJCF5ITJ11pfD3cKvRMYqGhj5cew",
             use: "sig"
+        },
+        // User Pool us-east-1_dHT9ev4VO (Learner Lab ใหม่ บัญชี 441345895798)
+        {
+            alg: "RS256",
+            e: "AQAB",
+            kid: "LWrlcm/nHJItQZKt1jWlnP9fDKaHdu+BgDw1UjtTYS0=",
+            kty: "RSA",
+            n: "tuCz0t0B4IWBOphp0XNAJV4KfaSyKB-kDwquvK6hlHp0F3fh6pBJzeZNpRF9irIjm8kXv7jdgLs2LqGI7cPHOIodwiStTdJTYZGHtEbMBtiFRsDnxoesXdaHqAi6s9Q70RsI9h6zCVHwME21GPDrsEplJ2az6RJMhUKqZp9bI2t40hb3DIVX7fjlRh1dCySGwWQcyp8NiXCnz1g6gUaILxGevv8VuPV0UareSUWHxUf86lHdwli_od2zD6oaEqp-8uKSBFatNOO_0tU6kDh_d8pWBaLyIptLGQnA1SFqthnIrhfZx9roFytmSlxwOCv5nDSn9Dxk1z8NwN-mnw3GPw",
+            use: "sig"
+        },
+        {
+            alg: "RS256",
+            e: "AQAB",
+            kid: "sXoh+ZeeS8uNGIRCxhq/TRUbAMcNXxpuMW6Hlr7AUGU=",
+            kty: "RSA",
+            n: "rSuqV8fRgZAaixXQo4AWd0n0AETqGva0MERvwrFWFeoWlI7neR7sNpXUpCeN-heTmDXNjLm7ebPkyg_tkRIfqeF3u988OOqxCi2ypMBaQUofgosXZL7UUPQdWSgkUxXmwzY6Zsbpjar7XERKmJJrn9BJad6p7vwf9rj3ycLSyOHy_P-e8QbhW6FNIkUf1YBzDmzMOOnASgpcvkrWEGJ8F-8E1RRnOxremQTBDTnZImqcDwUTNbWkccI1ZwAlvpQrbG9HU1eeKfSXaysSITQFKgWitt4-n2TGAekb0ygvdLm-v2qB7BnA6WRk3b3Xy9Ap0ZuRI22L7AFnMHoabX9CJw",
+            use: "sig"
         }
     ]
 };

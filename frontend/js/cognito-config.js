@@ -1,8 +1,8 @@
 // Public Cognito identifiers (ไม่ใช่ความลับ — เบราว์เซอร์ต้องใช้เพื่อ login แบบ SRP)
 // ห้ามใส่ Client Secret, API Key หรือ credential ใด ๆ ในไฟล์ฝั่ง Frontend
 window.COGNITO_CONFIG = {
-    userPoolId: "us-east-1_ySsGHRKUQ",
-    clientId: "7onljgop56a811chbidtuppffq",
+    userPoolId: "us-east-1_dHT9ev4VO",
+    clientId: "6i1ddhs8627lfk09l5akuvmjqk",
     region: "us-east-1"
 };
 
@@ -24,7 +24,7 @@ try {
 window.IS_LOCAL = ["localhost", "127.0.0.1", "0.0.0.0", "::1"].includes(window.location.hostname);
 
 // Backend requests use the Lambda Function URL; the server enforces Cognito auth.
-window.AWS_LAMBDA_FUNCTION_URL = "https://htvtloifbzeywxdh4gawlqoxdq0tftsv.lambda-url.us-east-1.on.aws";
+window.AWS_LAMBDA_FUNCTION_URL = "https://dexyp33mf4ubhu4fknept7fc2m0brqpu.lambda-url.us-east-1.on.aws";
 window.LAMBDA_FUNCTION_URL = window.AWS_LAMBDA_FUNCTION_URL;
 
 // ล้างค่า endpoint สำรองเก่าที่อาจค้างอยู่ใน sessionStorage

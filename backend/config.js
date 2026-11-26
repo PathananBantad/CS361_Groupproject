@@ -22,18 +22,19 @@ const isProduction = () => readEnv("NODE_ENV").toLowerCase() === "production";
 
 // ---------- PUBLIC identifiers ----------
 const DEFAULT_COGNITO_REGION = "us-east-1";
-const DEFAULT_COGNITO_USER_POOL_ID = "us-east-1_ySsGHRKUQ";
-const DEFAULT_COGNITO_APP_CLIENT_ID = "7onljgop56a811chbidtuppffq";
+const DEFAULT_COGNITO_USER_POOL_ID = "us-east-1_dHT9ev4VO";
+const DEFAULT_COGNITO_APP_CLIENT_ID = "6i1ddhs8627lfk09l5akuvmjqk";
 // User Pool / App Client ที่ระบบยอมรับ token อยู่เดิม (ตรงกับ Embedded JWKS ใน cognito-auth.js)
-const DEFAULT_ALLOWED_USER_POOL_IDS = ["us-east-1_ySsGHRKUQ", "us-east-1_1duzJEFfU"];
+const DEFAULT_ALLOWED_USER_POOL_IDS = ["us-east-1_dHT9ev4VO", "us-east-1_ySsGHRKUQ", "us-east-1_1duzJEFfU"];
 const DEFAULT_ALLOWED_CLIENT_IDS = [
+    "6i1ddhs8627lfk09l5akuvmjqk",
     "7onljgop56a811chbidtuppffq",
     "454o0719rb9d6lkspv4m8tmb6i",
     "7k0t8e6499bro55f8faso44m2c"
 ];
 // Origin ของ Frontend ที่ deploy จริง + Local dev
 const DEFAULT_CORS_ALLOWED_ORIGINS = [
-    "https://main.d29fui7wfvh5a0.amplifyapp.com",
+    "https://main.d1lgsgtezmr2a0.amplifyapp.com",
     "http://localhost:3000",
     "http://127.0.0.1:3000",
     "http://localhost:5500",
