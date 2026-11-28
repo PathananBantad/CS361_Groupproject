@@ -17,6 +17,7 @@ function resolveLoginRole(responseRole, groups = []) {
         "staff/instructor": "faculty_staff",
         instructor: "faculty_staff",
         staff: "faculty_staff",
+        branchhead: "branch_head",
         responsibleperson: "responsible_person",
         responsible_person: "responsible_person"
     };
@@ -28,16 +29,16 @@ function resolveLoginRole(responseRole, groups = []) {
     const candidateRoles = [...groupRoles];
     if (responseRole) candidateRoles.push(normalize(responseRole));
 
-    return ["admin", "executive", "document_officer", "responsible_person", "faculty_staff"]
+    return ["admin", "executive", "document_officer", "branch_head", "responsible_person", "faculty_staff"]
         .find(role => candidateRoles.includes(role)) || (responseRole ? normalize(responseRole) : groupRoles[0]) || "faculty_staff";
 }
 
-test("1. มี responsible_person ใน ROLES และไม่มี Owner role", () => {
+test("1. มี responsible_person และ branch_head ใน ROLES และไม่มี Owner role", () => {
     assert.equal(ROLES.includes("responsible_person"), true, "ROLES ต้องมี responsible_person");
     assert.equal(ROLES.includes("owner"), false, "ROLES ต้องไม่มี owner role");
     assert.deepEqual(
         [...ROLES].sort(),
-        ["admin", "document_officer", "executive", "faculty_staff", "responsible_person"].sort()
+        ["admin", "branch_head", "document_officer", "executive", "faculty_staff", "responsible_person"].sort()
     );
 });
 
@@ -72,6 +73,7 @@ test("4. resolveLoginRole กำหนด application role ให้ผู้ใ
     assert.equal(resolveLoginRole(null, ["ResponsiblePerson"]), "responsible_person");
     assert.equal(resolveLoginRole("responsible_person", []), "responsible_person");
     assert.equal(resolveLoginRole("faculty_staff", ["ResponsiblePerson"]), "responsible_person");
+    assert.equal(resolveLoginRole(null, ["BranchHead"]), "branch_head");
 });
 
 test("5. resolveLoginRole จัดลำดับความสำคัญ role เมื่อผู้ใช้มีหลาย Role", () => {
