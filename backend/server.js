@@ -572,10 +572,22 @@ app.get(
             const userRoles = (req.userRoles || (role ? [role] : [])).map((r) => String(r || "").trim().toLowerCase());
             const canViewAll = userRoles.some((r) => ["admin", "executive", "document_officer"].includes(r));
             if (!canViewAll) {
-                // ห้ามใช้ owner_id เป็นเกณฑ์กรองสิทธิ์ตาม Permission Matrix V5
-                // faculty_staff และ responsible_person เห็นเฉพาะเอกสารที่เป็น Current หรือ Previous Assignee
-                sql += ` AND (d.assignee_id = ? OR ${PREVIOUS_ASSIGNEE_SQL})`;
-                params.push(userId, String(userId));
+                if (userRoles.includes("branch_head")) {
+                    // Branch heads see all official documents and documents currently assigned to them.
+                    sql += ` AND (d.is_official = 1 OR d.assignee_id = ?`;
+                    params.push(userId);
+                    // Preserve existing staff visibility if the account has an additional staff role.
+                    if (userRoles.some((r) => ["faculty_staff", "responsible_person"].includes(r))) {
+                        sql += ` OR ${PREVIOUS_ASSIGNEE_SQL}`;
+                        params.push(String(userId));
+                    }
+                    sql += `)`;
+                } else {
+                    // ห้ามใช้ owner_id เป็นเกณฑ์กรองสิทธิ์ตาม Permission Matrix V5
+                    // faculty_staff และ responsible_person เห็นเฉพาะเอกสารที่เป็น Current หรือ Previous Assignee
+                    sql += ` AND (d.assignee_id = ? OR ${PREVIOUS_ASSIGNEE_SQL})`;
+                    params.push(userId, String(userId));
+                }
             }
 
             // Search by reference number

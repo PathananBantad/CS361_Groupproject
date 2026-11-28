@@ -9,10 +9,10 @@ const {
     canAccessDocument
 } = require("../documentAuthorization");
 
-test("ROLES ครอบคลุม 5 บทบาทหลักของระบบ", () => {
+test("ROLES ครอบคลุมบทบาทหลักรวม branch_head", () => {
     assert.deepEqual(
         [...ROLES].sort(),
-        ["admin", "document_officer", "executive", "faculty_staff", "responsible_person"].sort()
+        ["admin", "branch_head", "document_officer", "executive", "faculty_staff", "responsible_person"].sort()
     );
 });
 
@@ -22,6 +22,7 @@ test("mapCognitoGroupsToRoles แปลงชื่อกลุ่ม Cognito �
     assert.deepEqual(mapCognitoGroupsToRoles(["Staff/Instructor"]), ["faculty_staff"]);
     assert.deepEqual(mapCognitoGroupsToRoles(["Executive"]), ["executive"]);
     assert.deepEqual(mapCognitoGroupsToRoles(["ResponsiblePerson"]), ["responsible_person"]);
+    assert.deepEqual(mapCognitoGroupsToRoles(["BranchHead"]), ["branch_head"]);
 });
 
 test("mapCognitoGroupsToRoles ไม่สนตัวพิมพ์เล็ก/ใหญ่ และตัด duplicate", () => {
@@ -45,6 +46,15 @@ test("canAccessDocument READ: admin/executive/document_officer เข้าถ�
     for (const role of ["admin", "executive", "document_officer"]) {
         assert.equal(canAccessDocument({ roles: [role], userId: 1, document: doc, action: "read" }), true, `${role} ควรอ่านได้`);
     }
+});
+
+test("branch_head อ่านเอกสารทางการทุกฉบับและเอกสารที่ตนเป็นผู้รับ", () => {
+    const official = { id: 1, is_official: 1, assignee_id: 99 };
+    const assigned = { id: 2, is_official: 0, assignee_id: 7 };
+    const unrelated = { id: 3, is_official: 0, assignee_id: 99 };
+    assert.equal(canAccessDocument({ roles: ["branch_head"], userId: 7, document: official, action: "read" }), true);
+    assert.equal(canAccessDocument({ roles: ["branch_head"], userId: 7, document: assigned, action: "read" }), true);
+    assert.equal(canAccessDocument({ roles: ["branch_head"], userId: 7, document: unrelated, action: "read" }), false);
 });
 
 test("canAccessDocument READ: faculty_staff อ่านได้เฉพาะเอกสารที่เป็น Current หรือ Previous Assignee (ไม่ใช่ owner)", () => {

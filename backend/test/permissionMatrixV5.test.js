@@ -17,6 +17,7 @@ const DOC = {
     processing:   { id: 4, owner_id: 10, assignee_id: 20,   status: "Processing" },
     completed:    { id: 5, owner_id: 10, assignee_id: 20,   status: "Completed" },
     received:     { id: 6, owner_id: 10, assignee_id: 20,   status: "Received" },
+    official:     { id: 7, owner_id: 10, assignee_id: 99,   status: "Received", is_official: 1 },
 };
 
 const USER = {
@@ -28,6 +29,7 @@ const USER = {
     // ผู้ใช้ที่ไม่ใช่ assignee ของ DOC.assigned
     facultyOther:     { userId: 50, roles: ["faculty_staff"] },
     responsibleOther: { userId: 50, roles: ["responsible_person"] },
+    branchHead:       { userId: 70, roles: ["branch_head"] },
 };
 
 function access(actor, doc, action, previousAssignee = false) {
@@ -70,6 +72,30 @@ test("V5 READ: faculty_staff/responsible_person อ่านไม่ได้�
     for (const actor of [USER.facultyOther, USER.responsibleOther]) {
         assert.equal(access(actor, DOC.unrelated, "read"), false, `${actor.roles[0]} (ไม่ใช่ assignee) อ่านไม่ได้`);
     }
+});
+
+test("V7 READ: branch_head เห็นเอกสารทางการและเอกสารที่ตนเป็นผู้รับ", () => {
+    assert.equal(access(USER.branchHead, DOC.official, "read"), true);
+    assert.equal(access(USER.branchHead, DOC.assigned, "read"), false);
+    assert.equal(access(USER.branchHead, { ...DOC.assigned, assignee_id: USER.branchHead.userId }, "read"), true);
+});
+
+test("V7 branch_head: head_review ได้ แต่ Register/Assign/Forward/Share ไม่ได้", () => {
+    assert.deepEqual(ACTION_ROLES.head_review, ["branch_head"]);
+    assert.equal(canPerformAction(USER.branchHead.roles, "head_review"), true);
+    for (const action of ["register", "assign", "forward", "share"]) {
+        assert.equal(canPerformAction(USER.branchHead.roles, action), false, action);
+    }
+
+    let statusCode = null;
+    let nextCalled = false;
+    requireAction("assign")(
+        { userRoles: USER.branchHead.roles },
+        { status(code) { statusCode = code; return this; }, json() { return this; } },
+        () => { nextCalled = true; }
+    );
+    assert.equal(statusCode, 403);
+    assert.equal(nextCalled, false);
 });
 
 test("V5 READ: owner_id ไม่ให้สิทธิ์อ่าน (faculty/responsible ที่เป็นแค่ owner)", () => {

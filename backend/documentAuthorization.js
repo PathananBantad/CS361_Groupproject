@@ -1,10 +1,10 @@
 const ROLES = Object.freeze([
-    "document_officer", "faculty_staff", "responsible_person", "admin", "executive"
+    "document_officer", "faculty_staff", "responsible_person", "admin", "executive", "branch_head"
 ]);
 
 // ลำดับความสำคัญเมื่อผู้ใช้มีหลาย Role (ใช้เลือก Role หลักที่แสดง/บันทึกใน users.role)
 const ROLE_PRIORITY = Object.freeze([
-    "admin", "executive", "document_officer", "responsible_person", "faculty_staff"
+    "admin", "executive", "document_officer", "branch_head", "responsible_person", "faculty_staff"
 ]);
 
 // ชื่อ Cognito Group มาตรฐานของแต่ละ Role (ตรงกับ Group ใน User Pool และ Lambda Post Authentication)
@@ -13,13 +13,15 @@ const COGNITO_GROUP_BY_ROLE = Object.freeze({
     executive: "Executive",
     document_officer: "DocumentReceiver",
     responsible_person: "ResponsiblePerson",
-    faculty_staff: "Staff/Instructor"
+    faculty_staff: "Staff/Instructor",
+    branch_head: "BranchHead"
 });
 
 const DEFAULT_ROLE = "faculty_staff";
 
 const ACTION_ROLES = Object.freeze({
     read: ROLES,
+    head_review: ["branch_head"],
     // ลงทะเบียนเอกสารใหม่ได้เฉพาะ Document Officer เท่านั้น (Role อื่นรวมถึง admin ได้ 403)
     register: ["document_officer"],
     upload: ["document_officer", "admin"],
@@ -48,6 +50,8 @@ function mapCognitoGroupsToRoles(groups) {
         staff: "faculty_staff",
         instructor: "faculty_staff",
         executive: "executive",
+        branchhead: "branch_head",
+        branch_head: "branch_head",
         responsibleperson: "responsible_person",
         responsible_person: "responsible_person"
     };
@@ -106,13 +110,18 @@ function canAccessDocument({ roles, userId, document, action = "read", previousA
     const currentAssignee = document.assignee_id != null && String(document.assignee_id) === String(userId);
     // ห้ามใช้ owner_id เป็นเกณฑ์ตัดสินสิทธิ์ตาม Permission Matrix V5
     // READ: admin/officer/executive เห็นเอกสารทุกรายการ
+    // branch_head เห็นเอกสารทางการและเอกสารที่เป็น Current Assignee
     // faculty_staff/responsible_person เห็นเฉพาะเอกสารที่เป็น Current หรือ Previous Assignee
     if (action === "read") {
         if (normalized.some(role => ["admin", "document_officer", "executive"].includes(role))) return true;
+        if (normalized.includes("branch_head") &&
+            (document.is_official === 1 || document.is_official === true || currentAssignee)) return true;
         return currentAssignee || previousAssignee;
     }
 
     if (!canPerformAction(normalized, action)) return false;
+
+    if (action === "head_review") return normalized.includes("branch_head");
 
     if (!currentAssignee && !normalized.includes("admin") &&
         normalized.includes("document_officer") && (forwardedByViewer || previousAssignee) &&
